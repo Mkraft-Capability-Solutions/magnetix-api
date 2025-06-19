@@ -4,25 +4,28 @@ const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
 const jwtConfig = require('../config/jwt');
 const UserDTO = require('../dto/user_dto');
+const redis = require('../config/redis');
+const AppError = require('../utils/appError');
+const { sendEmail } = require('../utils/email');
 
 class AuthService {
-  // Generate a 6-digit verification code
+  constructor() {
+    this.SALT_ROUNDS = 12;
+    this.VERIFICATION_CODE_EXPIRY = 10 * 60; // 10 minutes in seconds
+  }
+
   generateVerificationCode() {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
-  // Hash password
   async hashPassword(password) {
-    const salt = await bcrypt.genSalt(10);
-    return await bcrypt.hash(password, salt);
+    return await bcrypt.hash(password, this.SALT_ROUNDS);
   }
 
-  // Compare password
   async comparePassword(inputPassword, hashedPassword) {
     return await bcrypt.compare(inputPassword, hashedPassword);
   }
 
-  // Generate JWT token
   generateToken(user) {
     return jwt.sign(
       { 
@@ -35,74 +38,106 @@ class AuthService {
     );
   }
 
-  // Register new user
   async registerUser(email, password, firstName, lastName, roleId) {
     const uuid = uuidv4();
     const verificationCode = this.generateVerificationCode();
     const hashedPassword = await this.hashPassword(password);
 
-    // Start transaction
     const connection = await promisePool.getConnection();
     await connection.beginTransaction();
 
     try {
+      // Check if email already exists
+      const [existing] = await connection.query(
+        'SELECT email FROM users WHERE email = ?',
+        [email]
+      );
+      
+      if (existing.length > 0) {
+        throw new AppError('Email already in use', 400);
+      }
+
       // Insert into users table
       await connection.query(
-        'INSERT INTO users (uuid, email, password, role_id, verification_code) VALUES (?, ?, ?, ?, ?)',
+        `INSERT INTO users 
+        (uuid, email, password, role_id, verification_code) 
+        VALUES (?, ?, ?, ?, ?)`,
         [uuid, email, hashedPassword, roleId, verificationCode]
       );
 
-      // Insert into respective role table based on roleId
-      let roleTable;
-      switch (roleId) {
-        case 1: roleTable = 'students'; break;
-        case 2: roleTable = 'instructors'; break;
-        case 3: roleTable = 'admins'; break;
-        case 4: roleTable = 'super_admins'; break;
-        default: throw new Error('Invalid role ID');
-      }
-
+      // Insert into role-specific table
+      const roleTable = this.getRoleTable(roleId);
       await connection.query(
-        `INSERT INTO ${roleTable} (user_id, first_name, last_name) VALUES (?, ?, ?)`,
+        `INSERT INTO ${roleTable} 
+        (user_id, first_name, last_name) 
+        VALUES (?, ?, ?)`,
         [uuid, firstName, lastName]
       );
 
-      // Commit transaction
       await connection.commit();
       connection.release();
 
-      // In a real app, you would send the verification code via email here
-      console.log(`Verification code for ${email}: ${verificationCode}`);
+      // Cache verification code with expiry
+      await redis.set(
+        `verification:${email}`,
+        verificationCode,
+        'EX',
+        this.VERIFICATION_CODE_EXPIRY
+      );
+
+      // Send verification email (in production)
+      if (process.env.NODE_ENV === 'production') {
+        await sendEmail({
+          email,
+          subject: 'Verify your account',
+          message: `Your verification code is ${verificationCode}`
+        });
+      } else {
+        console.log(`Verification code for ${email}: ${verificationCode}`);
+      }
 
       return new UserDTO(uuid, email, roleId, 'inactive');
     } catch (error) {
-      // Rollback transaction if any error occurs
       await connection.rollback();
       connection.release();
       throw error;
     }
   }
 
-  // Login user
+  getRoleTable(roleId) {
+    const tables = {
+      1: 'students',
+      2: 'instructors',
+      3: 'admins',
+      4: 'super_admins'
+    };
+    if (!tables[roleId]) {
+      throw new AppError('Invalid role ID', 400);
+    }
+    return tables[roleId];
+  }
+
   async loginUser(email, password) {
     const [rows] = await promisePool.query(
-      'SELECT uuid, email, password, role_id, status FROM users WHERE email = ?',
+      `SELECT uuid, email, password, role_id, status 
+       FROM users 
+       WHERE email = ? AND is_deleted = 0`,
       [email]
     );
 
     if (rows.length === 0) {
-      throw new Error('User not found');
+      throw new AppError('Incorrect email or password', 401);
     }
 
     const user = rows[0];
     const isMatch = await this.comparePassword(password, user.password);
 
     if (!isMatch) {
-      throw new Error('Invalid credentials');
+      throw new AppError('Incorrect email or password', 401);
     }
 
     if (user.status !== 'active') {
-      throw new Error('Account not active. Please verify your email.');
+      throw new AppError('Account not active. Please verify your email.', 403);
     }
 
     const token = this.generateToken(user);
@@ -113,49 +148,87 @@ class AuthService {
     };
   }
 
-  // Verify user
   async verifyUser(email, verificationCode) {
+    const cachedCode = await redis.get(`verification:${email}`);
+    
+    if (cachedCode !== verificationCode) {
+      throw new AppError('Invalid verification code', 400);
+    }
+
     const [result] = await promisePool.query(
-      'UPDATE users SET status = "active", verification_code = NULL WHERE email = ? AND verification_code = ?',
+      `UPDATE users 
+       SET status = 'active', verification_code = NULL 
+       WHERE email = ? AND verification_code = ?`,
       [email, verificationCode]
     );
 
     if (result.affectedRows === 0) {
-      throw new Error('Invalid verification code or email');
+      throw new AppError('Invalid verification code or email', 400);
     }
+
+    // Clear verification code from cache
+    await redis.del(`verification:${email}`);
 
     return true;
   }
 
-  // Forgot password (generate new verification code)
   async forgotPassword(email) {
     const verificationCode = this.generateVerificationCode();
+    
     const [result] = await promisePool.query(
-      'UPDATE users SET verification_code = ? WHERE email = ?',
+      `UPDATE users 
+       SET verification_code = ? 
+       WHERE email = ? AND is_deleted = 0`,
       [verificationCode, email]
     );
 
     if (result.affectedRows === 0) {
-      throw new Error('Email not found');
+      throw new AppError('Email not found', 404);
     }
 
-    // In a real app, you would send the verification code via email here
-    console.log(`Password reset code for ${email}: ${verificationCode}`);
+    // Cache verification code with expiry
+    await redis.set(
+      `password_reset:${email}`,
+      verificationCode,
+      'EX',
+      this.VERIFICATION_CODE_EXPIRY
+    );
+
+    // Send password reset email (in production)
+    if (process.env.NODE_ENV === 'production') {
+      await sendEmail({
+        email,
+        subject: 'Password Reset Code',
+        message: `Your password reset code is ${verificationCode}`
+      });
+    } else {
+      console.log(`Password reset code for ${email}: ${verificationCode}`);
+    }
 
     return true;
   }
 
-  // Reset password
   async resetPassword(email, verificationCode, newPassword) {
+    const cachedCode = await redis.get(`password_reset:${email}`);
+    
+    if (cachedCode !== verificationCode) {
+      throw new AppError('Invalid verification code', 400);
+    }
+
     const hashedPassword = await this.hashPassword(newPassword);
     const [result] = await promisePool.query(
-      'UPDATE users SET password = ?, verification_code = NULL WHERE email = ? AND verification_code = ?',
+      `UPDATE users 
+       SET password = ?, verification_code = NULL 
+       WHERE email = ? AND verification_code = ?`,
       [hashedPassword, email, verificationCode]
     );
 
     if (result.affectedRows === 0) {
-      throw new Error('Invalid verification code or email');
+      throw new AppError('Invalid verification code or email', 400);
     }
+
+    // Clear password reset code from cache
+    await redis.del(`password_reset:${email}`);
 
     return true;
   }
