@@ -1,17 +1,21 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/auth_controller');
-const { rateLimit } = require('../middleware/auth_middleware');
+const rateLimit = require('express-rate-limit');
 
-// Stricter rate limiting for auth routes
-const authLimiter = rateLimit(15 * 60 * 1000, 10); // 10 requests per 15 minutes
-const sensitiveLimiter = rateLimit(60 * 60 * 1000, 5); // 5 requests per hour
+// Rate limiting for authentication endpoints
+const authLimiter = rateLimit({
+windowMs: 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute
+  message: 'Too many attempts, please try again later'
+});
 
 // Authentication routes
 router.post('/register', authLimiter, authController.register);
 router.post('/login', authLimiter, authController.login);
 router.post('/verify', authLimiter, authController.verify);
-router.post('/forgot-password', sensitiveLimiter, authController.forgotPassword);
-router.post('/reset-password', sensitiveLimiter, authController.resetPassword);
+router.post('/forgot-password', authLimiter, authController.forgotPassword);
+router.post('/reset-password', authLimiter, authController.resetPassword);
+router.post('/logout', authController.logout);
 
 module.exports = router;

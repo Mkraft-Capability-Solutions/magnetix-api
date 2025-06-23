@@ -1,30 +1,17 @@
 require('dotenv').config();
-const app = require('./app');
-const { promisePool } = require('./config/db');
-const redis = require('./config/redis');
+const app = require('./src/app');
+const { promisePool } = require('./src/config/db');
 const PORT = process.env.PORT || 3000;
 
 // Database connection test
 async function testDatabaseConnection() {
   try {
     const connection = await promisePool.getConnection();
-    await connection.ping();
-    connection.release();
     console.log('✅ Database connection established successfully');
+    connection.release();
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);
-    process.exit(1);
-  }
-}
-
-// Redis connection test
-async function testRedisConnection() {
-  try {
-    await redis.ping();
-    console.log('✅ Redis connection established successfully');
-  } catch (error) {
-    console.error('❌ Redis connection failed:', error.message);
-    process.exit(1);
+    process.exit(1); // Exit with failure
   }
 }
 
@@ -38,10 +25,6 @@ function setupShutdownHandlers() {
       await promisePool.end();
       console.log('Database pool closed');
       
-      // Close Redis connection
-      await redis.quit();
-      console.log('Redis connection closed');
-      
       // Close server
       server.close(() => {
         console.log('Server closed');
@@ -52,7 +35,7 @@ function setupShutdownHandlers() {
       setTimeout(() => {
         console.error('Could not close connections in time, forcefully shutting down');
         process.exit(1);
-      }, 10000); // Increased timeout to 10 seconds
+      }, 5000);
       
     } catch (error) {
       console.error('Error during shutdown:', error);
@@ -70,11 +53,9 @@ function setupShutdownHandlers() {
 const server = app.listen(PORT, async () => {
   console.log(`\n🚀 Server is running on port ${PORT}`);
   console.log(`🔗 http://localhost:${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   
-  // Test connections on startup
+  // Test database connection on startup
   await testDatabaseConnection();
-  await testRedisConnection();
   
   // Setup shutdown handlers
   setupShutdownHandlers();

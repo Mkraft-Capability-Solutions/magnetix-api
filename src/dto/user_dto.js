@@ -1,19 +1,25 @@
 class UserDTO {
-  constructor(uuid, email, role_id, status) {
-    this.uuid = uuid;
-    this.email = email;
-    this.role_id = role_id;
-    this.status = status;
-  }
-
-  // Static method to create from database row
-  static fromDatabase(row) {
-    return new UserDTO(
-      row.uuid,
-      row.email,
-      row.role_id,
-      row.status
-    );
+  constructor(userData) {
+    this.uuid = userData.uuid;
+    this.email = userData.email;
+    this.role_id = userData.role_id;
+    this.status = userData.status;
+    this.first_name = userData.first_name;
+    this.last_name = userData.last_name;
+    this.contact = userData.contact;
+    this.gender = userData.gender;
+    this.dob = userData.dob;
+    this.address = userData.address;
+    this.city = userData.city;
+    this.state = userData.state;
+    this.country = userData.country;
+    this.dp = userData.dp;
+    this.social_links = userData.social_links;
+    this.about = userData.about;
+    this.resume_url = userData.resume_url;
+    this.profile_visibility = userData.profile_visibility;
+    this.created_at = userData.created_at;
+    this.updated_at = userData.updated_at;
   }
 }
 

@@ -4,97 +4,86 @@ const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
 const jwtConfig = require('../config/jwt');
 const UserDTO = require('../dto/user_dto');
-const redis = require('../config/redis');
-const AppError = require('../utils/appError');
-const { sendEmail } = require('../utils/email');
+const emailHelper = require('../utils/email_helper');
 
 class AuthService {
-  constructor() {
-    this.SALT_ROUNDS = 12;
-    this.VERIFICATION_CODE_EXPIRY = 10 * 60; // 10 minutes in seconds
-  }
-
-  generateVerificationCode() {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
+  // Hash password
   async hashPassword(password) {
-    return await bcrypt.hash(password, this.SALT_ROUNDS);
+    const salt = await bcrypt.genSalt(10);
+    return await bcrypt.hash(password, salt);
   }
 
+  // Compare password
   async comparePassword(inputPassword, hashedPassword) {
     return await bcrypt.compare(inputPassword, hashedPassword);
   }
 
-  generateToken(user) {
+  // Validate password complexity
+  validatePasswordComplexity(password) {
+    const minLength = 8;
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumbers = /\d/.test(password);
+    const hasSpecialChars = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+
+    if (password.length < minLength) {
+      throw new Error(`Password must be at least ${minLength} characters long`);
+    }
+    if (!hasUpperCase || !hasLowerCase || !hasNumbers || !hasSpecialChars) {
+      throw new Error('Password must contain uppercase, lowercase, numbers, and special characters');
+    }
+  }
+
+  // Generate JWT token
+  generateToken(user, sessionId) {
     return jwt.sign(
       { 
         uuid: user.uuid,
         email: user.email,
-        role_id: user.role_id 
+        role_id: user.role_id,
+        session_id: sessionId
       },
       jwtConfig.secret,
       { expiresIn: jwtConfig.expiresIn }
     );
   }
 
+  // Register new user
   async registerUser(email, password, firstName, lastName, roleId) {
+    this.validatePasswordComplexity(password);
+
     const uuid = uuidv4();
-    const verificationCode = this.generateVerificationCode();
+    const verificationCode = emailHelper.generateVerificationCode();
     const hashedPassword = await this.hashPassword(password);
 
     const connection = await promisePool.getConnection();
     await connection.beginTransaction();
 
     try {
-      // Check if email already exists
-      const [existing] = await connection.query(
-        'SELECT email FROM users WHERE email = ?',
-        [email]
-      );
-      
-      if (existing.length > 0) {
-        throw new AppError('Email already in use', 400);
-      }
-
-      // Insert into users table
       await connection.query(
-        `INSERT INTO users 
-        (uuid, email, password, role_id, verification_code) 
-        VALUES (?, ?, ?, ?, ?)`,
+        'INSERT INTO users (uuid, email, password, role_id, verification_code) VALUES (?, ?, ?, ?, ?)',
         [uuid, email, hashedPassword, roleId, verificationCode]
       );
 
-      // Insert into role-specific table
-      const roleTable = this.getRoleTable(roleId);
+      let roleTable;
+      switch (roleId) {
+        case 1: roleTable = 'students'; break;
+        case 2: roleTable = 'instructors'; break;
+        case 3: roleTable = 'admins'; break;
+        case 4: roleTable = 'super_admins'; break;
+        default: throw new Error('Invalid role ID');
+      }
+
       await connection.query(
-        `INSERT INTO ${roleTable} 
-        (user_id, first_name, last_name) 
-        VALUES (?, ?, ?)`,
+        `INSERT INTO ${roleTable} (user_id, first_name, last_name) VALUES (?, ?, ?)`,
         [uuid, firstName, lastName]
       );
 
       await connection.commit();
       connection.release();
 
-      // Cache verification code with expiry
-      await redis.set(
-        `verification:${email}`,
-        verificationCode,
-        'EX',
-        this.VERIFICATION_CODE_EXPIRY
-      );
-
-      // Send verification email (in production)
-      if (process.env.NODE_ENV === 'production') {
-        await sendEmail({
-          email,
-          subject: 'Verify your account',
-          message: `Your verification code is ${verificationCode}`
-        });
-      } else {
-        console.log(`Verification code for ${email}: ${verificationCode}`);
-      }
+      await emailHelper.sendVerificationEmail(email, verificationCode);
+      await emailHelper.sendWelcomeEmail(email, firstName);
 
       return new UserDTO(uuid, email, roleId, 'inactive');
     } catch (error) {
@@ -104,132 +93,133 @@ class AuthService {
     }
   }
 
-  getRoleTable(roleId) {
-    const tables = {
-      1: 'students',
-      2: 'instructors',
-      3: 'admins',
-      4: 'super_admins'
-    };
-    if (!tables[roleId]) {
-      throw new AppError('Invalid role ID', 400);
-    }
-    return tables[roleId];
-  }
-
+  // Login user
   async loginUser(email, password) {
     const [rows] = await promisePool.query(
-      `SELECT uuid, email, password, role_id, status 
-       FROM users 
-       WHERE email = ? AND is_deleted = 0`,
+      'SELECT uuid, email, password, role_id, status FROM users WHERE email = ? AND is_deleted = 0',
       [email]
     );
 
-    if (rows.length === 0) {
-      throw new AppError('Incorrect email or password', 401);
-    }
+    if (rows.length === 0) throw new Error('User not found');
 
     const user = rows[0];
     const isMatch = await this.comparePassword(password, user.password);
+    if (!isMatch) throw new Error('Invalid credentials');
+    if (user.status !== 'active') throw new Error('Account not active. Please verify your email.');
 
-    if (!isMatch) {
-      throw new AppError('Incorrect email or password', 401);
-    }
+    const sessionId = uuidv4();
+    await promisePool.query(
+      'UPDATE users SET session_id = ? WHERE uuid = ?',
+      [sessionId, user.uuid]
+    );
 
-    if (user.status !== 'active') {
-      throw new AppError('Account not active. Please verify your email.', 403);
-    }
-
-    const token = this.generateToken(user);
-    
     return {
       user: new UserDTO(user.uuid, user.email, user.role_id, user.status),
-      token
+      token: this.generateToken(user, sessionId)
     };
   }
 
+  // Verify user (with auto-login)
   async verifyUser(email, verificationCode) {
-    const cachedCode = await redis.get(`verification:${email}`);
-    
-    if (cachedCode !== verificationCode) {
-      throw new AppError('Invalid verification code', 400);
+    const connection = await promisePool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      const [result] = await connection.query(
+        `UPDATE users SET status = "active", verification_code = NULL 
+         WHERE email = ? AND verification_code = ? 
+         AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)`,
+        [email, verificationCode]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error('Invalid verification code or email');
+      }
+
+      const [userRows] = await connection.query(
+        'SELECT uuid, email, role_id FROM users WHERE email = ?',
+        [email]
+      );
+
+      if (userRows.length === 0) throw new Error('User not found');
+
+      const user = userRows[0];
+      const sessionId = uuidv4();
+      await connection.query(
+        'UPDATE users SET session_id = ? WHERE email = ?',
+        [sessionId, email]
+      );
+
+      await connection.commit();
+      connection.release();
+
+      return {
+        token: this.generateToken(user, sessionId),
+        user: new UserDTO(user.uuid, user.email, user.role_id, 'active')
+      };
+    } catch (error) {
+      await connection.rollback();
+      connection.release();
+      throw error;
     }
-
-    const [result] = await promisePool.query(
-      `UPDATE users 
-       SET status = 'active', verification_code = NULL 
-       WHERE email = ? AND verification_code = ?`,
-      [email, verificationCode]
-    );
-
-    if (result.affectedRows === 0) {
-      throw new AppError('Invalid verification code or email', 400);
-    }
-
-    // Clear verification code from cache
-    await redis.del(`verification:${email}`);
-
-    return true;
   }
 
+  // Forgot password
   async forgotPassword(email) {
-    const verificationCode = this.generateVerificationCode();
-    
-    const [result] = await promisePool.query(
-      `UPDATE users 
-       SET verification_code = ? 
-       WHERE email = ? AND is_deleted = 0`,
-      [verificationCode, email]
-    );
-
-    if (result.affectedRows === 0) {
-      throw new AppError('Email not found', 404);
-    }
-
-    // Cache verification code with expiry
-    await redis.set(
-      `password_reset:${email}`,
-      verificationCode,
-      'EX',
-      this.VERIFICATION_CODE_EXPIRY
-    );
-
-    // Send password reset email (in production)
-    if (process.env.NODE_ENV === 'production') {
-      await sendEmail({
-        email,
-        subject: 'Password Reset Code',
-        message: `Your password reset code is ${verificationCode}`
-      });
-    } else {
-      console.log(`Password reset code for ${email}: ${verificationCode}`);
-    }
-
+    await emailHelper.sendPasswordResetWithBothOptions(email);
     return true;
   }
 
-  async resetPassword(email, verificationCode, newPassword) {
-    const cachedCode = await redis.get(`password_reset:${email}`);
-    
-    if (cachedCode !== verificationCode) {
-      throw new AppError('Invalid verification code', 400);
-    }
-
+  async resetPassword(email, verificationCodeOrToken, newPassword) {
+    this.validatePasswordComplexity(newPassword);
     const hashedPassword = await this.hashPassword(newPassword);
+    const connection = await promisePool.getConnection();
+    
+    try {
+        const [userRows] = await connection.query(
+            `SELECT uuid FROM users 
+            WHERE email = ? 
+            AND (
+                (reset_token = ? AND reset_token_expires > NOW())
+                OR verification_code = ?
+            )`,
+            [email, verificationCodeOrToken, verificationCodeOrToken]
+        );
+
+        if (userRows.length === 0) {
+            throw new Error('Invalid or expired reset token/verification code');
+        }
+
+        const userId = userRows[0].uuid;
+        const [result] = await connection.query(
+            `UPDATE users 
+             SET password = ?, 
+                 reset_token = NULL, 
+                 reset_token_expires = NULL,
+                 verification_code = NULL,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE uuid = ?`,
+            [hashedPassword, userId]
+        );
+
+        if (result.affectedRows === 0) {
+            throw new Error('Password reset failed');
+        }
+
+        return true;
+    } finally {
+        connection.release();
+    }
+  }
+
+  // Logout user
+  async logoutUser(uuid) {
     const [result] = await promisePool.query(
-      `UPDATE users 
-       SET password = ?, verification_code = NULL 
-       WHERE email = ? AND verification_code = ?`,
-      [hashedPassword, email, verificationCode]
+      'UPDATE users SET session_id = NULL WHERE uuid = ?',
+      [uuid]
     );
 
-    if (result.affectedRows === 0) {
-      throw new AppError('Invalid verification code or email', 400);
-    }
-
-    // Clear password reset code from cache
-    await redis.del(`password_reset:${email}`);
-
+    if (result.affectedRows === 0) throw new Error('User not found');
     return true;
   }
 }
