@@ -96,8 +96,22 @@ class AuthService {
   // Login user
   async loginUser(email, password) {
     const [rows] = await promisePool.query(
-      'SELECT uuid, email, password, role_id, status FROM users WHERE email = ? AND is_deleted = 0',
-      [email]
+      'SELECT u.uuid, u.email, u.password, u.role_id, u.status, r.first_name, r.last_name ' +
+      'FROM users u ' +
+      'LEFT JOIN students r ON r.user_id = u.uuid WHERE u.role_id = 1 AND u.email = ? ' +
+      'UNION ' +
+      'SELECT u.uuid, u.email, u.password, u.role_id, u.status, r.first_name, r.last_name ' +
+      'FROM users u ' +
+      'LEFT JOIN instructors r ON r.user_id = u.uuid WHERE u.role_id = 2 AND u.email = ? ' +
+      'UNION ' +
+      'SELECT u.uuid, u.email, u.password, u.role_id, u.status, r.first_name, r.last_name ' +
+      'FROM users u ' +
+      'LEFT JOIN admins r ON r.user_id = u.uuid WHERE u.role_id = 3 AND u.email = ? ' +
+      'UNION ' +
+      'SELECT u.uuid, u.email, u.password, u.role_id, u.status, r.first_name, r.last_name ' +
+      'FROM users u ' +
+      'LEFT JOIN super_admins r ON r.user_id = u.uuid WHERE u.role_id = 4 AND u.email = ?',
+      [email, email, email, email]
     );
 
     if (rows.length === 0) throw new Error('User not found');
@@ -114,7 +128,14 @@ class AuthService {
     );
 
     return {
-      user: new UserDTO(user.uuid, user.email, user.role_id, user.status),
+      user: {
+        uuid: user.uuid,
+        email: user.email,
+        role_id: user.role_id,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        status: user.status
+      },
       token: this.generateToken(user, sessionId)
     };
   }
@@ -127,8 +148,8 @@ class AuthService {
     try {
       const [result] = await connection.query(
         `UPDATE users SET status = "active", verification_code = NULL 
-         WHERE email = ? AND verification_code = ? 
-         AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)`,
+        WHERE email = ? AND verification_code = ? 
+        AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)`,
         [email, verificationCode]
       );
 
@@ -136,8 +157,12 @@ class AuthService {
         throw new Error('Invalid verification code or email');
       }
 
+      // Get complete user data including role-specific info
       const [userRows] = await connection.query(
-        'SELECT uuid, email, role_id FROM users WHERE email = ?',
+        `SELECT u.uuid, u.email, u.role_id, r.first_name, r.last_name
+        FROM users u
+        LEFT JOIN ${this.getRoleTable(user.role_id)} r ON r.user_id = u.uuid
+        WHERE u.email = ?`,
         [email]
       );
 
@@ -145,6 +170,7 @@ class AuthService {
 
       const user = userRows[0];
       const sessionId = uuidv4();
+      
       await connection.query(
         'UPDATE users SET session_id = ? WHERE email = ?',
         [sessionId, email]
@@ -155,7 +181,13 @@ class AuthService {
 
       return {
         token: this.generateToken(user, sessionId),
-        user: new UserDTO(user.uuid, user.email, user.role_id, 'active')
+        user: {
+          uuid: user.uuid,
+          email: user.email,
+          role_id: user.role_id,
+          first_name: user.first_name,
+          last_name: user.last_name
+        }
       };
     } catch (error) {
       await connection.rollback();
@@ -163,6 +195,7 @@ class AuthService {
       throw error;
     }
   }
+
 
   // Forgot password
   async forgotPassword(email) {

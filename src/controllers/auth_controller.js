@@ -1,3 +1,5 @@
+
+
 const authService = require('../services/auth_service');
 const UserDTO = require('../dto/user_dto');
 const Joi = require('joi');
@@ -61,10 +63,18 @@ exports.login = async (req, res, next) => {
     const { email, password } = req.body;
     const { user, token } = await authService.loginUser(email, password);
     
+    // Include complete user data in the response
     res.json({
       message: 'Login successful',
       token,
-      user
+      user: {
+        uuid: user.uuid,
+        email: user.email,
+        role_id: user.role_id,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        // Include any other necessary user fields
+      }
     });
   } catch (error) {
     next(error);
@@ -81,15 +91,28 @@ exports.verify = async (req, res, next) => {
     const { email, verificationCode } = req.body;
     const { user, token } = await authService.verifyUser(email, verificationCode);
     
+    // Ensure we include complete user data in response
+    if (!user || !user.role_id) {
+      throw new Error("User data incomplete");
+    }
+
     res.json({ 
       message: 'Account verified and logged in successfully',
       token,
-      user
+      user: {
+        uuid: user.uuid,
+        email: user.email,
+        role_id: user.role_id,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        // Include any other necessary fields
+      }
     });
   } catch (error) {
     next(error);
   }
 };
+
 
 exports.forgotPassword = async (req, res, next) => {
   try {

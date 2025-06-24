@@ -1,25 +1,31 @@
-
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const app = express();
 
-// Middleware
-app.use(cors());
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Your React app's URL
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Simple route for testing
+// Rest of your file remains the same...
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to LMS API' });
 });
 
 // Import routes
+const landingRoutes = require('./routes/landing_routes');
 const authRoutes = require('./routes/auth_routes');
 const protectedRoutes = require('./routes/protected_routes');
 const userRoutes = require('./routes/user_routes');
 
 // Use routes
+app.use('/api/landing', landingRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/protected', protectedRoutes);
 app.use('/api/users', userRoutes);
