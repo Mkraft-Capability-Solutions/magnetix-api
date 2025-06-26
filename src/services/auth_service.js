@@ -83,7 +83,6 @@ class AuthService {
       connection.release();
 
       await emailHelper.sendVerificationEmail(email, verificationCode);
-      await emailHelper.sendWelcomeEmail(email, firstName);
 
       return new UserDTO(uuid, email, roleId, 'inactive');
     } catch (error) {
@@ -95,107 +94,126 @@ class AuthService {
 
   // Login user
   async loginUser(email, password) {
-    const [rows] = await promisePool.query(
-      'SELECT u.uuid, u.email, u.password, u.role_id, u.status, r.first_name, r.last_name ' +
-      'FROM users u ' +
-      'LEFT JOIN students r ON r.user_id = u.uuid WHERE u.role_id = 1 AND u.email = ? ' +
-      'UNION ' +
-      'SELECT u.uuid, u.email, u.password, u.role_id, u.status, r.first_name, r.last_name ' +
-      'FROM users u ' +
-      'LEFT JOIN instructors r ON r.user_id = u.uuid WHERE u.role_id = 2 AND u.email = ? ' +
-      'UNION ' +
-      'SELECT u.uuid, u.email, u.password, u.role_id, u.status, r.first_name, r.last_name ' +
-      'FROM users u ' +
-      'LEFT JOIN admins r ON r.user_id = u.uuid WHERE u.role_id = 3 AND u.email = ? ' +
-      'UNION ' +
-      'SELECT u.uuid, u.email, u.password, u.role_id, u.status, r.first_name, r.last_name ' +
-      'FROM users u ' +
-      'LEFT JOIN super_admins r ON r.user_id = u.uuid WHERE u.role_id = 4 AND u.email = ?',
-      [email, email, email, email]
+  const [rows] = await promisePool.query(
+    'SELECT u.uuid, u.email, u.password, u.role_id, u.status, r.first_name, r.last_name, r.dp ' +
+    'FROM users u ' +
+    'LEFT JOIN students r ON r.user_id = u.uuid WHERE u.role_id = 1 AND u.email = ? ' +
+    'UNION ' +
+    'SELECT u.uuid, u.email, u.password, u.role_id, u.status, r.first_name, r.last_name, r.dp ' +
+    'FROM users u ' +
+    'LEFT JOIN instructors r ON r.user_id = u.uuid WHERE u.role_id = 2 AND u.email = ? ' +
+    'UNION ' +
+    'SELECT u.uuid, u.email, u.password, u.role_id, u.status, r.first_name, r.last_name, r.dp ' +
+    'FROM users u ' +
+    'LEFT JOIN admins r ON r.user_id = u.uuid WHERE u.role_id = 3 AND u.email = ? ' +
+    'UNION ' +
+    'SELECT u.uuid, u.email, u.password, u.role_id, u.status, r.first_name, r.last_name, r.dp ' +
+    'FROM users u ' +
+    'LEFT JOIN super_admins r ON r.user_id = u.uuid WHERE u.role_id = 4 AND u.email = ?',
+    [email, email, email, email]
+  );
+
+  if (rows.length === 0) throw new Error('User not found');
+
+  const user = rows[0];
+  const isMatch = await this.comparePassword(password, user.password);
+  if (!isMatch) throw new Error('Invalid credentials');
+  if (user.status !== 'active') throw new Error('Account not active. Please verify your email.');
+
+  const sessionId = uuidv4();
+  await promisePool.query(
+    'UPDATE users SET session_id = ? WHERE uuid = ?',
+    [sessionId, user.uuid]
+  );
+
+  return {
+    user: {
+      uuid: user.uuid,
+      email: user.email,
+      role_id: user.role_id,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      dp: user.dp || null,
+      status: user.status
+    },
+    token: this.generateToken(user, sessionId)
+  };
+}
+
+ //verify user
+async verifyUser(email, verificationCode) {
+  const connection = await promisePool.getConnection();
+  await connection.beginTransaction();
+
+  try {
+    const [result] = await connection.query(
+      `UPDATE users SET status = "active", verification_code = NULL 
+      WHERE email = ? AND verification_code = ? 
+      AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)`,
+      [email, verificationCode]
     );
 
-    if (rows.length === 0) throw new Error('User not found');
+    if (result.affectedRows === 0) {
+      throw new Error('Invalid verification code or email');
+    }
 
-    const user = rows[0];
-    const isMatch = await this.comparePassword(password, user.password);
-    if (!isMatch) throw new Error('Invalid credentials');
-    if (user.status !== 'active') throw new Error('Account not active. Please verify your email.');
+    const [userRows] = await connection.query(
+      `SELECT u.uuid, u.email, u.role_id, u.status,
+      r.first_name, r.last_name, r.dp
+      FROM users u
+      LEFT JOIN (
+        SELECT user_id, first_name, last_name, dp FROM students
+        UNION SELECT user_id, first_name, last_name, dp FROM instructors
+        UNION SELECT user_id, first_name, last_name, dp FROM admins
+        UNION SELECT user_id, first_name, last_name, dp FROM super_admins
+      ) r ON r.user_id = u.uuid
+      WHERE u.email = ?`,
+      [email]
+    );
+
+    if (userRows.length === 0) throw new Error('User not found');
+    const user = userRows[0];
 
     const sessionId = uuidv4();
-    await promisePool.query(
-      'UPDATE users SET session_id = ? WHERE uuid = ?',
-      [sessionId, user.uuid]
+    await connection.query(
+      'UPDATE users SET session_id = ? WHERE email = ?',
+      [sessionId, email]
     );
 
+    await connection.commit();
+    connection.release();
+
+    await emailHelper.sendWelcomeEmail(email, user.first_name);
+
     return {
+      token: this.generateToken(user, sessionId),
       user: {
         uuid: user.uuid,
         email: user.email,
         role_id: user.role_id,
         first_name: user.first_name,
         last_name: user.last_name,
+        dp: user.dp || null,
         status: user.status
-      },
-      token: this.generateToken(user, sessionId)
-    };
-  }
-
-  // Verify user (with auto-login)
-  async verifyUser(email, verificationCode) {
-    const connection = await promisePool.getConnection();
-    await connection.beginTransaction();
-
-    try {
-      const [result] = await connection.query(
-        `UPDATE users SET status = "active", verification_code = NULL 
-        WHERE email = ? AND verification_code = ? 
-        AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)`,
-        [email, verificationCode]
-      );
-
-      if (result.affectedRows === 0) {
-        throw new Error('Invalid verification code or email');
       }
+    };
+  } catch (error) {
+    await connection.rollback();
+    connection.release();
+    throw error;
+  }
+}
 
-      // Get complete user data including role-specific info
-      const [userRows] = await connection.query(
-        `SELECT u.uuid, u.email, u.role_id, r.first_name, r.last_name
-        FROM users u
-        LEFT JOIN ${this.getRoleTable(user.role_id)} r ON r.user_id = u.uuid
-        WHERE u.email = ?`,
-        [email]
-      );
 
-      if (userRows.length === 0) throw new Error('User not found');
-
-      const user = userRows[0];
-      const sessionId = uuidv4();
-      
-      await connection.query(
-        'UPDATE users SET session_id = ? WHERE email = ?',
-        [sessionId, email]
-      );
-
-      await connection.commit();
-      connection.release();
-
-      return {
-        token: this.generateToken(user, sessionId),
-        user: {
-          uuid: user.uuid,
-          email: user.email,
-          role_id: user.role_id,
-          first_name: user.first_name,
-          last_name: user.last_name
-        }
-      };
-    } catch (error) {
-      await connection.rollback();
-      connection.release();
-      throw error;
+  getRoleTable(roleId) {
+    switch(roleId) {
+      case 1: return 'students';
+      case 2: return 'instructors';
+      case 3: return 'admins';
+      case 4: return 'super_admins';
+      default: throw new Error('Invalid role ID');
     }
   }
-
 
   // Forgot password
   async forgotPassword(email) {
@@ -203,45 +221,60 @@ class AuthService {
     return true;
   }
 
-  async resetPassword(email, verificationCodeOrToken, newPassword) {
-    this.validatePasswordComplexity(newPassword);
-    const hashedPassword = await this.hashPassword(newPassword);
-    const connection = await promisePool.getConnection();
+  async resendVerificationCode(email) {
+    const verificationCode = emailHelper.generateVerificationCode();
     
+    const [result] = await promisePool.query(
+      'UPDATE users SET verification_code = ?, created_at = CURRENT_TIMESTAMP WHERE email = ?',
+      [verificationCode, email]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new Error('User not found or already verified');
+    }
+
+    await emailHelper.sendVerificationEmail(email, verificationCode);
+    return true;
+  }
+
+  async resetPassword(email, verificationCode, newPassword) {
+    this.validatePasswordComplexity(newPassword);
+    
+    const connection = await promisePool.getConnection();
+    await connection.beginTransaction();
+
     try {
-        const [userRows] = await connection.query(
-            `SELECT uuid FROM users 
-            WHERE email = ? 
-            AND (
-                (reset_token = ? AND reset_token_expires > NOW())
-                OR verification_code = ?
-            )`,
-            [email, verificationCodeOrToken, verificationCodeOrToken]
-        );
+      // Verify the reset code first
+      const [result] = await connection.query(
+        `SELECT uuid FROM users 
+        WHERE email = ? AND verification_code = ? 
+        AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)`,
+        [email, verificationCode]
+      );
 
-        if (userRows.length === 0) {
-            throw new Error('Invalid or expired reset token/verification code');
-        }
+      if (result.length === 0) {
+        throw new Error('Invalid verification code or email');
+      }
 
-        const userId = userRows[0].uuid;
-        const [result] = await connection.query(
-            `UPDATE users 
-             SET password = ?, 
-                 reset_token = NULL, 
-                 reset_token_expires = NULL,
-                 verification_code = NULL,
-                 updated_at = CURRENT_TIMESTAMP
-             WHERE uuid = ?`,
-            [hashedPassword, userId]
-        );
+      const userUuid = result[0].uuid;
+      const hashedPassword = await this.hashPassword(newPassword);
 
-        if (result.affectedRows === 0) {
-            throw new Error('Password reset failed');
-        }
+      // Update password and clear verification code
+      await connection.query(
+        `UPDATE users 
+        SET password = ?, verification_code = NULL, session_id = NULL 
+        WHERE uuid = ?`,
+        [hashedPassword, userUuid]
+      );
 
-        return true;
-    } finally {
-        connection.release();
+      await connection.commit();
+      connection.release();
+
+      return true;
+    } catch (error) {
+      await connection.rollback();
+      connection.release();
+      throw error;
     }
   }
 

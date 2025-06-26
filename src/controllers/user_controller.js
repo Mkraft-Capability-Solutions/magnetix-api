@@ -31,7 +31,16 @@ exports.getUser = async (req, res, next) => {
   try {
     const { uuid } = req.params;
     const user = await userService.getUser(uuid);
-    res.json(user);
+    res.json({
+      uuid: user.uuid,
+      email: user.email,
+      role_id: user.role_id,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      dp: user.dp, // Include profile picture
+      status: user.status,
+      // Add other fields as needed
+    });
   } catch (error) {
     next(error);
   }

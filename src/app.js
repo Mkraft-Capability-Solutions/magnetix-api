@@ -3,6 +3,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const app = express();
 
+
 const corsOptions = {
   origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Your React app's URL
   credentials: true,
@@ -13,7 +14,6 @@ app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Rest of your file remains the same...
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to LMS API' });
 });

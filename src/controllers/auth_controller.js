@@ -34,6 +34,10 @@ const resetPasswordSchema = Joi.object({
   newPassword: Joi.string().min(8).required()
 }).or('verificationCode', 'verificationCodeOrToken');
 
+const resendVerificationSchema = Joi.object({
+  email: Joi.string().email().required()
+});
+
 exports.register = async (req, res, next) => {
   try {
     const { error } = registerSchema.validate(req.body);
@@ -63,7 +67,6 @@ exports.login = async (req, res, next) => {
     const { email, password } = req.body;
     const { user, token } = await authService.loginUser(email, password);
     
-    // Include complete user data in the response
     res.json({
       message: 'Login successful',
       token,
@@ -73,7 +76,7 @@ exports.login = async (req, res, next) => {
         role_id: user.role_id,
         first_name: user.first_name,
         last_name: user.last_name,
-        // Include any other necessary user fields
+        dp: user.dp || null, // Include profile picture
       }
     });
   } catch (error) {
@@ -91,28 +94,26 @@ exports.verify = async (req, res, next) => {
     const { email, verificationCode } = req.body;
     const { user, token } = await authService.verifyUser(email, verificationCode);
     
-    // Ensure we include complete user data in response
     if (!user || !user.role_id) {
       throw new Error("User data incomplete");
     }
 
     res.json({ 
       message: 'Account verified and logged in successfully',
-      token,
+      token, // Include token directly
       user: {
         uuid: user.uuid,
         email: user.email,
         role_id: user.role_id,
         first_name: user.first_name,
         last_name: user.last_name,
-        // Include any other necessary fields
+        dp: user.dp || null, // Include profile picture
       }
     });
   } catch (error) {
     next(error);
   }
 };
-
 
 exports.forgotPassword = async (req, res, next) => {
   try {
@@ -125,6 +126,22 @@ exports.forgotPassword = async (req, res, next) => {
     await authService.forgotPassword(email);
     
     res.json({ message: 'Password reset code sent to your email' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.resendVerification = async (req, res, next) => {
+  try {
+    const { error } = resendVerificationSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({ message: error.details[0].message });
+    }
+
+    const { email } = req.body;
+    await authService.resendVerificationCode(email);
+    
+    res.json({ message: 'Verification code resent successfully' });
   } catch (error) {
     next(error);
   }
@@ -147,6 +164,7 @@ exports.resetPassword = async (req, res, next) => {
     next(error);
   }
 };
+
 
 exports.logout = async (req, res, next) => {
   try {
