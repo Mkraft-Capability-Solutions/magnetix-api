@@ -35,29 +35,39 @@ class AuthService {
   }
 
   // Generate JWT token
-  generateTokens(user, sessionId) {
-    const accessToken = jwt.sign(
-      { 
-        uuid: user.uuid,
-        email: user.email,
-        role_id: user.role_id,
-        session_id: sessionId
-      },
-      jwtConfig.accessSecret,
-      { expiresIn: jwtConfig.accessExpiresIn }
-    );
+generateTokens(user, sessionId) {
+  const accessToken = jwt.sign(
+    { 
+      uuid: user.uuid,
+      email: user.email,
+      role_id: user.role_id,
+      session_id: sessionId
+    },
+    jwtConfig.accessSecret,
+    { expiresIn: jwtConfig.accessExpiresIn }
+  );
 
-    const refreshToken = jwt.sign(
-      { 
-        uuid: user.uuid,
-        session_id: sessionId
-      },
-      jwtConfig.refreshSecret,
-      { expiresIn: jwtConfig.refreshExpiresIn }
-    );
+  const refreshToken = jwt.sign(
+    { 
+      uuid: user.uuid,
+      session_id: sessionId
+    },
+    jwtConfig.refreshSecret,
+    { expiresIn: jwtConfig.refreshExpiresIn }
+  );
 
-    return { accessToken, refreshToken };
-  }
+  // Calculate expiry dates
+  const now = Math.floor(Date.now() / 1000);
+  const accessTokenExpiry = now + jwt.decode(accessToken).exp;
+  const refreshTokenExpiry = now + jwt.decode(refreshToken).exp;
+
+  return { 
+    accessToken, 
+    refreshToken,
+    accessTokenExpiry,
+    refreshTokenExpiry
+  };
+}
 
   
   // Generate new access token from refresh token

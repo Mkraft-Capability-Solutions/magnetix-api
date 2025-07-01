@@ -103,10 +103,9 @@ exports.login = async (req, res, next) => {
     }
 
     const { email, password } = req.body;
-    const { user, accessToken, refreshToken } = await authService.loginUser(email, password);
-    
-    // Set refresh token as HTTP-only cookie
-    res.cookie('refreshToken', refreshToken, {
+    const { user, accessToken, refreshToken, accessTokenExpiry, refreshTokenExpiry } = await authService.loginUser(email, password);
+
+     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
@@ -114,12 +113,13 @@ exports.login = async (req, res, next) => {
       path: '/' // Important for cookie accessibility
     });
 
-    // Include refreshToken in response for debugging (optional)
     const response = {
       success: true,
       message: 'Login successful',
       accessToken,
+      accessTokenExpiry,
       refreshToken: process.env.NODE_ENV === 'development' ? refreshToken : undefined,
+      refreshTokenExpiry: process.env.NODE_ENV === 'development' ? refreshTokenExpiry : undefined,
       user: {
         uuid: user.uuid,
         email: user.email,
@@ -148,7 +148,7 @@ exports.verify = async (req, res, next) => {
     }
 
     const { email, verificationCode } = req.body;
-    const { user, accessToken, refreshToken } = await authService.verifyUser(email, verificationCode);
+    const { user, accessToken, refreshToken, accessTokenExpiry, refreshTokenExpiry } = await authService.verifyUser(email, verificationCode);
     
     // Set refresh token as HTTP-only cookie
     res.cookie('refreshToken', refreshToken, {
@@ -159,12 +159,13 @@ exports.verify = async (req, res, next) => {
       path: '/'
     });
 
-    // Include refreshToken in response for debugging (optional)
     const response = {
       success: true,
       message: 'Account verified and logged in successfully',
       accessToken,
+      accessTokenExpiry,
       refreshToken: process.env.NODE_ENV === 'development' ? refreshToken : undefined,
+      refreshTokenExpiry: process.env.NODE_ENV === 'development' ? refreshTokenExpiry : undefined,
       user: {
         uuid: user.uuid,
         email: user.email,
