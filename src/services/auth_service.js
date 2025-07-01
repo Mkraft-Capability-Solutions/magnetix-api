@@ -35,17 +35,51 @@ class AuthService {
   }
 
   // Generate JWT token
-  generateToken(user, sessionId) {
-    return jwt.sign(
+  generateTokens(user, sessionId) {
+    const accessToken = jwt.sign(
       { 
         uuid: user.uuid,
         email: user.email,
         role_id: user.role_id,
         session_id: sessionId
       },
-      jwtConfig.secret,
-      { expiresIn: jwtConfig.expiresIn }
+      jwtConfig.accessSecret,
+      { expiresIn: jwtConfig.accessExpiresIn }
     );
+
+    const refreshToken = jwt.sign(
+      { 
+        uuid: user.uuid,
+        session_id: sessionId
+      },
+      jwtConfig.refreshSecret,
+      { expiresIn: jwtConfig.refreshExpiresIn }
+    );
+
+    return { accessToken, refreshToken };
+  }
+
+  
+  // Generate new access token from refresh token
+  async refreshAccessToken(refreshToken) {
+    try {
+      const decoded = jwt.verify(refreshToken, jwtConfig.refreshSecret);
+      
+      // Verify the session is still valid
+      const [rows] = await promisePool.query(
+        'SELECT uuid, email, role_id, status, session_id FROM users WHERE uuid = ? AND is_deleted = 0',
+        [decoded.uuid]
+      );
+
+      if (rows.length === 0 || rows[0].session_id !== decoded.session_id) {
+        throw new Error('Invalid session');
+      }
+
+      const user = rows[0];
+      return this.generateTokens(user, user.session_id).accessToken;
+    } catch (error) {
+      throw new Error('Invalid refresh token');
+    }
   }
 
   // Register new user
@@ -136,7 +170,7 @@ class AuthService {
       dp: user.dp || null,
       status: user.status
     },
-    token: this.generateToken(user, sessionId)
+    ...this.generateTokens(user, sessionId) // This is correct
   };
 }
 
@@ -186,7 +220,7 @@ async verifyUser(email, verificationCode) {
     await emailHelper.sendWelcomeEmail(email, user.first_name);
 
     return {
-      token: this.generateToken(user, sessionId),
+      ...this.generateTokens(user, sessionId),
       user: {
         uuid: user.uuid,
         email: user.email,

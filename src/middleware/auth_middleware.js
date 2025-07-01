@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const jwtConfig = require('../config/jwt');
 const { promisePool } = require('../config/db');
 
+//  authenticate middleware to verify access token
 exports.authenticate = async (req, res, next) => {
   try {
     // 1. Get token from header
@@ -12,7 +13,7 @@ exports.authenticate = async (req, res, next) => {
     }
 
     // 2. Verify token
-    const decoded = jwt.verify(token, jwtConfig.secret);
+    const decoded = jwt.verify(token, jwtConfig.accessSecret);
 
     // 3. Check if user still exists and session matches
     const [rows] = await promisePool.query(
