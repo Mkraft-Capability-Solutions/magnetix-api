@@ -1,7 +1,7 @@
-const authService = require('../services/auth_service');
-const UserDTO = require('../dto/user_dto');
-const Joi = require('joi');
-const cookieParser = require('cookie-parser');
+const authService = require("../services/auth_service");
+const UserDTO = require("../dto/user_dto");
+const Joi = require("joi");
+const cookieParser = require("cookie-parser");
 
 // Validation schemas
 const registerSchema = Joi.object({
@@ -9,61 +9,62 @@ const registerSchema = Joi.object({
   password: Joi.string().min(8).required(),
   firstName: Joi.string().required(),
   lastName: Joi.string().required(),
-  roleId: Joi.number().integer().min(1).max(4).required()
+  roleId: Joi.number().integer().min(1).max(4).required(),
 });
 
 const loginSchema = Joi.object({
   email: Joi.string().email().required(),
-  password: Joi.string().required()
+  password: Joi.string().required(),
 });
 
 const verifySchema = Joi.object({
   email: Joi.string().email().required(),
-  verificationCode: Joi.string().length(6).required()
+  verificationCode: Joi.string().length(6).required(),
 });
 
 const forgotPasswordSchema = Joi.object({
-  email: Joi.string().email().required()
+  email: Joi.string().email().required(),
 });
 
 const resetPasswordSchema = Joi.object({
   email: Joi.string().email().required(),
   verificationCode: Joi.string().optional(),
   verificationCodeOrToken: Joi.string().optional(),
-  newPassword: Joi.string().min(8).required()
-}).or('verificationCode', 'verificationCodeOrToken');
+  newPassword: Joi.string().min(8).required(),
+}).or("verificationCode", "verificationCodeOrToken");
 
 const resendVerificationSchema = Joi.object({
-  email: Joi.string().email().required()
+  email: Joi.string().email().required(),
 });
 
 exports.refreshToken = async (req, res, next) => {
   try {
     // Get refresh token from cookies
-    const refreshToken = req.cookies?.refreshToken;
-    
+    const refreshToken = req.body?.refreshToken;
+    console.log(req.params);
+
     if (!refreshToken) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        message: 'No refresh token provided' 
+        message: "No refresh token provided",
       });
     }
 
     const accessToken = await authService.refreshAccessToken(refreshToken);
-    
-    res.json({ 
+
+    res.json({
       success: true,
-      accessToken 
+      accessToken,
     });
   } catch (error) {
     // Clear the invalid refresh token cookie
-    res.clearCookie('refreshToken', {
+    res.clearCookie("refreshToken", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/'
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
     });
-    
+
     next(error);
   }
 };
@@ -72,19 +73,26 @@ exports.register = async (req, res, next) => {
   try {
     const { error } = registerSchema.validate(req.body);
     if (error) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: error.details[0].message 
+        message: error.details[0].message,
       });
     }
 
     const { email, password, firstName, lastName, roleId } = req.body;
-    const user = await authService.registerUser(email, password, firstName, lastName, roleId);
-    
+    const user = await authService.registerUser(
+      email,
+      password,
+      firstName,
+      lastName,
+      roleId
+    );
+
     res.status(201).json({
       success: true,
-      message: 'User registered successfully. Please check your email for verification.',
-      user
+      message:
+        "User registered successfully. Please check your email for verification.",
+      user,
     });
   } catch (error) {
     next(error);
@@ -96,30 +104,30 @@ exports.login = async (req, res, next) => {
   try {
     const { error } = loginSchema.validate(req.body);
     if (error) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: error.details[0].message 
+        message: error.details[0].message,
       });
     }
 
     const { email, password } = req.body;
-    const { user, accessToken, refreshToken, accessTokenExpiry, refreshTokenExpiry } = await authService.loginUser(email, password);
-
-     res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/' // Important for cookie accessibility
-    });
+    const {
+      user,
+      accessToken,
+      refreshToken,
+      accessTokenExpiry,
+      refreshTokenExpiry,
+    } = await authService.loginUser(email, password);
 
     const response = {
       success: true,
-      message: 'Login successful',
+      message: "Login successful",
       accessToken,
       accessTokenExpiry,
-      refreshToken: process.env.NODE_ENV === 'development' ? refreshToken : undefined,
-      refreshTokenExpiry: process.env.NODE_ENV === 'development' ? refreshTokenExpiry : undefined,
+      refreshToken:
+        process.env.NODE_ENV === "development" ? refreshToken : undefined,
+      refreshTokenExpiry:
+        process.env.NODE_ENV === "development" ? refreshTokenExpiry : undefined,
       user: {
         uuid: user.uuid,
         email: user.email,
@@ -127,7 +135,7 @@ exports.login = async (req, res, next) => {
         first_name: user.first_name,
         last_name: user.last_name,
         dp: user.dp || null,
-      }
+      },
     };
 
     res.json(response);
@@ -141,31 +149,30 @@ exports.verify = async (req, res, next) => {
   try {
     const { error } = verifySchema.validate(req.body);
     if (error) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: error.details[0].message 
+        message: error.details[0].message,
       });
     }
 
     const { email, verificationCode } = req.body;
-    const { user, accessToken, refreshToken, accessTokenExpiry, refreshTokenExpiry } = await authService.verifyUser(email, verificationCode);
-    
-    // Set refresh token as HTTP-only cookie
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/'
-    });
+    const {
+      user,
+      accessToken,
+      refreshToken,
+      accessTokenExpiry,
+      refreshTokenExpiry,
+    } = await authService.verifyUser(email, verificationCode);
 
     const response = {
       success: true,
-      message: 'Account verified and logged in successfully',
+      message: "Account verified and logged in successfully",
       accessToken,
       accessTokenExpiry,
-      refreshToken: process.env.NODE_ENV === 'development' ? refreshToken : undefined,
-      refreshTokenExpiry: process.env.NODE_ENV === 'development' ? refreshTokenExpiry : undefined,
+      refreshToken:
+        process.env.NODE_ENV === "development" ? refreshToken : undefined,
+      refreshTokenExpiry:
+        process.env.NODE_ENV === "development" ? refreshTokenExpiry : undefined,
       user: {
         uuid: user.uuid,
         email: user.email,
@@ -173,7 +180,7 @@ exports.verify = async (req, res, next) => {
         first_name: user.first_name,
         last_name: user.last_name,
         dp: user.dp || null,
-      }
+      },
     };
 
     res.json(response);
@@ -186,18 +193,18 @@ exports.forgotPassword = async (req, res, next) => {
   try {
     const { error } = forgotPasswordSchema.validate(req.body);
     if (error) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: error.details[0].message 
+        message: error.details[0].message,
       });
     }
 
     const { email } = req.body;
     await authService.forgotPassword(email);
-    
-    res.json({ 
+
+    res.json({
       success: true,
-      message: 'Password reset code sent to your email' 
+      message: "Password reset code sent to your email",
     });
   } catch (error) {
     next(error);
@@ -208,18 +215,18 @@ exports.resendVerification = async (req, res, next) => {
   try {
     const { error } = resendVerificationSchema.validate(req.body);
     if (error) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: error.details[0].message 
+        message: error.details[0].message,
       });
     }
 
     const { email } = req.body;
     await authService.resendVerificationCode(email);
-    
-    res.json({ 
+
+    res.json({
       success: true,
-      message: 'Verification code resent successfully' 
+      message: "Verification code resent successfully",
     });
   } catch (error) {
     next(error);
@@ -230,20 +237,21 @@ exports.resetPassword = async (req, res, next) => {
   try {
     const { error } = resetPasswordSchema.validate(req.body);
     if (error) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: error.details[0].message 
+        message: error.details[0].message,
       });
     }
 
-    const { email, verificationCode, verificationCodeOrToken, newPassword } = req.body;
+    const { email, verificationCode, verificationCodeOrToken, newPassword } =
+      req.body;
     const codeOrToken = verificationCode || verificationCodeOrToken;
-    
+
     await authService.resetPassword(email, codeOrToken, newPassword);
-    
-    res.json({ 
+
+    res.json({
       success: true,
-      message: 'Password reset successfully' 
+      message: "Password reset successfully",
     });
   } catch (error) {
     next(error);
@@ -253,17 +261,19 @@ exports.resetPassword = async (req, res, next) => {
 exports.logout = async (req, res, next) => {
   try {
     await authService.logoutUser(req.user.uuid);
-    
+
     // Clear the refresh token cookie
-    res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/'
-    }).json({ 
-      success: true,
-      message: 'Logged out successfully' 
-    });
+    res
+      .clearCookie("refreshToken", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        path: "/",
+      })
+      .json({
+        success: true,
+        message: "Logged out successfully",
+      });
   } catch (error) {
     next(error);
   }
