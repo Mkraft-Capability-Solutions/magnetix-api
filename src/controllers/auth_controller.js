@@ -260,20 +260,21 @@ exports.resetPassword = async (req, res, next) => {
 
 exports.logout = async (req, res, next) => {
   try {
+    if (!req.user || !req.user.uuid) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
     await authService.logoutUser(req.user.uuid);
 
-    // Clear the refresh token cookie
-    res
-      .clearCookie("refreshToken", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        path: "/",
-      })
-      .json({
-        success: true,
-        message: "Logged out successfully",
-      });
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+    }).json({
+      success: true,
+      message: "Logged out successfully",
+    });
   } catch (error) {
     next(error);
   }

@@ -1,15 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const courseController = require('../../controllers/student/course_controller');
 const { authenticate, authorize } = require('../../middleware/auth_middleware');
+const courseController = require('../../controllers/student/course_controller');
 
-// All routes require authentication and student role
-router.use(authenticate);
-router.use(authorize(1));
-
-// Course routes
-router.get('/subscribed', courseController.getSubscribedCourses);
-router.get('/explore', courseController.exploreCourses);
-router.post('/enroll', courseController.enrollInCourse);
+router.get('/subscribed', authenticate, authorize(1), courseController.getSubscribedCourses);
+router.get('/explore', authenticate, authorize(1), courseController.exploreCourses);
+router.get('/:courseId/reviews', authenticate, authorize(1), courseController.getCourseReviews);
+router.get('/:courseId/rating', authenticate, authorize(1), courseController.getCourseRating);
+router.get('/instructor/:instructorId/rating', authenticate, authorize(1), courseController.getInstructorRating);
+router.get('/recommendations', authenticate, authorize(1), courseController.getRecommendedCourses);
+router.post('/enroll', authenticate, authorize(1), courseController.enrollInCourse);
 
 module.exports = router;

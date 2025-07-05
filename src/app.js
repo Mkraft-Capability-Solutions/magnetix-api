@@ -27,9 +27,6 @@ const userRoutes = require('./routes/user_routes');
 
 
 const studentCourseRoutes = require('./routes/student/course_routes');
-const studentMentorshipRoutes = require('./routes/student/mentorship_routes');
-const studentEventRoutes = require('./routes/student/event_routes');
-
 // Use routes
 app.use('/api/landing', landingRoutes);
 app.use('/api/auth', authRoutes);
@@ -38,8 +35,6 @@ app.use('/api/protected', protectedRoutes);
 app.use('/api/users', userRoutes);
 
 app.use('/api/student/courses', studentCourseRoutes);
-app.use('/api/student/mentorship', studentMentorshipRoutes);
-app.use('/api/student/events', studentEventRoutes);
 
 app.use('/uploads', express.static('./uploads'));
 
