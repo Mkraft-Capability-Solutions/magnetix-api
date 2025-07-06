@@ -2,11 +2,11 @@ const eventService = require('../../services/student/event_service');
 
 exports.getAllUpcomingEvents = async (req, res, next) => {
   try {
-    const events = await eventService.getAllUpcomingEvents(req.user.uuid);
-    res.json({
-      success: true,
-      data: events
-    });
+    const response = await eventService.getAllUpcomingEvents(req.user.uuid);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -14,11 +14,11 @@ exports.getAllUpcomingEvents = async (req, res, next) => {
 
 exports.getUpcomingRegisteredEvents = async (req, res, next) => {
   try {
-    const events = await eventService.getUpcomingRegisteredEvents(req.user.uuid);
-    res.json({
-      success: true,
-      data: events
-    });
+    const response = await eventService.getUpcomingRegisteredEvents(req.user.uuid);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -26,31 +26,24 @@ exports.getUpcomingRegisteredEvents = async (req, res, next) => {
 
 exports.getPastEvents = async (req, res, next) => {
   try {
-    const events = await eventService.getPastEvents(req.user.uuid);
-    res.json({
-      success: true,
-      data: events
-    });
+    const response = await eventService.getPastEvents(req.user.uuid);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
   } catch (error) {
     next(error);
   }
 };
 
-
 exports.registerForEvent = async (req, res, next) => {
   try {
-    await eventService.registerForEvent(req.user.uuid, req.params.eventId);
-    res.json({
-      success: true,
-      message: 'Successfully registered for the event'
-    });
-  } catch (error) {
-    if (error.message === 'Already registered for this event') {
-      return res.status(409).json({
-        success: false,
-        message: error.message
-      });
+    const response = await eventService.registerForEvent(req.user.uuid, req.params.eventId);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
     }
+    res.json(response);
+  } catch (error) {
     next(error);
   }
 };

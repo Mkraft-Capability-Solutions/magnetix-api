@@ -2,11 +2,11 @@ const mentorshipService = require('../../services/student/mentorship_service');
 
 exports.getAssignedMentors = async (req, res, next) => {
   try {
-    const mentors = await mentorshipService.getAssignedMentors(req.user.uuid);
-    res.json({
-      success: true,
-      data: mentors
-    });
+    const response = await mentorshipService.getAssignedMentors(req.user.uuid);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -14,11 +14,11 @@ exports.getAssignedMentors = async (req, res, next) => {
 
 exports.findAvailableMentors = async (req, res, next) => {
   try {
-    const mentors = await mentorshipService.findAvailableMentors(req.user.uuid);
-    res.json({
-      success: true,
-      data: mentors
-    });
+    const response = await mentorshipService.findAvailableMentors(req.user.uuid);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -26,11 +26,11 @@ exports.findAvailableMentors = async (req, res, next) => {
 
 exports.requestMentorship = async (req, res, next) => {
   try {
-    await mentorshipService.requestMentorship(req.user.uuid, req.params.mentorId);
-    res.json({
-      success: true,
-      message: 'Mentorship request sent successfully'
-    });
+    const response = await mentorshipService.requestMentorship(req.user.uuid, req.params.mentorId);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -38,11 +38,11 @@ exports.requestMentorship = async (req, res, next) => {
 
 exports.getUpcomingSessions = async (req, res, next) => {
   try {
-    const sessions = await mentorshipService.getUpcomingSessions(req.user.uuid);
-    res.json({
-      success: true,
-      data: sessions
-    });
+    const response = await mentorshipService.getUpcomingSessions(req.user.uuid);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -50,11 +50,11 @@ exports.getUpcomingSessions = async (req, res, next) => {
 
 exports.getPastSessions = async (req, res, next) => {
   try {
-    const sessions = await mentorshipService.getPastSessions(req.user.uuid);
-    res.json({
-      success: true,
-      data: sessions
-    });
+    const response = await mentorshipService.getPastSessions(req.user.uuid);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -71,7 +71,7 @@ exports.requestScheduleSession = async (req, res, next) => {
       });
     }
 
-    await mentorshipService.requestScheduleSession(
+    const response = await mentorshipService.requestScheduleSession(
       req.user.uuid, 
       mentorId, 
       sessionDate, 
@@ -79,17 +79,12 @@ exports.requestScheduleSession = async (req, res, next) => {
       topic, 
       description
     );
-    res.json({
-      success: true,
-      message: 'Session request submitted successfully'
-    });
-  } catch (error) {
-    if (error.message === 'No active mentorship relationship with this mentor') {
-      return res.status(400).json({
-        success: false,
-        message: error.message
-      });
+    
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
     }
+    res.json(response);
+  } catch (error) {
     next(error);
   }
 };
