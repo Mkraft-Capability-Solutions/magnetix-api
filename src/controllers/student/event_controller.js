@@ -36,6 +36,7 @@ exports.getPastEvents = async (req, res, next) => {
   }
 };
 
+
 exports.registerForEvent = async (req, res, next) => {
   try {
     await eventService.registerForEvent(req.user.uuid, req.params.eventId);
@@ -44,6 +45,12 @@ exports.registerForEvent = async (req, res, next) => {
       message: 'Successfully registered for the event'
     });
   } catch (error) {
+    if (error.message === 'Already registered for this event') {
+      return res.status(409).json({
+        success: false,
+        message: error.message
+      });
+    }
     next(error);
   }
 };

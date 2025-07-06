@@ -63,6 +63,14 @@ exports.getPastSessions = async (req, res, next) => {
 exports.requestScheduleSession = async (req, res, next) => {
   try {
     const { mentorId, sessionDate, sessionTime, topic, description } = req.body;
+    
+    if (!mentorId || !sessionDate || !sessionTime || !topic) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields'
+      });
+    }
+
     await mentorshipService.requestScheduleSession(
       req.user.uuid, 
       mentorId, 
@@ -76,6 +84,12 @@ exports.requestScheduleSession = async (req, res, next) => {
       message: 'Session request submitted successfully'
     });
   } catch (error) {
+    if (error.message === 'No active mentorship relationship with this mentor') {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
     next(error);
   }
 };

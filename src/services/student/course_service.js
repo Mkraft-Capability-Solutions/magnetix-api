@@ -62,8 +62,23 @@ class CourseService {
     }
 
   async getRecommendedCourses(studentId) {
-    const [result] = await promisePool.query('CALL get_recommended_courses(?)', [studentId]);
-    return result[0];
+        const [result] = await promisePool.query('CALL get_recommended_courses(?)', [studentId]);
+        
+        // Format the result to match the PHP version's structure
+        return result[0].map(course => ({
+        course: {
+            id: course.course_id,
+            title: course.title,
+            short_description: course.short_description,
+            thumbnail: course.thumbnail,
+            instructor_name: course.instructor_name,
+            avg_rating: course.avg_rating,
+            // Add other necessary course fields
+        },
+        score: course.similarity_score,
+        type: course.recommendation_type,
+        keyword_match_count: course.keyword_match_count
+        }));
     }
 
     async enrollInCourse(studentId, courseId) {
