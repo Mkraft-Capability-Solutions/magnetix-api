@@ -1,5 +1,5 @@
 const { promisePool } = require('../../config/db');
-const { CourseDTO, CourseRatingDTO, CourseReviewDTO } = require('../../dto/course_dto');
+const { CourseDTO, CourseRatingDTO, CourseReviewDTO, CourseProgressDTO  } = require('../../dto/course_dto');
 const { ServiceResponseDTO, ErrorResponseDTO } = require('../../dto/response_dto');
 
 class CourseService {
@@ -113,6 +113,47 @@ class CourseService {
       return new ErrorResponseDTO(error);
     }
   }
+  
+  async getCourseProgress(studentId, courseId) {
+    try {
+        const [result] = await promisePool.query(
+        'CALL get_course_progress(?, ?)',
+        [studentId, courseId]
+        );
+        
+        if (result.length === 0) {
+        return new ErrorResponseDTO(new Error('No progress data found'));
+        }
+        
+        const progress = new CourseProgressDTO(result[0][0]);
+        return new ServiceResponseDTO(true, progress);
+    } catch (error) {
+        if (error.code === 'ER_SIGNAL_EXCEPTION') {
+        return new ErrorResponseDTO(new Error(error.sqlMessage));
+        }
+        return new ErrorResponseDTO(error);
+    }
+    }
+
+    async getLastAccessedCourse(studentId) {
+        try {
+            const [result] = await promisePool.query(
+            'CALL get_last_access_course(?)',
+            [studentId]
+            );
+            
+            if (result.length === 0 || result[0][0].course_id === null) {
+            return new ServiceResponseDTO(true, {
+                message: 'No course progress found for this student'
+            });
+            }
+            
+            const progress = new CourseProgressDTO(result[0][0]);
+            return new ServiceResponseDTO(true, progress);
+        } catch (error) {
+            return new ErrorResponseDTO(error);
+        }
+    }
 }
 
 module.exports = new CourseService();

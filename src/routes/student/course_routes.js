@@ -10,5 +10,7 @@ router.get('/:courseId/rating', authenticate, authorize(1), courseController.get
 router.get('/instructor/:instructorId/rating', authenticate, authorize(1), courseController.getInstructorRating);
 router.get('/recommendations', authenticate, authorize(1), courseController.getRecommendedCourses);
 router.post('/enroll', authenticate, authorize(1), courseController.enrollInCourse);
+router.get('/:courseId/progress', authenticate, authorize(1), courseController.getCourseProgress);
+router.get('/last-accessed', authenticate, authorize(1), courseController.getLastAccessedCourse);
 
 module.exports = router;

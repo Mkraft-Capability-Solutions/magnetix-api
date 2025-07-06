@@ -54,8 +54,24 @@ class CourseReviewDTO {
   }
 }
 
+class CourseProgressDTO {
+  constructor(progressData) {
+    this.course_id = progressData.course_id;
+    this.course_title = progressData.course_title;
+    this.total_lessons = progressData.total_lessons;
+    this.total_lessons_available = progressData.total_lessons_available;
+    this.lessons_started = progressData.lessons_started;
+    this.lessons_completed = progressData.lessons_completed;
+    this.progress_percentage = progressData.progress_percentage;
+    this.last_accessed = progressData.last_accessed;
+    this.last_accessed_lesson_title = progressData.last_accessed_lesson_title;
+    this.last_accessed_lesson_id = progressData.last_accessed_lesson_id;
+  }
+}
+
 module.exports = {
   CourseDTO,
   CourseRatingDTO,
-  CourseReviewDTO
+  CourseReviewDTO,
+  CourseProgressDTO
 };

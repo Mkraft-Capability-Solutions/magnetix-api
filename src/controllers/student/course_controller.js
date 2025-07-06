@@ -92,3 +92,36 @@ exports.enrollInCourse = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.getCourseProgress = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+    
+    if (!courseId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Course ID is required'
+      });
+    }
+
+    const response = await courseService.getCourseProgress(req.user.uuid, courseId);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getLastAccessedCourse = async (req, res, next) => {
+  try {
+    const response = await courseService.getLastAccessedCourse(req.user.uuid);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
