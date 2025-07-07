@@ -69,9 +69,20 @@ class CourseProgressDTO {
   }
 }
 
+class SavedCourseDTO {
+  constructor(savedCourseData) {
+    this.id = savedCourseData.id;
+    this.user_id = savedCourseData.user_id;
+    this.course_id = savedCourseData.course_id;
+    this.saved_date = savedCourseData.saved_date;
+    this.course = savedCourseData.course ? new CourseDTO(savedCourseData.course) : null;
+  }
+}
+
 module.exports = {
   CourseDTO,
   CourseRatingDTO,
   CourseReviewDTO,
-  CourseProgressDTO
+  CourseProgressDTO,
+  SavedCourseDTO
 };

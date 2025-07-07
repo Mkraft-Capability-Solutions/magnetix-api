@@ -12,5 +12,9 @@ router.get('/recommendations', authenticate, authorize(1), courseController.getR
 router.post('/enroll', authenticate, authorize(1), courseController.enrollInCourse);
 router.get('/:courseId/progress', authenticate, authorize(1), courseController.getCourseProgress);
 router.get('/last-accessed', authenticate, authorize(1), courseController.getLastAccessedCourse);
+router.post('/save', authenticate, authorize(1), courseController.saveCourse);
+router.post('/unsave', authenticate, authorize(1), courseController.unsaveCourse);
+router.get('/saved', authenticate, authorize(1), courseController.getSavedCourses);
+router.get('/:courseId/is-saved', authenticate, authorize(1), courseController.isCourseSaved);
 
 module.exports = router;

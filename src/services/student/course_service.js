@@ -79,14 +79,32 @@ class CourseService {
   async getRecommendedCourses(studentId) {
     try {
       const [result] = await promisePool.query('CALL get_recommended_courses(?)', [studentId]);
-      const recommendations = result[0].map(item => ({
-        course: new CourseDTO(item),
-        score: item.similarity_score,
-        type: item.recommendation_type,
-        keyword_match_count: item.keyword_match_count
-      }));
+      
+      // Process the results to ensure all required fields are present
+      const recommendations = result[0].map(item => {
+        const course = new CourseDTO({
+          id: item.course_id,
+          title: item.title,
+          short_description: item.short_description,
+          description: item.short_description, // Fallback to short_description if needed
+          level: item.level || 'beginner',
+          course_duration: item.course_duration || 0,
+          thumbnail: item.thumbnail || '',
+          instructor_name: item.instructor_name || 'Unknown Instructor',
+          avg_rating: parseFloat(item.avg_rating) || 0,
+          keyword_match_count: item.keyword_match_count || 0,
+          similarity_score: item.similarity_score || 0,
+          recommendation_type: item.recommendation_type || 'general',
+          meta_keywords: '', // Add empty meta_keywords to satisfy DTO
+          status: 'active' // Default status
+        });
+        
+        return course;
+      });
+      
       return new ServiceResponseDTO(true, recommendations);
     } catch (error) {
+      console.error('Error in getRecommendedCourses:', error);
       return new ErrorResponseDTO(error);
     }
   }
@@ -154,6 +172,98 @@ class CourseService {
             return new ErrorResponseDTO(error);
         }
     }
+
+    async saveCourse(userId, courseId) {
+    try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(userId.toLowerCase())) {
+        throw new Error('Invalid user UUID format');
+      }
+
+      if (!courseId || isNaN(courseId)) {
+        throw new Error('Invalid course ID');
+      }
+
+      const [result] = await promisePool.query(
+        'CALL save_course(?, ?)',
+        [userId, courseId]
+      );
+      
+      return new ServiceResponseDTO(true, null, result[0][0].message);
+    } catch (error) {
+      if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+        return new ErrorResponseDTO(new Error('The course or user does not exist'));
+      }
+      return new ErrorResponseDTO(error);
+    }
+  }
+
+  async unsaveCourse(userId, courseId) {
+    try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(userId.toLowerCase())) {
+        throw new Error('Invalid user UUID format');
+      }
+
+      if (!courseId || isNaN(courseId)) {
+        throw new Error('Invalid course ID');
+      }
+
+      const [result] = await promisePool.query(
+        'CALL unsave_course(?, ?)',
+        [userId, courseId]
+      );
+      
+      return new ServiceResponseDTO(true, null, result[0][0].message);
+    } catch (error) {
+      if (error.code === '45000') {
+        return new ErrorResponseDTO(new Error(error.sqlMessage));
+      }
+      return new ErrorResponseDTO(error);
+    }
+  }
+
+  async getSavedCourses(userId) {
+    try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(userId.toLowerCase())) {
+        throw new Error('Invalid user UUID format');
+      }
+
+      const [result] = await promisePool.query(
+        'CALL get_saved_courses(?)',
+        [userId]
+      );
+      
+      const savedCourses = result[0].map(course => new CourseDTO(course));
+      return new ServiceResponseDTO(true, savedCourses);
+    } catch (error) {
+      return new ErrorResponseDTO(error);
+    }
+  }
+
+  async isCourseSaved(userId, courseId) {
+    try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(userId.toLowerCase())) {
+        throw new Error('Invalid user UUID format');
+      }
+
+      if (!courseId || isNaN(courseId)) {
+        throw new Error('Invalid course ID');
+      }
+
+      const [result] = await promisePool.query(
+        'CALL is_course_saved(?, ?)',
+        [userId, courseId]
+      );
+      
+      const isSaved = result[0][0].is_saved === 1;
+      return new ServiceResponseDTO(true, { is_saved: isSaved });
+    } catch (error) {
+      return new ErrorResponseDTO(error);
+    }
+  }
 }
 
 module.exports = new CourseService();
