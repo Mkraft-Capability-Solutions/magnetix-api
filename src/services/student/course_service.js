@@ -264,6 +264,62 @@ class CourseService {
       return new ErrorResponseDTO(error);
     }
   }
+
+  async getAllAchievedSkills(userId) {
+    try {
+      const [result] = await promisePool.query('CALL get_all_achieved_skills(?)', [userId]);
+      return new ServiceResponseDTO(true, result[0]);
+    } catch (error) {
+      return new ErrorResponseDTO(error);
+    }
+  }
+
+  async getCourseGainedSkills(userId, courseId) {
+    try {
+      const [result] = await promisePool.query('CALL get_course_gained_skills(?, ?)', [userId, courseId]);
+      return new ServiceResponseDTO(true, result[0]);
+    } catch (error) {
+      return new ErrorResponseDTO(error);
+    }
+  }
+
+  async getCourseRemainingSkills(userId, courseId) {
+    try {
+      const [result] = await promisePool.query('CALL get_course_remaining_skills(?, ?)', [userId, courseId]);
+      return new ServiceResponseDTO(true, result[0]);
+    } catch (error) {
+      return new ErrorResponseDTO(error);
+    }
+  }
+
+ async getCourseDetail(courseId, userId) {
+  try {
+    const [resultSets] = await promisePool.query('CALL get_course_detail(?, ?)', [courseId, userId]);
+
+    // Ensure you safely access each result set
+    const responseData = {
+      course: resultSets?.[0]?.[0] ? new CourseDTO(resultSets[0][0]) : null,
+      sections: resultSets?.[1] || [],
+      lessons: resultSets?.[2] || [],
+      lessonSkills: resultSets?.[3] || [],
+      requirements: resultSets?.[4] || [],
+      outcomes: resultSets?.[5] || [],
+      faqs: resultSets?.[6] || [],
+      ratings: resultSets?.[7]?.[0] || {},
+      reviews: (resultSets?.[8] || []).map(review => new CourseReviewDTO(review)),
+      progress: resultSets?.[9]?.[0] ? new CourseProgressDTO(resultSets[9][0]) : null,
+      achievedSkills: resultSets?.[10] || [],
+      gainedSkills: resultSets?.[11] || [],
+      remainingSkills: resultSets?.[12] || []
+    };
+
+    return new ServiceResponseDTO(true, responseData);
+  } catch (error) {
+    return new ErrorResponseDTO(error);
+  }
+}
+
+
 }
 
 module.exports = new CourseService();

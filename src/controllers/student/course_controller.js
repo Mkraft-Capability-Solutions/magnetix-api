@@ -214,3 +214,54 @@ exports.isCourseSaved = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.getAllAchievedSkills = async (req, res, next) => {
+  try {
+    const response = await courseService.getAllAchievedSkills(req.user.uuid);
+    res.status(response.success ? 200 : 500).json(response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getCourseGainedSkills = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+    const response = await courseService.getCourseGainedSkills(req.user.uuid, courseId);
+    res.status(response.success ? 200 : 500).json(response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getCourseRemainingSkills = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+    const response = await courseService.getCourseRemainingSkills(req.user.uuid, courseId);
+    res.status(response.success ? 200 : 500).json(response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getCourseDetails = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+    const userId = req.user.uuid;
+
+    if (!courseId || isNaN(courseId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid Course ID is required'
+      });
+    }
+
+    const response = await courseService.getCourseDetail(courseId, userId);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};

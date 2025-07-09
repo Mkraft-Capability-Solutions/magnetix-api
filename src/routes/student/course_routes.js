@@ -17,4 +17,10 @@ router.post('/unsave', authenticate, authorize(1), courseController.unsaveCourse
 router.get('/saved', authenticate, authorize(1), courseController.getSavedCourses);
 router.get('/:courseId/is-saved', authenticate, authorize(1), courseController.isCourseSaved);
 
+router.get('/skills/achieved', authenticate, authorize(1), courseController.getAllAchievedSkills);
+router.get('/:courseId/skills/gained', authenticate, authorize(1), courseController.getCourseGainedSkills);
+router.get('/:courseId/skills/remaining', authenticate, authorize(1), courseController.getCourseRemainingSkills);
+
+router.get('/:courseId/details', authenticate, authorize(1), courseController.getCourseDetails);
+
 module.exports = router;
