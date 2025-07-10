@@ -25,3 +25,16 @@ exports.getWeeklyHours = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.getTotalHours = async (req, res, next) => {
+  try {
+    const userId = req.user.uuid;
+    const data = await activityService.getTotalStudentHours(userId);
+    res.json({
+      success: true,
+      ...data
+    });
+  } catch (error) {
+    next(error);
+  }
+};

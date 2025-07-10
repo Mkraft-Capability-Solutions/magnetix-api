@@ -26,6 +26,20 @@ class ActivityService {
       throw new Error(`Failed to retrieve weekly hours: ${error.message}`);
     }
   }
+
+  async getTotalStudentHours(userId) {
+  try {
+    const [resultSets] = await promisePool.query('CALL get_total_student_hours(?)', [userId]);
+    const row = resultSets[0]?.[0];
+    return {
+      totalHours: row ? parseFloat(row.total_hours) : 0.0
+    };
+  } catch (error) {
+    throw new Error(`Failed to retrieve total hours: ${error.message}`);
+  }
+}
+
+
 }
 
 module.exports = new ActivityService();

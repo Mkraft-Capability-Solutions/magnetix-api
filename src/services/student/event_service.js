@@ -33,17 +33,17 @@ class EventService {
     }
   }
         
-  async registerForEvent(studentId, eventId) {
-    try {
-      await promisePool.query('CALL register_student_for_event(?, ?)', [studentId, eventId]);
-      return new ServiceResponseDTO(true, null, 'Successfully registered for the event');
-    } catch (error) {
-      if (error.message === 'Already registered for this event') {
-        return new ErrorResponseDTO(error, 409);
-      }
-      return new ErrorResponseDTO(error);
+async registerForEvent(studentId, eventId) {
+  try {
+    await promisePool.query('CALL register_student_for_event(?, ?)', [studentId, eventId]);
+    return new ServiceResponseDTO(true, null, 'Successfully registered for the event');
+  } catch (error) {
+    if (error.message === 'Already registered for this event') {
+      return new ErrorResponseDTO(error, 409);
     }
+    return new ErrorResponseDTO(error);
   }
+}
 }
 
 module.exports = new EventService();

@@ -12,5 +12,7 @@ const activityLimiter = rateLimit({
 
 router.post('/log', authenticate, authorize(1), activityLimiter, activityController.logSession);
 router.get('/weekly', authenticate, authorize(1), activityController.getWeeklyHours);
+router.get('/total-hours', authenticate, authorize(1), activityController.getTotalHours);
+
 
 module.exports = router;
