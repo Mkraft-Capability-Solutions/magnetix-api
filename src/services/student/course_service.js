@@ -1,5 +1,22 @@
 const { promisePool } = require('../../config/db');
-const { CourseDTO, CourseRatingDTO, CourseReviewDTO, CourseProgressDTO  } = require('../../dto/course_dto');
+const {
+  CourseDTO,
+  CourseRatingDTO,
+  CourseReviewDTO,
+  CourseProgressDTO,
+  SavedCourseDTO,
+  CourseSectionDTO,
+  CourseLessonDTO,
+  LessonSkillDTO,
+  CourseOutcomeDTO,
+  CourseRequirementDTO,
+  CourseFaqDTO,
+  AchievedSkillDTO,
+  EnrolledCourseDetailDTO,
+  CourseDetailDTO,
+  CourseSkillDTO,
+  SkillSummaryDTO
+} = require('../../dto/course_dto');
 const { ServiceResponseDTO, ErrorResponseDTO } = require('../../dto/response_dto');
 
 class CourseService {
@@ -265,56 +282,151 @@ class CourseService {
     }
   }
 
-  async getAllAchievedSkills(userId) {
-    try {
-      const [result] = await promisePool.query('CALL get_all_achieved_skills(?)', [userId]);
-      return new ServiceResponseDTO(true, result[0]);
-    } catch (error) {
-      return new ErrorResponseDTO(error);
-    }
-  }
 
-  async getCourseGainedSkills(userId, courseId) {
-    try {
-      const [result] = await promisePool.query('CALL get_course_gained_skills(?, ?)', [userId, courseId]);
-      return new ServiceResponseDTO(true, result[0]);
-    } catch (error) {
-      return new ErrorResponseDTO(error);
-    }
-  }
-
-  async getCourseRemainingSkills(userId, courseId) {
-    try {
-      const [result] = await promisePool.query('CALL get_course_remaining_skills(?, ?)', [userId, courseId]);
-      return new ServiceResponseDTO(true, result[0]);
-    } catch (error) {
-      return new ErrorResponseDTO(error);
-    }
-  }
-
- async getCourseDetail(courseId, userId) {
+  async getCourseSkills(courseId) {
   try {
-    const [resultSets] = await promisePool.query('CALL get_course_detail(?, ?)', [courseId, userId]);
+    const [result] = await promisePool.query('CALL get_course_skills(?)', [courseId]);
+    const skills = result[0].map(skill => new CourseSkillDTO(skill));
+    return new ServiceResponseDTO(true, skills);
+  } catch (error) {
+    return new ErrorResponseDTO(error);
+  }
+}
 
-    // Ensure you safely access each result set
-    const responseData = {
-      course: resultSets?.[0]?.[0] ? new CourseDTO(resultSets[0][0]) : null,
-      sections: resultSets?.[1] || [],
-      lessons: resultSets?.[2] || [],
-      lessonSkills: resultSets?.[3] || [],
-      requirements: resultSets?.[4] || [],
-      outcomes: resultSets?.[5] || [],
-      faqs: resultSets?.[6] || [],
-      ratings: resultSets?.[7]?.[0] || {},
-      reviews: (resultSets?.[8] || []).map(review => new CourseReviewDTO(review)),
-      progress: resultSets?.[9]?.[0] ? new CourseProgressDTO(resultSets[9][0]) : null,
-      achievedSkills: resultSets?.[10] || [],
-      gainedSkills: resultSets?.[11] || [],
-      remainingSkills: resultSets?.[12] || []
+async getTotalAchievedSkills(studentId) {
+  try {
+    const [result] = await promisePool.query('CALL get_total_achieved_skills(?)', [studentId]);
+    
+    const response = {
+      skills: result[0].map(skill => new CourseSkillDTO(skill)),
+      total_count: result[1][0].total_skills_count || 0
+    };
+    
+    return new ServiceResponseDTO(true, new SkillSummaryDTO(response));
+  } catch (error) {
+    return new ErrorResponseDTO(error);
+  }
+}
+
+async getGainedSkillsByCourse(studentId, courseId) {
+  try {
+    const [result] = await promisePool.query(
+      'CALL get_gained_skills_by_course(?, ?)', 
+      [studentId, courseId]
+    );
+    
+    const response = {
+      skills: result[0].map(skill => new CourseSkillDTO(skill)),
+      total_count: result[1][0].gained_skills_count || 0
+    };
+    
+    return new ServiceResponseDTO(true, new SkillSummaryDTO(response));
+  } catch (error) {
+    return new ErrorResponseDTO(error);
+  }
+}
+
+async getRemainingSkillsByCourse(studentId, courseId) {
+  try {
+    const [result] = await promisePool.query(
+      'CALL get_remaining_skills_by_course(?, ?)', 
+      [studentId, courseId]
+    );
+    
+    const response = {
+      skills: result[0].map(skill => new CourseSkillDTO(skill)),
+      total_count: result[1][0].remaining_skills_count || 0
+    };
+    
+    return new ServiceResponseDTO(true, new SkillSummaryDTO(response));
+  } catch (error) {
+    return new ErrorResponseDTO(error);
+  }
+}
+
+async getEnrolledCourseDetail(userId, courseId) {
+    try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(userId.toLowerCase())) {
+        throw new Error('Invalid user UUID format');
+      }
+      if (!courseId || isNaN(courseId)) {
+        throw new Error('Invalid course ID');
+      }
+      const [result] = await promisePool.query(
+        'CALL get_enrolled_course_detail(?, ?)',
+        [userId, courseId]
+      );
+      if (!result || result.length === 0) {
+        return new ErrorResponseDTO(new Error('No course data found'));
+      }
+      const courseData = {
+        courseDetails: result[0],
+        courseSections: result[1],
+        courseLessons: result[2],
+        lessonSkills: result[3],
+        courseReviews: result[4],
+        courseOutcomes: result[5],
+        courseRequirements: result[6],
+        courseFaqs: result[7],
+        courseProgress: result[8],
+        achievedSkills: result[9]
+      };
+      const formattedData = new EnrolledCourseDetailDTO(courseData);
+      return new ServiceResponseDTO(true, formattedData);
+    } catch (error) {
+      if (error.code === 'ER_SIGNAL_EXCEPTION') {
+        return new ErrorResponseDTO(new Error(error.sqlMessage));
+      }
+      return new ErrorResponseDTO(error);
+    }
+  }
+
+  async getCourseDetail(courseId) {
+  try {
+    if (!courseId || isNaN(courseId)) {
+      throw new Error('Invalid course ID');
+    }
+
+    const [result] = await promisePool.query(
+      'CALL get_course_detail(?)',
+      [courseId]
+    );
+
+    if (!result || result.length === 0 || !result[0] || result[0].length === 0) {
+      return new ErrorResponseDTO(new Error('No course data found'));
+    }
+
+    // Raw output from stored procedure
+    const [
+      courseDetails,       // result[0]
+      courseSections,      // result[1]
+      courseLessons,       // result[2]
+      lessonSkills,        // result[3]
+      courseReviews,       // result[4]
+      courseOutcomes,      // result[5]
+      courseRequirements,  // result[6]
+      courseFaqs           // result[7]
+    ] = result;
+
+    // Format output into one object, using only plain JS objects
+    const courseData = {
+      course: courseDetails?.[0] || null,
+      course_sections: courseSections || [],
+      course_lessons: courseLessons || [],
+      lesson_skills: lessonSkills || [],
+      course_reviews: courseReviews || [],
+      course_outcomes: courseOutcomes || [],
+      course_requirements: courseRequirements || [],
+      course_faqs: courseFaqs || []
     };
 
-    return new ServiceResponseDTO(true, responseData);
+    return new ServiceResponseDTO(true, courseData);
   } catch (error) {
+    console.error("Error in getCourseDetail:", error);
+    if (error.code === 'ER_SIGNAL_EXCEPTION') {
+      return new ErrorResponseDTO(new Error(error.sqlMessage));
+    }
     return new ErrorResponseDTO(error);
   }
 }

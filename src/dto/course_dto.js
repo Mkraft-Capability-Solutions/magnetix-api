@@ -7,6 +7,8 @@ class CourseDTO {
     this.language_id = courseData.language_id;
     this.category_id = courseData.category_id;
     this.sub_category_id = courseData.sub_category_id;
+    this.category_name = courseData.category_name;
+    this.subcategory_name = courseData.subcategory_name;
     this.total_lessons = courseData.total_lessons;
     this.level = courseData.level;
     this.course_duration = courseData.course_duration;
@@ -20,7 +22,8 @@ class CourseDTO {
     this.instructor_id = courseData.instructor_id;
     this.instructor_name = courseData.instructor_name;
     this.instructor_dp = courseData.instructor_dp;
-    this.avg_rating = courseData.avg_rating || 0;
+    this.instructor_about = courseData.instructor_about;
+    this.avg_rating = parseFloat(courseData.average_rating) || 0;
     this.enrolled_date = courseData.enrolled_date;
     this.keyword_match_count = courseData.keyword_match_count || 0;
     this.similarity_score = courseData.similarity_score || 0;
@@ -79,10 +82,176 @@ class SavedCourseDTO {
   }
 }
 
+class CourseSectionDTO {
+  constructor(sectionData) {
+    this.id = sectionData.id;
+    this.course_id = sectionData.course_id;
+    this.title = sectionData.title;
+  }
+}
+
+class ContentBasedLessonDetailsDTO {
+  constructor(contentData) {
+    this.content_type = contentData.content_type;
+    this.document = contentData.document;
+    this.scorm = contentData.scorm;
+    this.mp4 = contentData.mp4;
+    this.url = contentData.url;
+    this.duration = contentData.duration;
+  }
+}
+
+class ILTSLessonDetailsDTO {
+  constructor(iltsData) {
+    this.mode = iltsData.mode;
+    this.meet_url = iltsData.meet_url;
+    this.venue = iltsData.venue;
+    this.start_date = iltsData.start_date;
+    this.start_time = iltsData.start_time;
+    this.end_date = iltsData.end_date;
+    this.end_time = iltsData.end_time;
+  }
+}
+
+class CourseLessonDTO {
+  constructor(lessonData) {
+    this.id = lessonData.id;
+    this.course_id = lessonData.course_id;
+    this.section_id = lessonData.section_id;
+    this.title = lessonData.title;
+    this.lesson_type = lessonData.lesson_type;
+    this.total_lessons = lessonData.total_lessons;
+    
+    // Handle lesson details based on type
+    if (lessonData.lesson_details) {
+      const details = JSON.parse(lessonData.lesson_details);
+      if (lessonData.lesson_type === 'Content-Based') {
+        this.lesson_details = new ContentBasedLessonDetailsDTO(details);
+      } else if (lessonData.lesson_type === 'ILTS') {
+        this.lesson_details = new ILTSLessonDetailsDTO(details);
+      } else {
+        this.lesson_details = null;
+      }
+    } else {
+      this.lesson_details = null;
+    }
+  }
+}
+
+class LessonSkillDTO {
+  constructor(skillData) {
+    this.skill_id = skillData.skill_id;
+    this.skill_name = skillData.skill_name;
+  }
+}
+
+class CourseOutcomeDTO {
+  constructor(outcomeData) {
+    this.id = outcomeData.id;
+    this.course_id = outcomeData.course_id;
+    this.outcome = outcomeData.outcome;
+  }
+}
+
+class CourseRequirementDTO {
+  constructor(requirementData) {
+    this.id = requirementData.id;
+    this.course_id = requirementData.course_id;
+    this.requirement = requirementData.requirement;
+  }
+}
+
+class CourseFaqDTO {
+  constructor(faqData) {
+    this.id = faqData.id;
+    this.course_id = faqData.course_id;
+    this.question = faqData.question;
+    this.answer = faqData.answer;
+    this.faq_order = faqData.faq_order;
+  }
+}
+
+class AchievedSkillDTO {
+  constructor(skillData) {
+    this.skill_id = skillData.skill_id;
+    this.skill_name = skillData.skill_name;
+    this.achieved_date = skillData.achieved_date;
+  }
+}
+
+class EnrolledCourseDetailDTO {
+  constructor(data) {
+    this.course = data.courseDetails[0] ? new CourseDTO({
+      ...data.courseDetails[0],
+      instructor_name: data.courseDetails[0].instructor_name,
+      instructor_dp: data.courseDetails[0].instructor_dp,
+      instructor_about: data.courseDetails[0].instructor_about,
+      average_rating: parseFloat(data.courseDetails[0].average_rating) || 0
+    }) : null;
+    this.course_sections = data.courseSections.map(section => new CourseSectionDTO(section));
+    this.course_lessons = data.courseLessons.map(lesson => new CourseLessonDTO(lesson));
+    this.lesson_skills = data.lessonSkills.map(skill => new LessonSkillDTO(skill));
+    this.course_reviews = data.courseReviews.map(review => new CourseReviewDTO(review));
+    this.course_outcomes = data.courseOutcomes.map(outcome => new CourseOutcomeDTO(outcome));
+    this.course_requirements = data.courseRequirements.map(requirement => new CourseRequirementDTO(requirement));
+    this.course_faqs = data.courseFaqs.map(faq => new CourseFaqDTO(faq));
+    this.course_progress = data.courseProgress[0] ? new CourseProgressDTO(data.courseProgress[0]) : null;
+    this.achieved_skills = data.achievedSkills.map(skill => new AchievedSkillDTO(skill));
+  }
+}
+
+class CourseDetailDTO {
+  constructor(data) {
+    this.course = data.courseDetails[0] ? new CourseDTO({
+      ...data.courseDetails[0],
+      instructor_name: data.courseDetails[0].instructor_name,
+      instructor_dp: data.courseDetails[0].instructor_dp,
+      instructor_about: data.courseDetails[0].instructor_about,
+      average_rating: parseFloat(data.courseDetails[0].average_rating) || 0
+    }) : null;
+    this.course_sections = data.courseSections.map(section => new CourseSectionDTO(section));
+    this.course_lessons = data.courseLessons.map(lesson => new CourseLessonDTO(lesson));
+    this.lesson_skills = data.lessonSkills.map(skill => new LessonSkillDTO(skill));
+    this.course_reviews = data.courseReviews.map(review => new CourseReviewDTO(review));
+    this.course_outcomes = data.courseOutcomes.map(outcome => new CourseOutcomeDTO(outcome));
+    this.course_requirements = data.courseRequirements.map(requirement => new CourseRequirementDTO(requirement));
+    this.course_faqs = data.courseFaqs.map(faq => new CourseFaqDTO(faq));
+  }
+}
+
+class CourseSkillDTO {
+  constructor(skillData) {
+    this.skill_id = skillData.skill_id;
+    this.skill_name = skillData.skill_name;
+    this.lesson_count = skillData.lesson_count || 0;
+    this.last_achieved_date = skillData.last_achieved_date || null;
+  }
+}
+
+class SkillSummaryDTO {
+  constructor(summaryData) {
+    this.skills = summaryData.skills.map(skill => new CourseSkillDTO(skill));
+    this.total_count = summaryData.total_count;
+  }
+}
+
 module.exports = {
   CourseDTO,
   CourseRatingDTO,
   CourseReviewDTO,
   CourseProgressDTO,
-  SavedCourseDTO
+  SavedCourseDTO,
+  CourseSectionDTO,
+  ContentBasedLessonDetailsDTO,
+  ILTSLessonDetailsDTO,
+  CourseLessonDTO,
+  LessonSkillDTO,
+  CourseOutcomeDTO,
+  CourseRequirementDTO,
+  CourseFaqDTO,
+  AchievedSkillDTO,
+  EnrolledCourseDetailDTO,
+  CourseDetailDTO,
+  CourseSkillDTO,
+  SkillSummaryDTO
 };
