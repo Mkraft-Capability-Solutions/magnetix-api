@@ -9,7 +9,7 @@ class UserService {
     
     try {
       const [rows] = await connection.query(
-        'CALL sp_get_user_details(?)',
+        'CALL get_user_details(?)',
         [uuid]
       );
 
@@ -29,7 +29,7 @@ class UserService {
     
     try {
       const [rows] = await connection.query(
-        'CALL sp_update_user_details(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'CALL update_user_details(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           uuid,
           updateData.first_name || null,
@@ -59,7 +59,7 @@ class UserService {
     const connection = await promisePool.getConnection();
     try {
       const [result] = await connection.query(
-        'CALL sp_delete_user(?)',
+        'CALL delete_user(?)',
         [uuid]
       );
 
@@ -101,7 +101,7 @@ class UserService {
       
       // Call stored procedure with hashed password
       const [result] = await connection.query(
-        'CALL sp_update_user_password(?, ?, ?)',
+        'CALL update_user_password(?, ?, ?)',
         [uuid, currentPassword, hashedPassword]
       );
 
@@ -121,7 +121,7 @@ class UserService {
     
     try {
       const [rows] = await connection.query(
-        'CALL sp_update_profile_picture(?, ?)',
+        'CALL update_profile_picture(?, ?)',
         [uuid, imagePath]
       );
 

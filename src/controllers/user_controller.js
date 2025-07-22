@@ -31,20 +31,12 @@ exports.getUser = async (req, res, next) => {
   try {
     const { uuid } = req.params;
     const user = await userService.getUser(uuid);
-    res.json({
-      uuid: user.uuid,
-      email: user.email,
-      role_id: user.role_id,
-      first_name: user.first_name,
-      last_name: user.last_name,
-      dp: user.dp, // Include profile picture
-      status: user.status,
-      // Add other fields as needed
-    });
+    res.json(user); // returns full UserDTO
   } catch (error) {
     next(error);
   }
 };
+
 
 exports.updateUserDetails = async (req, res, next) => {
   try {
@@ -97,7 +89,7 @@ exports.updateProfilePicture = async (req, res, next) => {
     }
 
     const { uuid } = req.params;
-    const imagePath = `/uploads/user_images/${req.file.filename}`;
+    const imagePath = `/uploads/users/${req.file.filename}`;
     const updatedUser = await userService.updateProfilePicture(uuid, imagePath);
     
     res.json({
