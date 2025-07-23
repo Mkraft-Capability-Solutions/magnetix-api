@@ -254,38 +254,24 @@ exports.getRemainingSkillsByCourse = async (req, res, next) => {
   }
 };
 
-exports.getEnrolledCourseDetail = async (req, res, next) => {
-  try {
-    const { userId, courseId } = req.params;
-    if (!userId || !courseId) {
-      return res.status(400).json({
-        success: false,
-        message: 'User ID and Course ID are required'
-      });
-    }
-    const response = await courseService.getEnrolledCourseDetail(userId, courseId);
-    if (!response.success) {
-      return res.status(response.error.status || 500).json(response);
-    }
-    res.json(response);
-  } catch (error) {
-    next(error);
-  }
-};
-
-exports.getCourseDetail = async (req, res, next) => {
+exports.getCourseDetails = async (req, res, next) => {
   try {
     const { courseId } = req.params;
+    const userId = req.user.uuid;
+
     if (!courseId) {
       return res.status(400).json({
         success: false,
         message: 'Course ID is required'
       });
     }
-    const response = await courseService.getCourseDetail(courseId);
+
+    const response = await courseService.getCourseDetails(userId, courseId);
+    
     if (!response.success) {
       return res.status(response.error.status || 500).json(response);
     }
+
     res.json(response);
   } catch (error) {
     next(error);

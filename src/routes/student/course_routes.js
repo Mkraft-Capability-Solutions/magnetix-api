@@ -22,7 +22,7 @@ router.get('/skills/achieved/total', authenticate, authorize(1), courseControlle
 router.get('/:courseId/skills/gained', authenticate, authorize(1), courseController.getGainedSkillsByCourse);
 router.get('/:courseId/skills/remaining', authenticate, authorize(1), courseController.getRemainingSkillsByCourse);
 
-router.get('/enrolled/:userId/:courseId', authenticate, authorize(1), courseController.getEnrolledCourseDetail);
-router.get('/:courseId', authenticate, authorize(1), courseController.getCourseDetail);
+
+router.get('/:courseId', authenticate, authorize(1), courseController.getCourseDetails);
 
 module.exports = router;

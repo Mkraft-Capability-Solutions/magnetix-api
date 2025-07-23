@@ -1,21 +1,17 @@
 const { promisePool } = require('../../config/db');
-const {
+const {  
   CourseDTO,
-  CourseRatingDTO,
   CourseReviewDTO,
   CourseProgressDTO,
-  SavedCourseDTO,
-  CourseSectionDTO,
-  CourseLessonDTO,
-  LessonSkillDTO,
-  CourseOutcomeDTO,
-  CourseRequirementDTO,
-  CourseFaqDTO,
-  AchievedSkillDTO,
-  EnrolledCourseDetailDTO,
-  CourseDetailDTO,
   CourseSkillDTO,
-  SkillSummaryDTO
+  SkillSummaryDTO,
+  CourseRequirementDTO,
+  CourseOutcomeDTO,
+  CourseFaqDTO,
+  CourseSectionDTO,
+  CourseDetailDTO,
+  CourseLessonDTO,
+  RatingStatsDTO
 } = require('../../dto/course_dto');
 const { ServiceResponseDTO, ErrorResponseDTO } = require('../../dto/response_dto');
 
@@ -344,93 +340,120 @@ async getRemainingSkillsByCourse(studentId, courseId) {
   }
 }
 
-async getEnrolledCourseDetail(userId, courseId) {
-    try {
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(userId.toLowerCase())) {
-        throw new Error('Invalid user UUID format');
-      }
-      if (!courseId || isNaN(courseId)) {
-        throw new Error('Invalid course ID');
-      }
-      const [result] = await promisePool.query(
-        'CALL get_enrolled_course_detail(?, ?)',
-        [userId, courseId]
-      );
-      if (!result || result.length === 0) {
-        return new ErrorResponseDTO(new Error('No course data found'));
-      }
-      const courseData = {
-        courseDetails: result[0],
-        courseSections: result[1],
-        courseLessons: result[2],
-        lessonSkills: result[3],
-        courseReviews: result[4],
-        courseOutcomes: result[5],
-        courseRequirements: result[6],
-        courseFaqs: result[7],
-        courseProgress: result[8],
-        achievedSkills: result[9]
-      };
-      const formattedData = new EnrolledCourseDetailDTO(courseData);
-      return new ServiceResponseDTO(true, formattedData);
-    } catch (error) {
-      if (error.code === 'ER_SIGNAL_EXCEPTION') {
-        return new ErrorResponseDTO(new Error(error.sqlMessage));
-      }
-      return new ErrorResponseDTO(error);
-    }
-  }
-
-  async getCourseDetail(courseId) {
+async checkEnrollment(userId, courseId) {
   try {
-    if (!courseId || isNaN(courseId)) {
-      throw new Error('Invalid course ID');
-    }
-
     const [result] = await promisePool.query(
-      'CALL get_course_detail(?)',
-      [courseId]
+      'CALL check_course_enrollment(?, ?)',
+      [userId, courseId]
     );
-
-    if (!result || result.length === 0 || !result[0] || result[0].length === 0) {
-      return new ErrorResponseDTO(new Error('No course data found'));
-    }
-
-    // Raw output from stored procedure
-    const [
-      courseDetails,       // result[0]
-      courseSections,      // result[1]
-      courseLessons,       // result[2]
-      lessonSkills,        // result[3]
-      courseReviews,       // result[4]
-      courseOutcomes,      // result[5]
-      courseRequirements,  // result[6]
-      courseFaqs           // result[7]
-    ] = result;
-
-    // Format output into one object, using only plain JS objects
-    const courseData = {
-      course: courseDetails?.[0] || null,
-      course_sections: courseSections || [],
-      course_lessons: courseLessons || [],
-      lesson_skills: lessonSkills || [],
-      course_reviews: courseReviews || [],
-      course_outcomes: courseOutcomes || [],
-      course_requirements: courseRequirements || [],
-      course_faqs: courseFaqs || []
-    };
-
-    return new ServiceResponseDTO(true, courseData);
+    return new ServiceResponseDTO(true, { is_enrolled: result[0][0].is_enrolled });
   } catch (error) {
-    console.error("Error in getCourseDetail:", error);
-    if (error.code === 'ER_SIGNAL_EXCEPTION') {
-      return new ErrorResponseDTO(new Error(error.sqlMessage));
-    }
     return new ErrorResponseDTO(error);
   }
 }
 
+async getCourseBasicDetails(courseId) {
+  try {
+    const [results] = await promisePool.query(
+      'CALL get_course_basic_details(?)',
+      [courseId]
+    );
+    
+    // Process multiple result sets
+    const courseInfo = results[0][0];
+    const requirements = results[1];
+    const outcomes = results[2];
+    const faqs = results[3];
+    const skills = results[4];
+    const sections = results[5];
+    const contentLessons = results[6];
+    const iltsLessons = results[7];
+    const reviews = results[8];
+    const ratingStats = results[9][0];
+    
+    // Combine all lessons
+    const allLessons = [...contentLessons, ...iltsLessons];
+    
+    return new ServiceResponseDTO(true, {
+      ...courseInfo,
+      requirements: requirements.map(req => new CourseRequirementDTO(req)),
+      outcomes: outcomes.map(out => new CourseOutcomeDTO(out)),
+      faqs: faqs.map(faq => new CourseFaqDTO(faq)),
+      skills: skills.map(skill => new CourseSkillDTO(skill)),
+      sections: sections.map(section => new CourseSectionDTO(section)),
+      lessons: allLessons.map(lesson => new CourseLessonDTO(lesson)),
+      reviews: reviews.map(review => new CourseReviewDTO(review)),
+      rating_stats: new RatingStatsDTO(ratingStats),
+      is_enrolled: false
+    });
+  } catch (error) {
+    return new ErrorResponseDTO(error);
+  }
+}
+
+async getEnrolledCourseDetails(userId, courseId) {
+  try {
+    const [results] = await promisePool.query(
+      'CALL get_course_enrolled_details(?, ?)',
+      [userId, courseId]
+    );
+    
+    // First result sets are from get_course_basic_details
+    const courseInfo = results[0][0];
+    const requirements = results[1];
+    const outcomes = results[2];
+    const faqs = results[3];
+    const skills = results[4];
+    const sections = results[5];
+    const contentLessons = results[6];
+    const iltsLessons = results[7];
+    const reviews = results[8];
+    const ratingStats = results[9][0];
+    
+    // Additional result sets for enrolled details
+    const lessonsWithProgress = results[10];
+    const progressSummary = results[11][0];
+    const achievedSkills = results[12];
+    
+    // Combine all lessons
+    const allLessons = [...contentLessons, ...iltsLessons];
+    
+    return new ServiceResponseDTO(true, {
+      ...courseInfo,
+      requirements: requirements.map(req => new CourseRequirementDTO(req)),
+      outcomes: outcomes.map(out => new CourseOutcomeDTO(out)),
+      faqs: faqs.map(faq => new CourseFaqDTO(faq)),
+      skills: skills.map(skill => new CourseSkillDTO(skill)),
+      sections: sections.map(section => new CourseSectionDTO(section)),
+      lessons: lessonsWithProgress.map(lesson => new CourseLessonDTO(lesson)),
+      reviews: reviews.map(review => new CourseReviewDTO(review)),
+      rating_stats: new RatingStatsDTO(ratingStats),
+      progress: new CourseProgressDTO(progressSummary),
+      achieved_skills: achievedSkills.map(skill => new CourseSkillDTO(skill)),
+      is_enrolled: true
+    });
+  } catch (error) {
+    return new ErrorResponseDTO(error);
+  }
+}
+
+async getCourseDetails(userId, courseId) {
+  try {
+    // First check enrollment status
+    const enrollmentCheck = await this.checkEnrollment(userId, courseId);
+    if (!enrollmentCheck.success) {
+      return enrollmentCheck;
+    }
+    
+    // Return appropriate details based on enrollment
+    if (enrollmentCheck.data.is_enrolled) {
+      return await this.getEnrolledCourseDetails(userId, courseId);
+    }
+    return await this.getCourseBasicDetails(courseId);
+  } catch (error) {
+    return new ErrorResponseDTO(error);
+  }
+}
 
 }
 
