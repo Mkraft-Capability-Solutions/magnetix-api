@@ -152,7 +152,7 @@ class CourseDetailDTO {
 
 class CourseLessonDTO {
   constructor(lessonData) {
-    this.id = lessonData.id;
+    this.id = lessonData.id || lessonData.lesson_id; 
     this.title = lessonData.title;
     this.section_id = lessonData.section_id;
     this.lesson_type = lessonData.lesson_type;
@@ -186,6 +186,7 @@ class CourseLessonDTO {
     }
   }
 }
+
 
 class CourseSectionDTO {
   constructor(sectionData) {

@@ -51,7 +51,8 @@ app.use('/api/student/calendar', studentCalendarRoutes);
 app.use('/api/notification-permissions', notificationPermissionRoutes);
 
 // Serve uploaded files (e.g., profile pictures)
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 
 // Global error handling middleware
 app.use((err, req, res, next) => {
