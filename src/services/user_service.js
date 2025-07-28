@@ -3,152 +3,84 @@ const bcrypt = require('bcryptjs');
 const UserDTO = require('../dto/user_dto');
 
 class UserService {
-  // Get role table name based on role_id
-  getRoleTable(roleId) {
-    switch (roleId) {
-      case 1: return 'students';
-      case 2: return 'instructors';
-      case 3: return 'admins';
-      case 4: return 'super_admins';
-      default: throw new Error('Invalid role ID');
-    }
-  }
-
-  // Get user by UUID with complete details
+  // Get user by UUID with complete details using stored procedure
   async getUser(uuid) {
     const connection = await promisePool.getConnection();
     
     try {
-      // Get user from users table
-      const [userRows] = await connection.query(
-        'SELECT * FROM users WHERE uuid = ? AND is_deleted = 0',
+      const [rows] = await connection.query(
+        'CALL get_user_details(?)',
         [uuid]
       );
 
-      if (userRows.length === 0) {
+      if (rows[0].length === 0) {
         throw new Error('User not found');
       }
 
-      const user = userRows[0];
-      const roleTable = this.getRoleTable(user.role_id);
-
-      // Get user details from role-specific table
-      const [detailRows] = await connection.query(
-        `SELECT * FROM ${roleTable} WHERE user_id = ?`,
-        [uuid]
-      );
-
-      if (detailRows.length === 0) {
-        throw new Error('User details not found');
-      }
-
-      // Combine user data
-      const userData = {
-        ...user,
-        ...detailRows[0]
-      };
-
-      return new UserDTO(userData);
+      return new UserDTO(rows[0][0]);
     } finally {
       connection.release();
     }
   }
 
-  // Update user details
+  // Update user details using stored procedure
   async updateUserDetails(uuid, updateData) {
     const connection = await promisePool.getConnection();
     
     try {
-      // Get user to determine role
-      const [userRows] = await connection.query(
-        'SELECT role_id FROM users WHERE uuid = ? AND is_deleted = 0',
-        [uuid]
+      const [rows] = await connection.query(
+        'CALL update_user_details(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          uuid,
+          updateData.first_name || null,
+          updateData.last_name || null,
+          updateData.contact || null,
+          updateData.gender || null,
+          updateData.dob || null,
+          updateData.address || null,
+          updateData.city || null,
+          updateData.state || null,
+          updateData.country || null,
+          updateData.social_links ? JSON.stringify(updateData.social_links) : null,
+          updateData.about || null,
+          updateData.resume_url || null,
+          updateData.profile_visibility || null
+        ]
       );
 
-      if (userRows.length === 0) {
-        throw new Error('User not found');
-      }
-
-      const roleTable = this.getRoleTable(userRows[0].role_id);
-      
-      // Prepare update fields and values
-      const fieldsToUpdate = [];
-      const values = [];
-      
-      for (const [key, value] of Object.entries(updateData)) {
-        // Skip fields that shouldn't be updated here
-        if (['uuid', 'email', 'password', 'role_id', 'status', 'is_deleted'].includes(key)) {
-          continue;
-        }
-        
-        fieldsToUpdate.push(`${key} = ?`);
-        values.push(value);
-      }
-      
-      if (fieldsToUpdate.length === 0) {
-        throw new Error('No valid fields to update');
-      }
-
-      values.push(uuid);
-      
-      // Update role-specific table
-      await connection.query(
-        `UPDATE ${roleTable} SET ${fieldsToUpdate.join(', ')} WHERE user_id = ?`,
-        values
-      );
-
-      // Update users table timestamp
-      await connection.query(
-        'UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE uuid = ?',
-        [uuid]
-      );
-
-      return this.getUser(uuid);
+      return new UserDTO(rows[0][0]);
     } finally {
       connection.release();
     }
   }
 
-  // Soft delete user
+  // Soft delete user using stored procedure
   async deleteUser(uuid) {
     const connection = await promisePool.getConnection();
     try {
-      // Execute update and capture result
       const [result] = await connection.query(
-        `UPDATE users 
-        SET is_deleted = 1, 
-            status = 'inactive', 
-            session_id = NULL,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE uuid = ? AND is_deleted = 0`,
+        'CALL delete_user(?)',
         [uuid]
       );
 
-      // Check if any rows were affected
-      if (result.affectedRows === 0) {
+      if (result[0][0].result === 0) {
         throw new Error('User not found or already deleted');
       }
 
-      // Optional: Log the deletion
-      console.log(`User ${uuid} soft-deleted. Rows affected: ${result.affectedRows}`);
-
       return {
         success: true,
-        affectedRows: result.affectedRows
+        affectedRows: result[0][0].result
       };
-    } catch (error) {
-      console.error(`Error deleting user ${uuid}:`, error);
-      throw error; // Re-throw for controller to handle
     } finally {
       connection.release();
     }
   }
 
-  // Update user password
+  // Update user password using stored procedure
   async updateUserPassword(uuid, currentPassword, newPassword) {
     const connection = await promisePool.getConnection();
     try {
-      // First get the current password hash
+      // First get the current password hash to verify
       const [userRows] = await connection.query(
         'SELECT password FROM users WHERE uuid = ? AND is_deleted = 0',
         [uuid]
@@ -167,13 +99,13 @@ class UserService {
       // Hash new password
       const hashedPassword = await bcrypt.hash(newPassword, 10);
       
-      // Update password
+      // Call stored procedure with hashed password
       const [result] = await connection.query(
-        'UPDATE users SET password = ?, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?',
-        [hashedPassword, uuid]
+        'CALL update_user_password(?, ?, ?)',
+        [uuid, currentPassword, hashedPassword]
       );
 
-      if (result.affectedRows === 0) {
+      if (result[0][0].result === 0) {
         throw new Error('Password update failed');
       }
 
@@ -183,36 +115,17 @@ class UserService {
     }
   }
 
-  // Update profile picture
+  // Update profile picture using stored procedure
   async updateProfilePicture(uuid, imagePath) {
     const connection = await promisePool.getConnection();
     
     try {
-      // Get user to determine role
-      const [userRows] = await connection.query(
-        'SELECT role_id FROM users WHERE uuid = ? AND is_deleted = 0',
-        [uuid]
+      const [rows] = await connection.query(
+        'CALL update_profile_picture(?, ?)',
+        [uuid, imagePath]
       );
 
-      if (userRows.length === 0) {
-        throw new Error('User not found');
-      }
-
-      const roleTable = this.getRoleTable(userRows[0].role_id);
-      
-      // Update profile picture path
-      await connection.query(
-        `UPDATE ${roleTable} SET dp = ? WHERE user_id = ?`,
-        [imagePath, uuid]
-      );
-
-      // Update users table timestamp
-      await connection.query(
-        'UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE uuid = ?',
-        [uuid]
-      );
-
-      return this.getUser(uuid);
+      return new UserDTO(rows[0][0]);
     } finally {
       connection.release();
     }

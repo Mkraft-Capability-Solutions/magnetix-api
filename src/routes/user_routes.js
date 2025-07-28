@@ -1,5 +1,9 @@
 const express = require("express");
 const router = express.Router();
+const fs = require("fs");
+const path = require("path");
+const multer = require("multer");
+
 const userController = require("../controllers/user_controller");
 const {
   authenticate,
@@ -7,13 +11,16 @@ const {
   checkSelfOrAdmin,
   checkSelfOrSuperAdmin,
 } = require("../middleware/auth_middleware");
-const multer = require("multer");
-const path = require("path");
 
-// Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "./uploads/user_images/");
+    const uploadDir = "./uploads/users/";
+
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
@@ -36,26 +43,29 @@ const upload = multer({
       cb(new Error("Only image files are allowed (jpeg, jpg, png, gif)"));
     }
   },
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
 });
+
+
+// Get own profile
 router.get(
   "/me",
-  authenticate, // adds req.user
-  authorize(1, 2, 3, 4), // optional – keep if you still want role gating
+  authenticate,
+  authorize(1, 2, 3, 4),
   (req, _res, next) => {
-    // Trick: fabricate the :uuid param so the next middleware works
     req.params.uuid = req.user.uuid;
     next();
   },
-  checkSelfOrAdmin, // will now succeed because params.uuid == user.uuid
-  userController.getUser // existing handler you already use for /:uuid
+  checkSelfOrAdmin,
+  userController.getUser
 );
-// Get user details
+
+// Get user by UUID
 router.get(
   "/:uuid",
   authenticate,
-  authorize(1, 2, 3, 4), // All roles can access
-  checkSelfOrAdmin, // But can only view self or be admin
+  authorize(1, 2, 3, 4),
+  checkSelfOrAdmin,
   userController.getUser
 );
 
@@ -63,8 +73,8 @@ router.get(
 router.put(
   "/:uuid/details",
   authenticate,
-  authorize(1, 2, 3, 4), // All roles can access
-  checkSelfOrAdmin, // But can only update self or be admin
+  authorize(1, 2, 3, 4),
+  checkSelfOrAdmin,
   userController.updateUserDetails
 );
 
@@ -72,7 +82,7 @@ router.put(
 router.delete(
   "/:uuid",
   authenticate,
-  authorize(3, 4), // Only admin and super admin can delete
+  authorize(3, 4),
   userController.deleteUser
 );
 
@@ -80,17 +90,17 @@ router.delete(
 router.put(
   "/:uuid/password",
   authenticate,
-  authorize(1, 2, 3, 4), // All roles can access
-  checkSelfOrSuperAdmin, // But can only update self or be super admin
+  authorize(1, 2, 3, 4),
+  checkSelfOrSuperAdmin,
   userController.updateUserPassword
 );
 
-// Update profile picture
+// ✅ Upload profile picture
 router.put(
   "/:uuid/profile-picture",
   authenticate,
-  authorize(1, 2, 3, 4), // All roles can access
-  checkSelfOrSuperAdmin, // But can only update self or be super admin
+  authorize(1, 2, 3, 4),
+  checkSelfOrSuperAdmin,
   upload.single("profile_picture"),
   userController.updateProfilePicture
 );
