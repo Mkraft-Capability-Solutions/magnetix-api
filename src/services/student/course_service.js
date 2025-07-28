@@ -124,26 +124,38 @@ class CourseService {
 
   async enrollInCourse(studentId, courseId) {
     try {
-      const normalizedStudentId = studentId.toLowerCase();
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(normalizedStudentId)) {
-        throw new Error('Invalid student UUID format');
-      }
+        const normalizedStudentId = studentId.toLowerCase();
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(normalizedStudentId)) {
+            throw new Error('Invalid student UUID format');
+        }
 
-      const [result] = await promisePool.query(
-        'CALL enroll_student_in_course(?, ?)', 
-        [normalizedStudentId, courseId]
-      );
-      return new ServiceResponseDTO(true, null, result[0][0].message || 'Successfully enrolled in the course');
+        const [result] = await promisePool.query(
+            'CALL enroll_student_in_course(?, ?)', 
+            [normalizedStudentId, courseId]
+        );
+        
+        // The result array contains all SELECT outputs from the procedure
+        const debugInfo = result.filter(row => row[0] && (row[0].debug || row[0].warning));
+        const message = result.find(row => row[0] && row[0].message)[0].message;
+        
+        return new ServiceResponseDTO(
+            true, 
+            {
+                message: message,
+                firstLessonUnlocked: debugInfo.some(info => info[0].debug && info[0].debug.includes('Inserted progress')),
+                debug: debugInfo.map(info => info[0])
+            }
+        );
     } catch (error) {
-      if (error.code === 'ER_SIGNAL_EXCEPTION') {
-        return new ErrorResponseDTO(new Error(error.sqlMessage));
-      } else if (error.code === 'ER_NO_REFERENCED_ROW_2') {
-        return new ErrorResponseDTO(new Error('The course or student does not exist'));
-      }
-      return new ErrorResponseDTO(error);
+        if (error.code === 'ER_SIGNAL_EXCEPTION') {
+            return new ErrorResponseDTO(new Error(error.sqlMessage));
+        } else if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+            return new ErrorResponseDTO(new Error('The course or student does not exist'));
+        }
+        return new ErrorResponseDTO(error);
     }
-  }
+}
   
   async getCourseProgress(studentId, courseId) {
     try {
@@ -453,6 +465,25 @@ async getCourseDetails(userId, courseId) {
   } catch (error) {
     return new ErrorResponseDTO(error);
   }
+}
+
+async markLessonCompleted(userId, lessonId, courseId) {
+    try {
+        const [result] = await promisePool.query(
+            'CALL mark_lesson_completed(?, ?, ?)',
+            [userId, lessonId, courseId]
+        );
+        
+        return new ServiceResponseDTO(true, {
+            message: result[0][0].message,
+            nextLessonUnlocked: result[1] ? result[1][0] : null
+        });
+    } catch (error) {
+        if (error.code === 'ER_SIGNAL_EXCEPTION') {
+            return new ErrorResponseDTO(new Error(error.sqlMessage));
+        }
+        return new ErrorResponseDTO(error);
+    }
 }
 
 }

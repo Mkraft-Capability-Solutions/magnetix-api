@@ -25,4 +25,6 @@ router.get('/:courseId/skills/remaining', authenticate, authorize(1), courseCont
 
 router.get('/:courseId', authenticate, authorize(1), courseController.getCourseDetails);
 
+router.post('/mark-lesson-completed', authenticate, authorize(1), courseController.markLessonCompleted);
+
 module.exports = router;

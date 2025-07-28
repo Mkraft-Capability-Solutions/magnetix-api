@@ -82,27 +82,35 @@ exports.getRecommendedCourses = async (req, res, next) => {
   }
 };
 
+
 exports.enrollInCourse = async (req, res, next) => {
-  try {
-    const { course_id } = req.body;
-    
-    if (!course_id) {
-      return res.status(400).json({
-        success: false,
-        message: 'Course ID is required in request body'
-      });
-    }
+    try {
+        const { course_id } = req.body;
+        
+        if (!course_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Course ID is required in request body'
+            });
+        }
 
-    const response = await courseService.enrollInCourse(req.user.uuid, course_id);
-    if (!response.success) {
-      return res.status(response.error.status || 500).json(response);
+        const response = await courseService.enrollInCourse(req.user.uuid, course_id);
+        if (!response.success) {
+            return res.status(response.error.status || 500).json(response);
+        }
+        
+        res.json({
+            success: true,
+            message: response.data.message,
+            data: {
+                courseId: course_id,
+                firstLessonUnlocked: response.data.firstLessonUnlocked
+            }
+        });
+    } catch (error) {
+        next(error);
     }
-    res.json(response);
-  } catch (error) {
-    next(error);
-  }
 };
-
 exports.getCourseProgress = async (req, res, next) => {
   try {
     const { courseId } = req.params;
@@ -276,4 +284,28 @@ exports.getCourseDetails = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+exports.markLessonCompleted = async (req, res, next) => {
+    try {
+        const { lessonId, courseId } = req.body;
+        const userId = req.user.uuid;
+
+        if (!lessonId || !courseId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Lesson ID and Course ID are required'
+            });
+        }
+
+        const response = await courseService.markLessonCompleted(userId, lessonId, courseId);
+        
+        if (!response.success) {
+            return res.status(response.error.status || 500).json(response);
+        }
+
+        res.json(response);
+    } catch (error) {
+        next(error);
+    }
 };
