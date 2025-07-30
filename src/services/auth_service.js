@@ -32,24 +32,43 @@ class AuthService {
   }
 
   generateTokens(user, sessionId) {
-    const accessToken = jwt.sign(
-      { uuid: user.uuid, email: user.email, role_id: user.role_id, session_id: sessionId },
-      jwtConfig.accessSecret,
-      { expiresIn: jwtConfig.accessExpiresIn }
-    );
+      const accessToken = jwt.sign(
+        {
+          uuid: user.uuid,
+          email: user.email,
+          role_id: user.role_id,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          dp: user.dp || null,
+          instance: user.instance,  // ✅ This ensures community-api gets all required fields
+          session_id: sessionId
+        },
+        jwtConfig.accessSecret,
+        { expiresIn: jwtConfig.accessExpiresIn }
+      );
 
-    const refreshToken = jwt.sign(
-      { uuid: user.uuid, session_id: sessionId },
-      jwtConfig.refreshSecret,
-      { expiresIn: jwtConfig.refreshExpiresIn }
-    );
+      const refreshToken = jwt.sign(
+        {
+          uuid: user.uuid,
+          session_id: sessionId
+        },
+        jwtConfig.refreshSecret,
+        { expiresIn: jwtConfig.refreshExpiresIn }
+      );
 
-    const now = Math.floor(Date.now() / 1000);
-    const accessTokenExpiry = now + jwt.decode(accessToken).exp;
-    const refreshTokenExpiry = now + jwt.decode(refreshToken).exp;
+      const now = Math.floor(Date.now() / 1000);
+      const accessTokenExpiry = now + jwt.decode(accessToken).exp;
+      const refreshTokenExpiry = now + jwt.decode(refreshToken).exp;
 
-    return { accessToken, refreshToken, accessTokenExpiry, refreshTokenExpiry };
-  }
+      return {
+        accessToken,
+        refreshToken,
+        accessTokenExpiry,
+        refreshTokenExpiry
+      };
+    }
+
+
 
   async refreshAccessToken(refreshToken) {
     try {
@@ -90,19 +109,25 @@ class AuthService {
   }
 
   async loginUser(email, password) {
-    const [result] = await promisePool.query('CALL login_user(?)', [email]);
-    const rows = result[0];
+    // Call stored procedure to get user details
+    const [resultSets] = await promisePool.query('CALL login_user(?)', [email]);
+    const rows = resultSets[0];
 
     if (rows.length === 0) throw new Error('User not found');
 
     const user = rows[0];
+
+    // Compare password
     const isMatch = await this.comparePassword(password, user.password);
     if (!isMatch) throw new Error('Invalid credentials');
+
     if (user.status !== 'active') throw new Error('Account not active. Please verify your email.');
 
+    // Generate new session ID
     const sessionId = uuidv4();
     await promisePool.query('UPDATE users SET session_id = ? WHERE uuid = ?', [sessionId, user.uuid]);
 
+    // Return user and tokens
     return {
       user: {
         uuid: user.uuid,
@@ -111,7 +136,8 @@ class AuthService {
         first_name: user.first_name,
         last_name: user.last_name,
         dp: user.dp || null,
-        status: user.status
+        status: user.status,
+        instance: user.instance
       },
       ...this.generateTokens(user, sessionId)
     };
@@ -122,37 +148,30 @@ class AuthService {
     await connection.beginTransaction();
 
     try {
+      // Call updated stored procedure which returns user info on success
       const [rows] = await connection.query('CALL verify_user(?, ?)', [email, verificationCode]);
-      const result = rows[0];
-      if (result.length === 0 || result[0].status !== 'success') {
+      const userRows = rows[0];
+
+      // If verification failed
+      if (userRows.length === 0 || userRows[0].status === 'failure') {
         throw new Error('Invalid verification code or email');
       }
 
-      const [userRows] = await connection.query(
-        `SELECT u.uuid, u.email, u.role_id, u.status,
-         r.first_name, r.last_name, r.dp
-         FROM users u
-         LEFT JOIN (
-           SELECT user_id, first_name, last_name, dp FROM students
-           UNION SELECT user_id, first_name, last_name, dp FROM instructors
-           UNION SELECT user_id, first_name, last_name, dp FROM admins
-           UNION SELECT user_id, first_name, last_name, dp FROM super_admins
-         ) r ON r.user_id = u.uuid
-         WHERE u.email = ?`,
-        [email]
-      );
-
-      if (userRows.length === 0) throw new Error('User not found');
+      // Extract user data
       const user = userRows[0];
 
+      // Generate new session ID and update the user
       const sessionId = uuidv4();
       await connection.query('UPDATE users SET session_id = ? WHERE email = ?', [sessionId, email]);
 
+      // Commit and release DB connection
       await connection.commit();
       connection.release();
 
+      // Send welcome email
       await emailHelper.sendWelcomeEmail(email, user.first_name);
 
+      // ✅ Return tokens + user info
       return {
         ...this.generateTokens(user, sessionId),
         user: {
@@ -162,7 +181,8 @@ class AuthService {
           first_name: user.first_name,
           last_name: user.last_name,
           dp: user.dp || null,
-          status: user.status
+          status: user.status,
+          instance: user.instance 
         }
       };
     } catch (error) {
@@ -171,6 +191,7 @@ class AuthService {
       throw error;
     }
   }
+
 
   getRoleTable(roleId) {
     switch(roleId) {
