@@ -38,7 +38,12 @@ exports.getPastEvents = async (req, res, next) => {
 
 exports.registerForEvent = async (req, res, next) => {
   try {
-    const response = await eventService.registerForEvent(req.user.uuid, req.params.eventId);
+    const { event_id } = req.body;
+    if (!event_id) {
+      return res.status(400).json({ success: false, error: { status: 400, message: 'Event ID is required' } });
+    }
+
+    const response = await eventService.registerForEvent(req.user.uuid, event_id);
     if (!response.success) {
       return res.status(response.error.status || 500).json(response);
     }
