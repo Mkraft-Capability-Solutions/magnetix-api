@@ -217,38 +217,34 @@ class AuthService {
   }
 
   async resetPassword(email, verificationCode, newPassword) {
-    this.validatePasswordComplexity(newPassword);
-    const hashedPassword = await this.hashPassword(newPassword);
+  this.validatePasswordComplexity(newPassword);
+  const hashedPassword = await this.hashPassword(newPassword);
 
-    try {
-      // Get a connection from the pool
-      const connection = await promisePool.getConnection();
-      
-      try {
-        // Execute the stored procedure
-        const [result] = await connection.query(
-          'CALL reset_password(?, ?, ?)', 
-          [email, verificationCode, hashedPassword]
-        );
-        
-        // Release the connection
-        connection.release();
-        
-        // Check if the operation was successful
-        if (result.affectedRows === 0) {
-          throw new Error('Password reset failed - no rows affected');
-        }
-        
-        return true;
-      } catch (error) {
-        // Ensure connection is released even if error occurs
-        connection.release();
-        throw error;
-      }
-    } catch (error) {
-      throw error;
+  const connection = await promisePool.getConnection();
+  try {
+    const [resultSets] = await connection.query(
+      'CALL reset_password(?, ?, ?)',
+      [email, verificationCode, hashedPassword]
+    );
+
+    console.log('Stored procedure resultSets:', resultSets);
+
+    connection.release();
+
+    const result = resultSets?.[0]?.[0]; // Fixed here
+    if (!result || result.status !== 'success') {
+      throw new Error('Password reset failed');
     }
+
+    return true;
+  } catch (error) {
+    connection.release();
+    console.error('Error in resetPassword:', error);
+    throw error;
   }
+}
+
+
 
   async logoutUser(uuid) {
     await promisePool.query('CALL logout_user(?)', [uuid]);
