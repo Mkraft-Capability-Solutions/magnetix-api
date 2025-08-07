@@ -33,17 +33,31 @@ class EventService {
     }
   }
         
-async registerForEvent(studentId, eventId) {
-  try {
-    await promisePool.query('CALL register_student_for_event(?, ?)', [studentId, eventId]);
-    return new ServiceResponseDTO(true, null, 'Successfully registered for the event');
-  } catch (error) {
-    if (error.message === 'Already registered for this event') {
-      return new ErrorResponseDTO(error, 409);
+   async registerForEvent(recipientId, eventId) {
+    try {
+      const [result] = await promisePool.query('CALL register_for_event(?, ?)', [recipientId, eventId]);
+      const registrationData = result[0][0]; // Assuming stored procedure returns a single row with user and event details
+      if (!registrationData.success) {
+        return new ErrorResponseDTO({
+          status: registrationData.status || 500,
+          message: registrationData.message
+        });
+      }
+      return new ServiceResponseDTO(true, {
+        message: 'Successfully registered for event',
+        user: {
+          uuid: recipientId,
+          email: registrationData.email,
+          full_name: registrationData.full_name,
+          role_id: registrationData.role_id
+        },
+        event_id: eventId
+      });
+    } catch (error) {
+      return new ErrorResponseDTO(error);
     }
-    return new ErrorResponseDTO(error);
   }
-}
+
 }
 
 module.exports = new EventService();

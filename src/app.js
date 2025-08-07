@@ -36,7 +36,8 @@ const studentEventRoutes = require('./routes/student/event_routes');
 const studentActivityRoutes = require('./routes/student_activity_route');
 const studentCalendarRoutes = require('./routes/student/calendar_routes');
 const notificationPermissionRoutes = require('./routes/notification_permission_routes');
-
+const instructorMentorshipRoutes = require('./routes/instructor/mentorship_routes');
+const instructorEventRoutes = require('./routes/instructor/event_routes');
 
 // Use routes with API prefixes
 app.use('/api/landing', landingRoutes);
@@ -49,10 +50,11 @@ app.use('/api/student/events', studentEventRoutes);
 app.use('/api/student/activity', studentActivityRoutes);
 app.use('/api/student/calendar', studentCalendarRoutes);
 app.use('/api/notification-permissions', notificationPermissionRoutes);
+app.use('/api/instructor/mentorship', instructorMentorshipRoutes);
+app.use('/api/instructor/events', instructorEventRoutes);
 
 // Serve uploaded files (e.g., profile pictures)
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-
+app.use('/uploads', express.static(path.join(__dirname, '../Uploads')));
 
 // Global error handling middleware
 app.use((err, req, res, next) => {

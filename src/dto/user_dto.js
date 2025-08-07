@@ -19,7 +19,8 @@ class UserDTO {
     this.resume_url = userData.resume_url;
     this.profile_visibility = userData.profile_visibility;
     this.created_at = userData.created_at;
-    this.updated_at = userData.updated_at;
+    this.updated_at = userData.updated_at; 
+    this.instance = userData.instance; 
   }
 }
 

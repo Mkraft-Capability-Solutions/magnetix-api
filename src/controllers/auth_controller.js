@@ -135,6 +135,7 @@ exports.login = async (req, res, next) => {
         first_name: user.first_name,
         last_name: user.last_name,
         dp: user.dp || null,
+        instance: user.instance 
       },
     };
 
@@ -143,6 +144,7 @@ exports.login = async (req, res, next) => {
     next(error);
   }
 };
+
 
 // In the verify function
 exports.verify = async (req, res, next) => {
@@ -180,6 +182,7 @@ exports.verify = async (req, res, next) => {
         first_name: user.first_name,
         last_name: user.last_name,
         dp: user.dp || null,
+        instance: user.instance 
       },
     };
 

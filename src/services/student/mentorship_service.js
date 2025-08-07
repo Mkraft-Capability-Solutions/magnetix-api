@@ -53,19 +53,19 @@ class MentorshipService {
   }
 
   async requestScheduleSession(studentId, mentorId, sessionDate, sessionTime, topic, description) {
-    try {
-      await promisePool.query(
-        'CALL request_mentorship_session(?, ?, ?, ?, ?, ?)', 
-        [studentId, mentorId, sessionDate, sessionTime, topic, description]
-      );
-      return new ServiceResponseDTO(true, null, 'Session request submitted successfully');
-    } catch (error) {
-      if (error.message === 'No active mentorship relationship with this mentor') {
-        return new ErrorResponseDTO(error, 400);
-      }
-      return new ErrorResponseDTO(error);
+  try {
+    await promisePool.query(
+      'CALL request_mentorship_session(?, ?, ?, ?, ?, ?)', 
+      [studentId, mentorId, sessionDate, sessionTime, topic, description]
+    );
+    return new ServiceResponseDTO(true, null, 'Session request submitted successfully');
+  } catch (error) {
+    if (error.message === 'No active mentorship relationship with this mentor') {
+      return new ErrorResponseDTO(error, 400);
     }
+    return new ErrorResponseDTO(error);
   }
+}
 }
 
 module.exports = new MentorshipService();
