@@ -8,15 +8,12 @@ const app = express();
 
 // CORS configuration
 const corsOptions = {
-  origin: ["https://isms.milekraft.com"], // allow only your frontend
+  origin: process.env.FRONTEND_URL || "http://localhost:3000",
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
   optionsSuccessStatus: 200,
 };
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // handle preflight requests
 app.use(cookieParser());
 
 // Parse JSON and URL-encoded data with size limits
