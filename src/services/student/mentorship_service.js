@@ -66,6 +66,21 @@ class MentorshipService {
     return new ErrorResponseDTO(error);
   }
 }
+
+async isMentorshipRequestDeleted(studentId) {
+  try {
+    const [result] = await promisePool.query(
+      'CALL is_mentorship_request_deleted(?)',
+      [studentId]
+    );
+    const isDeleted = result[0][0].result === 1;
+    return new ServiceResponseDTO(true, { isDeleted });
+  } catch (error) {
+    return new ErrorResponseDTO(error);
+  }
+}
+
+
 }
 
 module.exports = new MentorshipService();

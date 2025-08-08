@@ -10,4 +10,7 @@ router.get('/upcoming-sessions', authenticate, authorize(1), mentorshipControlle
 router.get('/past-sessions', authenticate, authorize(1), mentorshipController.getPastSessions);
 router.post('/schedule-session', authenticate, authorize(1), mentorshipController.requestScheduleSession);
 router.post('/schedule-session', authenticate, authorize(1), mentorshipController.requestScheduleSession);
+router.get( '/is-request-deleted',  authenticate,  authorize(1), mentorshipController.isMentorshipRequestDeleted);
+
+
 module.exports = router;

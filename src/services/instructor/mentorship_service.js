@@ -1,97 +1,114 @@
 const { promisePool } = require('../../config/db');
-const { mentorshipRequestSchema, sessionRequestSchema, scheduleSessionSchema, updateSessionSchema } = require('../../dto/instructor/mentorship_dto');
+const { MentorshipRequestDTO, MenteeDTO, SessionRequestDTO } = require('../../dto/instructor/mentorship_dto');
 
 class InstructorMentorshipService {
-  async getMentorshipRequests(mentorId) {
-    const [rows] = await promisePool.query('CALL instructor_get_mentorship_requests(?)', [mentorId]);
-    return rows[0];
-  }
+    async getMentorshipRequests(mentorId, limit = 10, offset = 0) {
+        const [rows] = await promisePool.query(
+            'CALL instructor_get_mentorship_requests(?, ?, ?)',
+            [mentorId, limit, offset]
+        );
+        return rows[0].map(row => new MentorshipRequestDTO(row));
+    }
 
-  async approveMentorshipRequest(mentorId, mentorshipId) {
-    const { error } = mentorshipRequestSchema.validate({ mentorship_id: mentorshipId });
-    if (error) throw new Error(error.details[0].message);
+    async approveMentorshipRequest(mentorId, mentorshipId) {
+        await promisePool.query(
+            'CALL instructor_approve_mentorship_request(?, ?)',
+            [mentorId, mentorshipId]
+        );
+        return true;
+    }
 
-    await promisePool.query('CALL instructor_approve_mentorship_request(?, ?)', [mentorshipId, mentorId]);
-    return true;
-  }
+    async rejectMentorshipRequest(mentorId, mentorshipId) {
+        const [result] = await promisePool.query(
+            'CALL instructor_reject_mentorship_request(?, ?)',
+            [mentorId, mentorshipId]
+        );
+        if (result[0][0].success) {
+            return true;
+        }
+        throw new Error('Failed to reject mentorship request');
+    }
 
-  async rejectMentorshipRequest(mentorId, mentorshipId) {
-    const { error } = mentorshipRequestSchema.validate({ mentorship_id: mentorshipId });
-    if (error) throw new Error(error.details[0].message);
+    async getAllMentees(mentorId, limit = 10, offset = 0) {
+        const [rows] = await promisePool.query(
+            'CALL instructor_get_all_mentees(?, ?, ?)',
+            [mentorId, limit, offset]
+        );
+        return rows[0].map(row => new MenteeDTO(row));
+    }
 
-    await promisePool.query('CALL instructor_reject_mentorship_request(?, ?)', [mentorshipId, mentorId]);
-    return true;
-  }
+    async getScheduleSessionRequests(mentorId, limit = 10, offset = 0) {
+        const [rows] = await promisePool.query(
+            'CALL instructor_get_schedule_session_requests(?, ?, ?)',
+            [mentorId, limit, offset]
+        );
+        return rows[0].map(row => new SessionRequestDTO(row));
+    }
 
-  async getAllMentees(mentorId) {
-    const [rows] = await promisePool.query('CALL instructor_get_all_mentees(?)', [mentorId]);
-    return rows[0];
-  }
+    async approveSessionRequest(mentorId, sessionId) {
+        await promisePool.query(
+            'CALL instructor_approve_session_request(?, ?)',
+            [mentorId, sessionId]
+        );
+        return true;
+    }
 
-  async getScheduleSessionRequests(mentorId) {
-    const [rows] = await promisePool.query('CALL instructor_get_schedule_session_requests(?)', [mentorId]);
-    return rows[0];
-  }
+    async rejectSessionRequest(mentorId, sessionId) {
+        await promisePool.query(
+            'CALL instructor_reject_session_request(?, ?)',
+            [mentorId, sessionId]
+        );
+        return true;
+    }
 
-  async approveSessionRequest(mentorId, sessionId) {
-    const { error } = sessionRequestSchema.validate({ session_id: sessionId });
-    if (error) throw new Error(error.details[0].message);
+    async getUpcomingScheduleSessions(mentorId, limit = 10, offset = 0) {
+        const [rows] = await promisePool.query(
+            'CALL instructor_get_upcoming_schedule_sessions(?, ?, ?)',
+            [mentorId, limit, offset]
+        );
+        return rows[0].map(row => new SessionRequestDTO(row));
+    }
 
-    await promisePool.query('CALL instructor_approve_session_request(?, ?)', [sessionId, mentorId]);
-    return true;
-  }
+    async getPastScheduleSessions(mentorId, limit = 10, offset = 0) {
+        const [rows] = await promisePool.query(
+            'CALL instructor_get_past_schedule_sessions(?, ?, ?)',
+            [mentorId, limit, offset]
+        );
+        return rows[0].map(row => new SessionRequestDTO(row));
+    }
 
-  async rejectSessionRequest(mentorId, sessionId) {
-    const { error } = sessionRequestSchema.validate({ session_id: sessionId });
-    if (error) throw new Error(error.details[0].message);
+    async scheduleSession(mentorId, data) {
+        const [result] = await promisePool.query(
+            'CALL instructor_schedule_session(?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                mentorId,
+                data.menteeId,
+                data.sessionDate,
+                data.sessionTime,
+                data.topic,
+                data.description,
+                data.url,
+                data.duration
+            ]
+        );
+        return result[0][0].session_id;
+    }
 
-    await promisePool.query('CALL instructor_reject_session_request(?, ?)', [sessionId, mentorId]);
-    return true;
-  }
-
-  async getUpcomingScheduleSessions(mentorId) {
-    const [rows] = await promisePool.query('CALL instructor_get_upcoming_schedule_sessions(?)', [mentorId]);
-    return rows[0];
-  }
-
-  async getPastScheduleSessions(mentorId) {
-    const [rows] = await promisePool.query('CALL instructor_get_past_schedule_sessions(?)', [mentorId]);
-    return rows[0];
-  }
-
-  async scheduleSession(mentorId, data) {
-    const { error } = scheduleSessionSchema.validate(data);
-    if (error) throw new Error(error.details[0].message);
-
-    await promisePool.query('CALL instructor_schedule_session(?, ?, ?, ?, ?, ?, ?, ?)', [
-      mentorId,
-      data.mentee_id,
-      data.session_date,
-      data.session_time,
-      data.duration,
-      data.session_type,
-      data.meeting_link,
-      data.meeting_address
-    ]);
-    return true;
-  }
-
-  async updateScheduledSession(mentorId, data) {
-    const { error } = updateSessionSchema.validate(data);
-    if (error) throw new Error(error.details[0].message);
-
-    await promisePool.query('CALL instructor_update_scheduled_session(?, ?, ?, ?, ?, ?, ?, ?)', [
-      data.session_id,
-      mentorId,
-      data.session_date,
-      data.session_time,
-      data.duration,
-      data.session_type,
-      data.meeting_link,
-      data.meeting_address
-    ]);
-    return true;
-  }
+    async updateScheduledSession(mentorId, sessionId, data) {
+        await promisePool.query(
+            'CALL instructor_update_scheduled_session(?, ?, ?, ?, ?, ?, ?)',
+            [
+                mentorId,
+                sessionId,
+                data.sessionDate,
+                data.sessionTime,
+                data.topic,
+                data.description,
+                data.url
+            ]
+        );
+        return true;
+    }
 }
 
 module.exports = new InstructorMentorshipService();

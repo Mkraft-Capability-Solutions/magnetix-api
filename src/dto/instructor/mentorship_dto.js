@@ -1,36 +1,52 @@
-const Joi = require('joi');
+// instructor_mentorship_dto.js
+class MentorshipRequestDTO {
+    constructor(data) {
+        this.id = data.id;
+        this.menteeId = data.menteeId;
+        this.mentorId = data.mentorId;
+        this.status = data.status;
+        this.datetime = data.datetime;
+        this.menteeFirstName = data.mentee_first_name;
+        this.menteeLastName = data.mentee_last_name;
+        this.menteeEmail = data.mentee_email;
+    }
+}
 
-const mentorshipRequestSchema = Joi.object({
-  mentorship_id: Joi.number().integer().required()
-});
+class MenteeDTO {
+    constructor(data) {
+        this.id = data.id;
+        this.menteeId = data.menteeId;
+        this.mentorId = data.mentorId;
+        this.status = data.status;
+        this.datetime = data.datetime;
+        this.menteeFirstName = data.mentee_first_name;
+        this.menteeLastName = data.mentee_last_name;
+        this.menteeEmail = data.mentee_email;
+        this.menteeDp = data.mentee_dp;
+    }
+}
 
-const sessionRequestSchema = Joi.object({
-  session_id: Joi.number().integer().required()
-});
-
-const scheduleSessionSchema = Joi.object({
-  mentee_id: Joi.string().guid({ version: 'uuidv4' }).required(),
-  session_date: Joi.date().required(),
-  session_time: Joi.string().pattern(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).required(),
-  duration: Joi.number().integer().min(15).max(240).required(),
-  session_type: Joi.string().valid('online', 'offline').required(),
-  meeting_link: Joi.string().uri().when('session_type', { is: 'online', then: Joi.required(), otherwise: Joi.allow(null) }),
-  meeting_address: Joi.string().when('session_type', { is: 'offline', then: Joi.required(), otherwise: Joi.allow(null) })
-});
-
-const updateSessionSchema = Joi.object({
-  session_id: Joi.number().integer().required(),
-  session_date: Joi.date().required(),
-  session_time: Joi.string().pattern(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).required(),
-  duration: Joi.number().integer().min(15).max(240).required(),
-  session_type: Joi.string().valid('online', 'offline').required(),
-  meeting_link: Joi.string().uri().when('session_type', { is: 'online', then: Joi.required(), otherwise: Joi.allow(null) }),
-  meeting_address: Joi.string().when('session_type', { is: 'offline', then: Joi.required(), otherwise: Joi.allow(null) })
-});
+class SessionRequestDTO {
+    constructor(data) {
+        this.id = data.id;
+        this.menteeId = data.mentee_id;
+        this.mentorId = data.mentor_id;
+        this.sessionDate = data.session_date;
+        this.sessionTime = data.session_time;
+        this.topic = data.topic;
+        this.description = data.description;
+        this.url = data.url;
+        this.status = data.status;
+        this.duration = data.duration;
+        this.menteeFirstName = data.mentee_first_name;
+        this.menteeLastName = data.mentee_last_name;
+        this.menteeEmail = data.mentee_email;
+        this.menteeDp = data.mentee_dp;
+    }
+}
 
 module.exports = {
-  mentorshipRequestSchema,
-  sessionRequestSchema,
-  scheduleSessionSchema,
-  updateSessionSchema
+    MentorshipRequestDTO,
+    MenteeDTO,
+    SessionRequestDTO
 };

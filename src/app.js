@@ -38,6 +38,7 @@ const studentCalendarRoutes = require('./routes/student/calendar_routes');
 const notificationPermissionRoutes = require('./routes/notification_permission_routes');
 const instructorMentorshipRoutes = require('./routes/instructor/mentorship_routes');
 const instructorEventRoutes = require('./routes/instructor/event_routes');
+const instructorCourseRoutes = require('./routes/instructor/course_routes');
 
 // Use routes with API prefixes
 app.use('/api/landing', landingRoutes);
@@ -52,6 +53,7 @@ app.use('/api/student/calendar', studentCalendarRoutes);
 app.use('/api/notification-permissions', notificationPermissionRoutes);
 app.use('/api/instructor/mentorship', instructorMentorshipRoutes);
 app.use('/api/instructor/events', instructorEventRoutes);
+app.use('/api/instructor', instructorCourseRoutes);
 
 // Serve uploaded files (e.g., profile pictures)
 app.use('/uploads', express.static(path.join(__dirname, '../Uploads')));
@@ -59,8 +61,9 @@ app.use('/uploads', express.static(path.join(__dirname, '../Uploads')));
 // Global error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({
-    message: err.message || 'Something broke!',
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Internal Server Error',
     error: process.env.NODE_ENV === 'development' ? err : {}
   });
 });
