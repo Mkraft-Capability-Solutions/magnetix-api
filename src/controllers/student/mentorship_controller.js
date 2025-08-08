@@ -88,3 +88,15 @@ exports.requestScheduleSession = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.isMentorshipRequestDeleted = async (req, res, next) => {
+  try {
+    const response = await mentorshipService.isMentorshipRequestDeleted(req.user.uuid);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};

@@ -1,22 +1,37 @@
-const Joi = require('joi');
+class EventDTO {
+    constructor(data) {
+        this.id = data.id;
+        this.title = data.title;
+        this.description = data.description;
+        this.startDate = data.start_date;
+        this.startTime = data.start_time;
+        this.endDate = data.end_date;
+        this.endTime = data.end_time;
+        this.eventAudienceTypeId = data.event_audience_type_id;
+        this.speakers = data.speakers;
+        this.eventCategory = data.event_category;
+        this.eventThumbnail = data.event_thumbnail;
+        this.onlineEvent = data.online_event;
+        this.eventVenue = data.event_venue;
+        this.maxLimit = data.max_limit;
+        this.attendeesCount = data.attendees_count || 0;
+        this.url = data.url;
+        this.createdDate = data.created_date;
+    }
+}
 
-const eventSchema = Joi.object({
-  title: Joi.string().min(3).max(255).required(),
-  description: Joi.string().allow('').optional(),
-  event_date: Joi.date().required(),
-  event_time: Joi.string().pattern(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).required(),
-  duration: Joi.number().integer().min(15).max(240).required(),
-  event_type: Joi.string().valid('online', 'offline').required(),
-  meeting_link: Joi.string().uri().when('event_type', { is: 'online', then: Joi.required(), otherwise: Joi.allow(null) }),
-  meeting_address: Joi.string().when('event_type', { is: 'offline', then: Joi.required(), otherwise: Joi.allow(null) }),
-  max_attendees: Joi.number().integer().min(1).required()
-});
-
-const eventIdSchema = Joi.object({
-  event_id: Joi.number().integer().required()
-});
+class EventAttendeeDTO {
+    constructor(data) {
+        this.id = data.id;
+        this.eventId = data.event_id;
+        this.recipientId = data.recipient_id;
+        this.recipientName = data.recipient_name || `${data.attendee_first_name} ${data.attendee_last_name}`;
+        this.recipientEmail = data.recipient_email || data.attendee_email;
+        this.registeredAt = data.registered_at;
+    }
+}
 
 module.exports = {
-  eventSchema,
-  eventIdSchema
+    EventDTO,
+    EventAttendeeDTO
 };

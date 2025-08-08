@@ -1,30 +1,32 @@
-const userService = require('../services/user_service');
-const Joi = require('joi');
+const userService = require("../services/user_service");
+const Joi = require("joi");
 
 // Validation schemas
 const updateDetailsSchema = Joi.object({
   first_name: Joi.string().optional(),
   last_name: Joi.string().optional(),
-  contact: Joi.string().optional().allow(''),
-  gender: Joi.string().valid('male', 'female', 'other').optional(),
+  contact: Joi.string().optional().allow(""),
+  gender: Joi.string().valid("male", "female", "other").optional(),
   dob: Joi.date().optional(),
-  address: Joi.string().optional().allow(''),
-  city: Joi.string().optional().allow(''),
-  state: Joi.string().optional().allow(''),
-  country: Joi.string().optional().allow(''),
+  address: Joi.string().optional().allow(""),
+  city: Joi.string().optional().allow(""),
+  state: Joi.string().optional().allow(""),
+  country: Joi.string().optional().allow(""),
   social_links: Joi.object().optional(),
-  about: Joi.string().optional().allow(''),
-  resume_url: Joi.string().optional().allow(''),
-  profile_visibility: Joi.string().valid('public', 'private').optional()
+  about: Joi.string().optional().allow(""),
+  resume_url: Joi.string().optional().allow(""),
+  profile_visibility: Joi.string().valid("public", "private").optional(),
 });
 
 const updatePasswordSchema = Joi.object({
   currentPassword: Joi.string().required(),
-  newPassword: Joi.string().min(8).required()
-    .invalid(Joi.ref('currentPassword'))
+  newPassword: Joi.string()
+    .min(8)
+    .required()
+    .invalid(Joi.ref("currentPassword"))
     .messages({
-      'any.invalid': 'New password must be different from current password'
-    })
+      "any.invalid": "New password must be different from current password",
+    }),
 });
 
 exports.getUser = async (req, res, next) => {
@@ -36,7 +38,6 @@ exports.getUser = async (req, res, next) => {
     next(error);
   }
 };
-
 
 exports.updateUserDetails = async (req, res, next) => {
   try {
@@ -58,7 +59,9 @@ exports.deleteUser = async (req, res, next) => {
   try {
     const { uuid } = req.params;
     await userService.deleteUser(uuid);
-    res.json({ message: 'User deactivated and marked as deleted successfully' });
+    res.json({
+      message: "User deactivated and marked as deleted successfully",
+    });
   } catch (error) {
     next(error);
   }
@@ -74,9 +77,9 @@ exports.updateUserPassword = async (req, res, next) => {
 
     const { uuid } = req.params;
     const { currentPassword, newPassword } = req.body;
-    
+
     await userService.updateUserPassword(uuid, currentPassword, newPassword);
-    res.json({ message: 'Password updated successfully' });
+    res.json({ message: "Password updated successfully" });
   } catch (error) {
     next(error);
   }
@@ -85,16 +88,16 @@ exports.updateUserPassword = async (req, res, next) => {
 exports.updateProfilePicture = async (req, res, next) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: 'No file uploaded' });
+      return res.status(400).json({ message: "No file uploaded" });
     }
 
     const { uuid } = req.params;
-    const imagePath = `/uploads/users/${req.file.filename}`;
+    const imagePath = `${req.file.filename}`;
     const updatedUser = await userService.updateProfilePicture(uuid, imagePath);
-    
+
     res.json({
-      message: 'Profile picture updated successfully',
-      user: updatedUser
+      message: "Profile picture updated successfully",
+      user: updatedUser,
     });
   } catch (error) {
     next(error);
