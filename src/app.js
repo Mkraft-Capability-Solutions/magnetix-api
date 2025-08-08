@@ -8,7 +8,7 @@ const app = express();
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:3000",
+  origin: process.env.FRONTEND_URL || "https://isms.milekraft.com",
   credentials: true,
   optionsSuccessStatus: 200,
 };
@@ -20,12 +20,11 @@ app.use(cookieParser());
 app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ extended: true, limit: "10mb" }));
 
-
 const landingRoutes = require("./routes/landing_routes");
 const authRoutes = require("./routes/auth_routes");
 const protectedRoutes = require("./routes/protected_routes");
 const userRoutes = require("./routes/user_routes");
-const uploadRoutes = require('./routes/upload_routes');
+const uploadRoutes = require("./routes/upload_routes");
 const studentCourseRoutes = require("./routes/student/course_routes");
 const studentMentorshipRoutes = require("./routes/student/mentorship_routes");
 const studentEventRoutes = require("./routes/student/event_routes");
@@ -34,14 +33,14 @@ const studentCalendarRoutes = require("./routes/student/calendar_routes");
 const notificationPermissionRoutes = require("./routes/notification_permission_routes");
 const instructorMentorshipRoutes = require("./routes/instructor/mentorship_routes");
 const instructorEventRoutes = require("./routes/instructor/event_routes");
-const instructorCourseRoutes = require('./routes/instructor/course_routes');
+const instructorCourseRoutes = require("./routes/instructor/course_routes");
 
 // Use routes with API prefixes
 app.use("/landing", landingRoutes);
 app.use("/auth", authRoutes);
 app.use("/protected", protectedRoutes);
 app.use("/users", userRoutes);
-app.use('/uploads', uploadRoutes);
+app.use("/uploads", uploadRoutes);
 app.use("/student/courses", studentCourseRoutes);
 app.use("/student/mentorship", studentMentorshipRoutes);
 app.use("/student/events", studentEventRoutes);
@@ -50,7 +49,7 @@ app.use("/student/calendar", studentCalendarRoutes);
 app.use("/notification-permissions", notificationPermissionRoutes);
 app.use("/instructor/mentorship", instructorMentorshipRoutes);
 app.use("/instructor/events", instructorEventRoutes);
-app.use('/instructor', instructorCourseRoutes);
+app.use("/instructor", instructorCourseRoutes);
 
 // Serve uploaded files (e.g., profile pictures)
 app.use("/uploads", express.static(path.join(__dirname, "../Uploads")));
@@ -60,9 +59,8 @@ app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(err.status || 500).json({
     success: false,
-    message: err.message || 'Internal Server Error',
-    error: process.env.NODE_ENV === 'development' ? err : {}
-
+    message: err.message || "Internal Server Error",
+    error: process.env.NODE_ENV === "development" ? err : {},
   });
 });
 
