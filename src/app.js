@@ -16,6 +16,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // handle preflight requests
 app.use(cookieParser());
 
 // Parse JSON and URL-encoded data with size limits
