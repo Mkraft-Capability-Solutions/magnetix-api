@@ -75,24 +75,25 @@ const courseSchema = Joi.object({
 });
 
 exports.addCourse = async (req, res, next) => {
-    try {
-        const { error } = courseSchema.validate(req.body);
-        if (error) {
-            return res.status(400).json({
-                success: false,
-                message: error.details[0].message
-            });
-        }
-
-        const result = await instructorCourseService.addCourse(req.user.uuid, req.body);
-        res.status(201).json({
-            success: true,
-            message: 'Course created successfully',
-            courseId: result.courseId
-        });
-    } catch (error) {
-        next(error);
+  try {
+    const { error } = courseSchema.validate(req.body, { abortEarly: false });
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        details: error.details.map(detail => detail.message)
+      });
     }
+
+    const result = await instructorCourseService.addCourse(req.user.uuid, req.body);
+    res.status(201).json({
+      success: true,
+      message: 'Course created successfully',
+      courseId: result.courseId
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 exports.updateCourse = async (req, res, next) => {
