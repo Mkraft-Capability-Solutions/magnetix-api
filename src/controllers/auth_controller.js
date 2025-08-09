@@ -42,8 +42,6 @@ exports.refreshToken = async (req, res, next) => {
     console.log("Refreshing token...");
     // Get refresh token from cookies
     const refreshToken = req.body?.refreshToken;
-    console.log(req.params);
-    console.log(req.body);
     if (!refreshToken) {
       return res.status(401).json({
         success: false,

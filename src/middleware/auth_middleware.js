@@ -7,8 +7,6 @@ exports.authenticate = async (req, res, next) => {
   try {
     // 1. Get token from header
     const token = req.header("Authorization")?.replace("Bearer ", "");
-    console.log('Received token:', token);
-
     if (!token) {
       return res
         .status(401)
@@ -17,14 +15,12 @@ exports.authenticate = async (req, res, next) => {
 
     // 2. Verify token
     const decoded = jwt.verify(token, jwtConfig.accessSecret);
-    console.log('Decoded token:', decoded);
 
     // 3. Check if user still exists and session matches
     const [rows] = await promisePool.query(
       "SELECT uuid, email, role_id, status, session_id FROM users WHERE uuid = ? AND is_deleted = 0",
       [decoded.uuid]
     );
-    console.log('Database user:', rows);
 
     if (rows.length === 0) {
       return res.status(401).json({ message: "User not found" });
