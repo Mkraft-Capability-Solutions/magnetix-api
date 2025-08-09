@@ -89,6 +89,10 @@ class AuthService {
 
   async refreshAccessToken(refreshToken) {
     try {
+      console.log(
+        "-------------------------------------------------------------------------"
+      );
+      console.log("Received refresh token:", refreshToken);
       console.log(jwt.decode(refreshToken));
       console.log(
         "-------------------------------------------------------------------------"
