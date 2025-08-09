@@ -111,6 +111,7 @@ class AuthService {
       const user = rows[0];
       return this.generateTokens(user, user.session_id).accessToken;
     } catch (error) {
+      console.log(error);
       throw new Error("Invalid refresh token" + error.message);
     }
   }
