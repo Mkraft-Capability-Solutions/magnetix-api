@@ -39,10 +39,11 @@ const resendVerificationSchema = Joi.object({
 
 exports.refreshToken = async (req, res, next) => {
   try {
+    console.log("Refreshing token...");
     // Get refresh token from cookies
     const refreshToken = req.body?.refreshToken;
     console.log(req.params);
-
+    console.log(req.body);
     if (!refreshToken) {
       return res.status(401).json({
         success: false,
@@ -135,7 +136,7 @@ exports.login = async (req, res, next) => {
         first_name: user.first_name,
         last_name: user.last_name,
         dp: user.dp || null,
-        instance: user.instance 
+        instance: user.instance,
       },
     };
 
@@ -144,7 +145,6 @@ exports.login = async (req, res, next) => {
     next(error);
   }
 };
-
 
 // In the verify function
 exports.verify = async (req, res, next) => {
@@ -182,7 +182,7 @@ exports.verify = async (req, res, next) => {
         first_name: user.first_name,
         last_name: user.last_name,
         dp: user.dp || null,
-        instance: user.instance 
+        instance: user.instance,
       },
     };
 
@@ -264,20 +264,22 @@ exports.resetPassword = async (req, res, next) => {
 exports.logout = async (req, res, next) => {
   try {
     if (!req.user || !req.user.uuid) {
-      return res.status(401).json({ message: 'User not authenticated' });
+      return res.status(401).json({ message: "User not authenticated" });
     }
 
     await authService.logoutUser(req.user.uuid);
 
-    res.clearCookie("refreshToken", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
-    }).json({
-      success: true,
-      message: "Logged out successfully",
-    });
+    res
+      .clearCookie("refreshToken", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        path: "/",
+      })
+      .json({
+        success: true,
+        message: "Logged out successfully",
+      });
   } catch (error) {
     next(error);
   }
