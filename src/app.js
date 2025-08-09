@@ -8,7 +8,7 @@ const app = express();
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "https://isms.milekraft.com",
+  origin: ["https://isms.milekraft.com", "http://localhost:3000"],
   credentials: true,
   optionsSuccessStatus: 200,
 };
