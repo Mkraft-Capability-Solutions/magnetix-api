@@ -89,6 +89,10 @@ class AuthService {
 
   async refreshAccessToken(refreshToken) {
     try {
+      console.log(jwt.decode(refreshToken));
+      console.log(
+        "-------------------------------------------------------------------------"
+      );
       const decoded = jwt.verify(refreshToken, jwtConfig.refreshSecret);
 
       const [result] = await promisePool.query("CALL refresh_session_user(?)", [
