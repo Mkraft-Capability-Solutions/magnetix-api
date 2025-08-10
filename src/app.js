@@ -54,7 +54,8 @@ app.use("/instructor/events", instructorEventRoutes);
 app.use("/instructor", instructorCourseRoutes);
 app.use("/admin/instructors", adminInstructorRoutes);
 app.use("/admin/students", adminStudentRoutes);
-
+app.use("/admin/profile", require("./routes/admin/profile_route"));
+app.use("/admin/courses", require("./routes/admin/course_route"));
 // Serve uploaded files (e.g., profile pictures)
 app.use("/uploads", express.static(path.join(__dirname, "../Uploads")));
 
