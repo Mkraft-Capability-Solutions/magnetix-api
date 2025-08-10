@@ -34,6 +34,8 @@ const notificationPermissionRoutes = require("./routes/notification_permission_r
 const instructorMentorshipRoutes = require("./routes/instructor/mentorship_routes");
 const instructorEventRoutes = require("./routes/instructor/event_routes");
 const instructorCourseRoutes = require("./routes/instructor/course_routes");
+const adminInstructorRoutes = require("./routes/admin/instructor_routes");
+const adminStudentRoutes = require("./routes/admin/student_routes");
 
 // Use routes with API prefixes
 app.use("/landing", landingRoutes);
@@ -50,6 +52,8 @@ app.use("/notification-permissions", notificationPermissionRoutes);
 app.use("/instructor/mentorship", instructorMentorshipRoutes);
 app.use("/instructor/events", instructorEventRoutes);
 app.use("/instructor", instructorCourseRoutes);
+app.use("/admin/instructors", adminInstructorRoutes);
+app.use("/admin/students", adminStudentRoutes);
 
 // Serve uploaded files (e.g., profile pictures)
 app.use("/uploads", express.static(path.join(__dirname, "../Uploads")));
