@@ -4,16 +4,16 @@ const fs = require('fs');
 const AdmZip = require('adm-zip');
 
 class UploadService {
-  constructor() {
+    constructor() {
     this.uploadPaths = {
       courseThumbnail: path.join(__dirname, '../../Uploads/courses/thumbnail'),
       eventThumbnail: path.join(__dirname, '../../Uploads/events/thumbnail'),
       userProfile: path.join(__dirname, '../../Uploads/users/profile_picture'),
       courseOverviewUrl: path.join(__dirname, '../../Uploads/courses/course_overview/url'),
       courseOverviewScorm: path.join(__dirname, '../../Uploads/courses/course_overview/scorm'),
-      lessonScorm: path.join(__dirname, '../../Uploads/lessons/scorm_packages'),
-      lessonDocument: path.join(__dirname, '../../Uploads/lessons/documents'),
-      lessonMp4: path.join(__dirname, '../../Uploads/lessons/mp4')
+      lessonDocument: path.join(__dirname, '../../Uploads/courses/lessons/documents'),
+      lessonScorm: path.join(__dirname, '../../Uploads/courses/lessons/scorm_packages'),
+      lessonMp4: path.join(__dirname, '../../Uploads/courses/lessons/mp4'),
     };
   }
 

@@ -1,5 +1,15 @@
 const { promisePool } = require('../../config/db');
-const { CourseDTO, EnrolledStudentDTO } = require('../../dto/instructor/course_dto'); // Update import
+const {  
+    CourseDTO, 
+    CourseOutcomeDTO,
+    CourseRequirementDTO,
+    CourseFAQDTO,
+    CourseSectionDTO,
+    CourseLessonDTO,
+    ILTSDTO,
+    EnrolledStudentDTO,
+    SkillDTO,
+    DTOTransformer } = require('../../dto/instructor/course_dto'); 
 
 class InstructorCourseService {
     async addCourse(userId, courseData) {
@@ -245,6 +255,71 @@ class InstructorCourseService {
             [courseId, userId]
         );
         return rows[0].map(data => new EnrolledStudentDTO(data));
+    }
+
+    async getCourseDetailsById(courseId, userId) {
+        const [results] = await promisePool.query(
+            'CALL get_course_details_by_id(?, ?)',
+            [courseId, userId]
+        );
+
+        if (!results[0][0]) {
+            throw new Error('Course not found or not authorized');
+        }
+
+        // Transform the results into a structured object
+        const courseDetails = {
+            course: new CourseDTO(results[0][0]),
+            outcomes: results[1].map(outcome => new CourseOutcomeDTO(outcome)),
+            requirements: results[2].map(req => new CourseRequirementDTO(req)),
+            faqs: results[3].map(faq => new CourseFAQDTO(faq)),
+            sections: results[4].map(section => new CourseSectionDTO(section)),
+            lessons: [], // This will be populated from the lessons data
+            skills: []  // This will be populated from the skills data
+        };
+
+        // Process lessons and ILTS details
+        const lessonsMap = {};
+        results[5].forEach(lessonData => {
+            const lesson = new CourseLessonDTO(lessonData);
+            if (lessonData.ilts_id) {
+                lesson.iltsDetails = new ILTSDTO({
+                    id: lessonData.ilts_id,
+                    lesson_mode: lessonData.lesson_mode,
+                    meet_url: lessonData.meet_url,
+                    venue: lessonData.venue,
+                    start_date: lessonData.start_date,
+                    start_time: lessonData.start_time,
+                    end_date: lessonData.end_date,
+                    end_time: lessonData.end_time
+                });
+            }
+            lessonsMap[lesson.id] = lesson;
+            courseDetails.lessons.push(lesson); // Add lesson to lessons array
+        });
+
+        // Process skills
+        results[6].forEach(skillData => {
+            if (!lessonsMap[skillData.lesson_id]) return;
+            if (!lessonsMap[skillData.lesson_id].skills) {
+                lessonsMap[skillData.lesson_id].skills = [];
+            }
+            lessonsMap[skillData.lesson_id].skills.push(skillData.skill_name);
+            courseDetails.skills.push({ // Add skill to skills array
+                lessonId: skillData.lesson_id,
+                skillId: skillData.skill_id,
+                skillName: skillData.skill_name
+            });
+        });
+
+        // Group lessons by section
+        courseDetails.sections.forEach(section => {
+            section.lessons = Object.values(lessonsMap)
+                .filter(lesson => lesson.sectionId === section.id)
+                .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        });
+
+        return courseDetails;
     }
 }
 
