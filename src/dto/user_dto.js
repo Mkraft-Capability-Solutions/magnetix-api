@@ -13,14 +13,15 @@ class UserDTO {
     this.city = userData.city;
     this.state = userData.state;
     this.country = userData.country;
+    thi.specialization = userData.specialization;
     this.dp = userData.dp;
     this.social_links = userData.social_links;
     this.about = userData.about;
     this.resume_url = userData.resume_url;
     this.profile_visibility = userData.profile_visibility;
     this.created_at = userData.created_at;
-    this.updated_at = userData.updated_at; 
-    this.instance = userData.instance; 
+    this.updated_at = userData.updated_at;
+    this.instance = userData.instance;
   }
 }
 
