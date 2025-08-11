@@ -14,18 +14,20 @@ const {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = "./uploads/users/";
-
+    const uploadDir = "./uploads/users/profile_picture/";
+    
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
-
+    
     cb(null, uploadDir);
   },
+  
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    cb(null, `${Date.now()}${ext}`);
-  },
+    const filename = `${Date.now()}${ext}`;
+    cb(null, filename);
+  }
 });
 
 const upload = multer({
@@ -100,9 +102,7 @@ router.put(
   "/:uuid/profile-picture",
   authenticate,
   authorize(1, 2, 3, 4),
-  checkSelfOrSuperAdmin,
   upload.single("profile_picture"),
-  userController.updateProfilePicture
+  userController.uploadUserProfilePicture 
 );
-
 module.exports = router;
