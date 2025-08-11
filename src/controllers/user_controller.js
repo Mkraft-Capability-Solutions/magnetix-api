@@ -9,6 +9,7 @@ const updateDetailsSchema = Joi.object({
   gender: Joi.string().valid("male", "female", "other").optional(),
   dob: Joi.date().optional(),
   address: Joi.string().optional().allow(""),
+  specialization: Joi.string().optional().allow(""),
   city: Joi.string().optional().allow(""),
   state: Joi.string().optional().allow(""),
   country: Joi.string().optional().allow(""),
