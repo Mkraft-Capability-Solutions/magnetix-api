@@ -13,7 +13,7 @@ class UserDTO {
     this.city = userData.city;
     this.state = userData.state;
     this.country = userData.country;
-    thi.specialization = userData.specialization;
+    this.specialization = userData.specialization;
     this.dp = userData.dp;
     this.social_links = userData.social_links;
     this.about = userData.about;
