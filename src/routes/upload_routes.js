@@ -15,7 +15,7 @@ const upload = multer({
 router.post('/course/thumbnail', 
   authenticate,
   authorize(2,3), // Instructor only
-  upload.single('file'),
+  upload.single('thumbnail'),
   uploadController.uploadCourseThumbnail
 );
 

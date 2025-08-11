@@ -53,6 +53,16 @@ class CourseDTO {
             creator_id: data.creatorId || data.creator_id
         });
     }
+
+    static courseDetailsToDTO(data) {
+        return {
+            course: new CourseDTO(data.course),
+            outcomes: data.outcomes ? this.transformCollection(data.outcomes, CourseOutcomeDTO) : [],
+            requirements: data.requirements ? this.transformCollection(data.requirements, CourseRequirementDTO) : [],
+            faqs: data.faqs ? this.transformCollection(data.faqs, CourseFAQDTO) : [],
+            sections: data.sections ? this.transformCollection(data.sections, CourseSectionDTO) : []
+        };
+    }
 }
 
 class CourseOutcomeDTO {

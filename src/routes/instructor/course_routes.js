@@ -10,6 +10,7 @@ router.use(authorize(2));
 router.post('/courses', instructorCourseController.addCourse);
 router.put('/courses/:courseId', instructorCourseController.updateCourse);
 router.delete('/courses/:courseId', instructorCourseController.deleteCourse);
+router.get('/courses/:courseId', instructorCourseController.getCourseDetailsById);
 
 // Get courses
 router.get('/courses/active', instructorCourseController.getActiveCourses);

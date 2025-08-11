@@ -209,3 +209,19 @@ exports.getEnrolledStudents = async (req, res, next) => {
         next(error);
     }
 };
+
+exports.getCourseDetailsById = async (req, res, next) => {
+    try {
+        const courseDetails = await instructorCourseService.getCourseDetailsById(
+            req.params.courseId,
+            req.user.uuid
+        );
+        
+        res.json({
+            success: true,
+            data: courseDetails
+        });
+    } catch (error) {
+        next(error);
+    }
+};
