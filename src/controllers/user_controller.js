@@ -88,16 +88,18 @@ exports.updateUserPassword = async (req, res, next) => {
 exports.uploadUserProfilePicture = async (req, res, next) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ success: false, message: 'No file uploaded' });
+      return res
+        .status(400)
+        .json({ success: false, message: "No file uploaded" });
     }
 
     // Just return the filename (not full path)
     const filename = req.file.filename;
-    
-    res.json({ 
-      success: true, 
-      message: 'Profile picture uploaded successfully',
-      filename 
+    await userService.updateProfilePicture(req.params.uuid, filename);
+    res.json({
+      success: true,
+      message: "Profile picture uploaded successfully",
+      filename,
     });
   } catch (error) {
     next(error);
