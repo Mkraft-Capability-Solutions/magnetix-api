@@ -62,9 +62,9 @@ exports.getPastSessions = async (req, res, next) => {
 
 exports.requestScheduleSession = async (req, res, next) => {
   try {
-    const { mentorId, sessionDate, sessionTime, topic, description } = req.body;
+    const { mentorId, sessionDate, sessionTime, topic, description, url } = req.body;
     
-    if (!mentorId || !sessionDate || !sessionTime || !topic) {
+    if (!mentorId || !sessionDate || !sessionTime || !topic || !url) {
       return res.status(400).json({
         success: false,
         message: 'Missing required fields'
@@ -77,7 +77,8 @@ exports.requestScheduleSession = async (req, res, next) => {
       sessionDate, 
       sessionTime, 
       topic, 
-      description
+      description,
+      url
     );
     
     if (!response.success) {
