@@ -52,11 +52,11 @@ class MentorshipService {
     }
   }
 
-  async requestScheduleSession(studentId, mentorId, sessionDate, sessionTime, topic, description) {
+  async requestScheduleSession(studentId, mentorId, sessionDate, sessionTime, topic, description, url) {
   try {
     await promisePool.query(
-      'CALL request_mentorship_session(?, ?, ?, ?, ?, ?)', 
-      [studentId, mentorId, sessionDate, sessionTime, topic, description]
+      'CALL request_mentorship_session(?, ?, ?, ?, ?, ?, ?)', 
+      [studentId, mentorId, sessionDate, sessionTime, topic, description, url]
     );
     return new ServiceResponseDTO(true, null, 'Session request submitted successfully');
   } catch (error) {
