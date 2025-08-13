@@ -136,8 +136,6 @@ class CourseLessonDTO {
         this.contentUrl = data.lesson_content_url || data.contentUrl;
         this.duration = data.lesson_duration || data.duration || '00:00';
         this.courseId = data.course_id || data.courseId;
-        this.isFree = Boolean(data.is_free || data.isFree || false);
-        this.order = data.order || data.lesson_order || 0;
         this.createdAt = data.created_date || data.createdAt || new Date().toISOString();
         this.updatedAt = data.last_updated || data.updatedAt || this.createdAt;
     }

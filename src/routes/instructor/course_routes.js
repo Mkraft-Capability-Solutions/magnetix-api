@@ -12,9 +12,10 @@ router.put('/courses/:courseId', instructorCourseController.updateCourse);
 router.delete('/courses/:courseId', instructorCourseController.deleteCourse);
 router.get('/courses/:courseId', instructorCourseController.getCourseDetailsById);
 
-// Get courses
-router.get('/courses/active', instructorCourseController.getActiveCourses);
-router.get('/courses/pending', instructorCourseController.getPendingCourses);
+// Get courses// Get instructor's own courses (not from stored procedure)
+router.get('/courses/instructor/active', instructorCourseController.getInstructorActiveCourses);
+router.get('/courses/instructor/pending', instructorCourseController.getInstructorPendingCourses);
+
 
 // Get metadata
 router.get('/metadata/categories', instructorCourseController.getCategories);
@@ -23,5 +24,7 @@ router.get('/metadata/languages', instructorCourseController.getLanguages);
 
 // Get enrolled students
 router.get('/courses/:courseId/students', instructorCourseController.getEnrolledStudents);
+router.get('/courses/:courseId/enrollments/progress', instructorCourseController.getEnrolledStudentsWithProgress);
+
 
 module.exports = router;

@@ -128,35 +128,37 @@ exports.deleteCourse = async (req, res, next) => {
     }
 };
 
-exports.getActiveCourses = async (req, res, next) => {
+// Get instructor's active courses
+exports.getInstructorActiveCourses = async (req, res) => {
     try {
-        const limit = parseInt(req.query.limit) || 10;
-        const offset = parseInt(req.query.offset) || 0;
-        
-        const courses = await instructorCourseService.getActiveCourses(req.user.uuid, limit, offset);
-        res.json({
-            success: true,
-            data: courses
-        });
+        const courses = await instructorCourseService.getInstructorActiveCourses(req.user.uuid);
+        res.json({ success: true, data: courses });
     } catch (error) {
-        next(error);
+        console.error("Error fetching instructor active courses:", error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get active courses',
+            error: error.message
+        });
     }
 };
 
-exports.getPendingCourses = async (req, res, next) => {
+// Get instructor's pending courses
+exports.getInstructorPendingCourses = async (req, res) => {
     try {
-        const limit = parseInt(req.query.limit) || 10;
-        const offset = parseInt(req.query.offset) || 0;
-        
-        const courses = await instructorCourseService.getPendingCourses(req.user.uuid, limit, offset);
-        res.json({
-            success: true,
-            data: courses
-        });
+        const courses = await instructorCourseService.getInstructorPendingCourses(req.user.uuid);
+        res.json({ success: true, data: courses });
     } catch (error) {
-        next(error);
+        console.error("Error fetching instructor pending courses:", error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get pending courses',
+            error: error.message
+        });
     }
 };
+
+
 
 exports.getCategories = async (req, res, next) => {
     try {
@@ -223,5 +225,24 @@ exports.getCourseDetailsById = async (req, res, next) => {
         });
     } catch (error) {
         next(error);
+    }
+};
+
+exports.getEnrolledStudentsWithProgress = async (req, res, next) => {
+    try {
+        const courseId = req.params.courseId;
+        const data = await instructorCourseService.getEnrolledStudentsWithProgress(courseId, req.user.uuid);
+
+        res.json({
+            success: true,
+            data
+        });
+    } catch (error) {
+        console.error("Error in getEnrolledStudentsWithProgress:", error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get enrolled students with progress',
+            error: error.message
+        });
     }
 };

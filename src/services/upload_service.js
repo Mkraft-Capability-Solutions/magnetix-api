@@ -39,18 +39,19 @@ class UploadService {
   }
 
   async uploadAndExtractZip(file, dirPath) {
-    await this.ensureDirectoryExists(dirPath);
+  await this.ensureDirectoryExists(dirPath);
 
+  try {
     const zip = new AdmZip(file.buffer);
-    
-
-
     const folderName = `${Date.now()}`;
     const extractPath = path.join(dirPath, folderName);
     zip.extractAllTo(extractPath, true);
-
-    return folderName; // Return only the folder name
+    return folderName;
+  } catch (error) {
+    throw new Error(`Invalid or corrupted zip file: ${error.message}`);
   }
+}
+
 
   // Course Thumbnail
   async uploadCourseThumbnail(file, courseId) {

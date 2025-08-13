@@ -218,21 +218,28 @@ class InstructorCourseService {
         }
     }
 
-    async getActiveCourses(userId, limit = 10, offset = 0) {
-        const [rows] = await promisePool.query(
-            'CALL get_instructor_active_courses(?, ?, ?)',
-            [userId, limit, offset]
-        );
-        return rows[0].map(CourseDTO.courseToDTO); 
-    }
+    // getActiveCourses
+    // Get active courses directly from table
+        async getInstructorActiveCourses(userId) {
+            const [rows] = await promisePool.query(
+                `SELECT * FROM course 
+                WHERE creator_id = ? AND status = 'active' AND is_deleted = 0`,
+                [userId]
+            );
+            return rows.map(CourseDTO.courseToDTO);
+        }
 
-    async getPendingCourses(userId, limit = 10, offset = 0) {
-        const [rows] = await promisePool.query(
-            'CALL get_instructor_pending_courses(?, ?, ?)',
-            [userId, limit, offset]
-        );
-        return rows[0].map(CourseDTO.courseToDTO); 
-    }
+        // Get pending courses directly from table
+        async getInstructorPendingCourses(userId) {
+            const [rows] = await promisePool.query(
+                `SELECT * FROM course 
+                WHERE creator_id = ? AND status = 'pending' AND is_deleted = 0
+                ORDER BY last_updated DESC`,
+                [userId]
+            );
+            return rows.map(CourseDTO.courseToDTO);
+        }
+
 
     async getCategories() {
         const [rows] = await promisePool.query('CALL get_all_categories()');
@@ -321,6 +328,30 @@ class InstructorCourseService {
 
         return courseDetails;
     }
+
+
+    async getEnrolledStudentsWithProgress(courseId) {
+    const [rows] = await promisePool.query(
+        'CALL get_enrolled_students_with_progress(?)',
+        [courseId]
+    );
+
+    return rows[0].map(data => ({
+        userId: data.user_id,
+        firstName: data.first_name,
+        lastName: data.last_name,
+        email: data.email,
+        profileImage: data.profile_image,
+        progressPercentage: data.progress_percentage || 0,
+        completedLessons: data.completed_lessons || 0,
+        totalLessonsAvailable: data.total_lessons_available || 0,
+        lastAccessed: data.last_accessed,
+        lastAccessedLessonId: data.last_accessed_lesson_id,
+        lastAccessedLessonTitle: data.last_accessed_lesson_title
+    }));
+}
+
+
 }
 
 module.exports = new InstructorCourseService();
