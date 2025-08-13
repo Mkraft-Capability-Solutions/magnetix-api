@@ -1,83 +1,82 @@
-// instructor_course_controller.js
 const instructorCourseService = require('../../services/instructor/course_service');
 const Joi = require('joi');
 
 // Validation schemas
 const courseSchema = Joi.object({
+    id: Joi.number().optional().allow(null),
+    creator_id: Joi.string().optional().allow(''),
     title: Joi.string().required(),
+    instructor: Joi.string().optional().allow(''),
     shortDescription: Joi.string().allow('').optional(),
     description: Joi.string().allow('').optional(),
-    languageId: Joi.number().integer().min(1).required(),
-    categoryId: Joi.number().integer().min(1).required(),
-    subCategoryId: Joi.number().integer().min(1).required(),
+    language: Joi.number().integer().min(1).required(),
+    category: Joi.number().integer().min(1).required(),
+    subcategory: Joi.number().integer().min(1).required(),
     level: Joi.string().valid('beginner', 'intermediate', 'advance').required(),
     courseDuration: Joi.string().allow('').optional(),
-    thumbnail: Joi.string().allow('').optional(),
-    courseOverviewProvider: Joi.string().allow('').optional(),
-    courseOverviewVideoUrl: Joi.string().allow('').optional(),
-    metaKeywords: Joi.string().allow('').optional(),
+    thumbnail: Joi.alternatives().try(
+        Joi.string().allow(''),
+        Joi.object().unknown(true) // File object
+    ).optional(),
+    mediaType: Joi.string().allow('').optional(),
+    mediaUrl: Joi.alternatives().try(
+        Joi.string().allow(''),
+        Joi.object().unknown(true) // File object
+    ).optional(),
+    metaKeywords: Joi.array().items(Joi.string()).optional().default([]),
     metaDescription: Joi.string().allow('').optional(),
-    outcomes: Joi.array().items(Joi.string()).optional(),
-    requirements: Joi.array().items(Joi.string()).optional(),
+    outcomes: Joi.array().items(Joi.string()).optional().default([]),
+    requirements: Joi.array().items(Joi.string()).optional().default([]),
     faqs: Joi.array().items(Joi.object({
         question: Joi.string().required(),
         answer: Joi.string().required()
-    })).optional(),
-    sections: Joi.array().items(Joi.object({
+    })).optional().default([]),
+    lessons: Joi.array().items(Joi.object({
+        id: Joi.alternatives().try(Joi.number(), Joi.string()).optional().allow(null),
         title: Joi.string().required(),
-        lessons: Joi.array().items(Joi.object({
-            title: Joi.string().required(),
-            lessonType: Joi.string().valid('ILTS', 'Content-Based').required(),
-            lessonContentType: Joi.string().valid('document', 'scorm', 'mp4', 'content_url').optional(),
-            lessonContentDocument: Joi.string().allow('').optional(),
-            lessonContentScorm: Joi.string().allow('').optional(),
-            lessonContentMp4: Joi.string().allow('').optional(),
-            lessonContentUrl: Joi.string().allow('').optional(),
-            lessonDuration: Joi.string().allow('').optional(),
-            skills: Joi.array().items(Joi.string()).optional(),
-            iltsMode: Joi.string().valid('Online', 'Offline').when('lessonType', {
-                is: 'ILTS',
-                then: Joi.required(),
-                otherwise: Joi.forbidden()
-            }),
-            meetUrl: Joi.string().when('iltsMode', {
-                is: 'Online',
-                then: Joi.string().uri().required(),
-                otherwise: Joi.forbidden()
-            }),
-            venue: Joi.string().when('iltsMode', {
-                is: 'Offline',
-                then: Joi.string().required(),
-                otherwise: Joi.forbidden()
-            }),
-            startDate: Joi.date().when('lessonType', {
-                is: 'ILTS',
-                then: Joi.required(),
-                otherwise: Joi.forbidden()
-            }),
-            startTime: Joi.string().when('lessonType', {
-                is: 'ILTS',
-                then: Joi.required(),
-                otherwise: Joi.forbidden()
-            }),
-            endDate: Joi.date().when('lessonType', {
-                is: 'ILTS',
-                then: Joi.required(),
-                otherwise: Joi.forbidden()
-            }),
-            endTime: Joi.string().when('lessonType', {
-                is: 'ILTS',
-                then: Joi.required(),
-                otherwise: Joi.forbidden()
-            })
-        })).optional()
-    })).optional()
+        section: Joi.string().required(),
+        lessonType: Joi.string().valid('ILTS', 'Content-Based').required(),
+        skills: Joi.array().items(Joi.string()).optional().default([]),
+        
+        // Content-Based fields
+        contentType: Joi.string().valid('document', 'scrom', 'mp4', 'content_url').optional(),
+        lessonContentDocument: Joi.alternatives().try(
+            Joi.string().allow(''),
+            Joi.object().unknown(true),
+            Joi.allow(null)
+        ).optional(),
+        scromPackage: Joi.alternatives().try(
+            Joi.string().allow(''),
+            Joi.object().unknown(true),
+            Joi.allow(null)
+        ).optional(),
+        videoUpload: Joi.alternatives().try(
+            Joi.string().allow(''),
+            Joi.object().unknown(true),
+            Joi.allow(null)
+        ).optional(),
+        contentUrl: Joi.string().allow('').optional(),
+        lessonDuration: Joi.string().allow('').optional(),
+        
+        // ILTS fields
+        iltsType: Joi.string().valid('Online', 'Offline').optional(),
+        iltsUrl: Joi.string().allow('').optional(),
+        startDate: Joi.string().allow('').optional(),
+        startTime: Joi.string().allow('').optional(),
+        endDate: Joi.string().allow('').optional(),
+        endTime: Joi.string().allow('').optional(),
+        eventVenue: Joi.string().allow('').optional(),
+        meetUrl: Joi.string().allow('').optional()
+    })).optional().default([])
 });
 
 exports.addCourse = async (req, res, next) => {
   try {
+    console.log('addCourse endpoint called with body:', JSON.stringify(req.body, null, 2));
+    
     const { error } = courseSchema.validate(req.body, { abortEarly: false });
     if (error) {
+      console.log('Validation errors:', error.details.map(detail => detail.message));
       return res.status(400).json({
         success: false,
         message: 'Validation failed',
@@ -86,32 +85,43 @@ exports.addCourse = async (req, res, next) => {
     }
 
     const result = await instructorCourseService.addCourse(req.user.uuid, req.body);
+    console.log('Course creation result:', result);
+    
     res.status(201).json({
       success: true,
       message: 'Course created successfully',
-      courseId: result.courseId
+      data: result.data
     });
   } catch (error) {
+    console.error('Error in addCourse controller:', error);
     next(error);
   }
 };
 
 exports.updateCourse = async (req, res, next) => {
     try {
-        const { error } = courseSchema.validate(req.body);
+        console.log('updateCourse endpoint called with ID:', req.params.courseId, 'body:', JSON.stringify(req.body, null, 2));
+        
+        const { error } = courseSchema.validate(req.body, { abortEarly: false });
         if (error) {
+            console.log('Validation errors:', error.details.map(detail => detail.message));
             return res.status(400).json({
                 success: false,
-                message: error.details[0].message
+                message: 'Validation failed',
+                details: error.details.map(detail => detail.message)
             });
         }
 
-        await instructorCourseService.updateCourse(req.user.uuid, req.params.courseId, req.body);
+        const result = await instructorCourseService.updateCourse(req.user.uuid, req.params.courseId, req.body);
+        console.log('Course update result:', result);
+        
         res.json({
             success: true,
-            message: 'Course updated successfully'
+            message: 'Course updated successfully',
+            data: result.data
         });
     } catch (error) {
+        console.error('Error in updateCourse controller:', error);
         next(error);
     }
 };
@@ -157,8 +167,6 @@ exports.getInstructorPendingCourses = async (req, res) => {
         });
     }
 };
-
-
 
 exports.getCategories = async (req, res, next) => {
     try {
@@ -214,16 +222,21 @@ exports.getEnrolledStudents = async (req, res, next) => {
 
 exports.getCourseDetailsById = async (req, res, next) => {
     try {
+        console.log('getCourseDetailsById called for course:', req.params.courseId);
+        
         const courseDetails = await instructorCourseService.getCourseDetailsById(
             req.params.courseId,
             req.user.uuid
         );
+        
+        console.log('Course details retrieved:', JSON.stringify(courseDetails, null, 2));
         
         res.json({
             success: true,
             data: courseDetails
         });
     } catch (error) {
+        console.error('Error in getCourseDetailsById:', error);
         next(error);
     }
 };
