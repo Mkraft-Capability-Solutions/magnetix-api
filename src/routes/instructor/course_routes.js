@@ -35,6 +35,7 @@ router.post(
   "/courses/:courseId/sections",
   instructorCourseController.addSection
 );
+router.post("/courses/:courseId/lessons", instructorCourseController.addLesson);
 router.get(
   "/courses/:courseId/sections",
   instructorCourseController.getSectionsByCourseId

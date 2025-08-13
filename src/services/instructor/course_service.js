@@ -809,6 +809,50 @@ class InstructorCourseService {
       connection.release();
     }
   }
+  // Add a lesson to a course
+  async addLesson(courseId, lessonData, creatorId) {
+    console.log("addLesson called with courseId:", courseId);
+    console.log(lessonData);
+
+    const connection = await promisePool.getConnection();
+    //lets add through sql not stored procedure
+    try {
+      await connection.beginTransaction();
+      if (lessonData.contentType === "scorm") {
+        lessonData.scromPackage = lessonData.file;
+      } else if (lessonData.contentType === "document") {
+        lessonData.lessonContentDocument = lessonData.file;
+      } else if (lessonData.contentType === "video") {
+        lessonData.videoUpload = lessonData.file;
+      }
+      const result = await connection.query(
+        "INSERT INTO course_lesson (title, section_id, lesson_type, lesson_content_type, lesson_content_document, lesson_content_scorm, lesson_content_mp4, lesson_content_url, lesson_duration, course_id, creator_id, last_updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+          lessonData.title,
+          lessonData.sectionId,
+          lessonData.lessonType || "Content-Based",
+          lessonData.contentType || null,
+          lessonData.lessonContentDocument || null,
+          lessonData.scromPackage || null,
+          lessonData.videoUpload || null,
+          lessonData.contentUrl || null,
+          lessonData.lessonDuration || null,
+          courseId,
+          creatorId,
+          creatorId,
+        ]
+      );
+      await connection.commit();
+      console.log(result);
+      return result.insertId;
+    } catch (error) {
+      await connection.rollback();
+      console.error("Error in addLesson:", error);
+      throw error;
+    }
+  }
+
+  // async addLesson(courseId, lessonData, creatorId) {
   async getSectionsByCourseId(courseId) {
     console.log("getSectionsByCourseId called with courseId:", courseId);
 

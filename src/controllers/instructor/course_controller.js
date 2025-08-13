@@ -474,6 +474,37 @@ exports.addSection = async (req, res, next) => {
     next(error);
   }
 };
+exports.addLesson = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const creatorId = req.user.uuid;
+    const lesson = req.body;
+    // Validation
+    if (!lesson.title || !lesson.sectionId) {
+      return res.status(400).json({
+        success: false,
+        message: "Title and sectionId are required for each lesson",
+      });
+    }
+
+    // Save lessons
+    const result = await instructorCourseService.addLesson(
+      courseId,
+      lesson,
+      creatorId
+    );
+
+    res.json({
+      success: true,
+      message: "Lesson(s) added successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in addLesson:", error);
+    next(error);
+  }
+};
+
 exports.getSectionsByCourseId = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;
