@@ -3,10 +3,19 @@ const { v4: uuidv4 } = require("uuid");
 const crypto = require("crypto");
 
 class AdminStudentService {
-  async getAllStudents() {
-    const [rows] = await promisePool.query("SELECT * FROM students");
-    return rows;
-  }
+async getAllStudents() {
+  const [rows] = await promisePool.query(`
+    SELECT 
+      students.*, 
+      users.email,
+      users.is_deleted,
+      users.status
+    FROM students
+    JOIN users 
+      ON students.user_id = users.uuid
+  `);
+  return rows;
+}
 
   async getStudentById(studentId) {
     const [rows] = await promisePool.query(
