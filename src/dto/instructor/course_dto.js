@@ -13,6 +13,9 @@ class CourseDTO {
         this.thumbnail = data.thumbnail || data.course_thumbnail;
         this.overviewProvider = data.course_overview_provider || data.overviewProvider;
         this.overviewVideoUrl = data.course_overview_video_url || data.overviewVideoUrl;
+        // Add mediaType mapping for frontend compatibility
+        this.mediaType = data.course_overview_provider || data.mediaType || data.overviewProvider;
+        this.mediaUrl = data.course_overview_video_url || data.mediaUrl || data.overviewVideoUrl;
         this.status = data.status || 'pending';
         this.metaKeywords = data.meta_keywords || data.metaKeywords;
         this.metaDescription = data.meta_description || data.metaDescription;
@@ -135,7 +138,31 @@ class CourseLessonDTO {
         this.contentMp4 = data.lesson_content_mp4 || data.contentMp4;
         this.contentUrl = data.lesson_content_url || data.contentUrl;
         this.duration = data.lesson_duration || data.duration || '00:00';
+        this.description = data.description || data.lesson_description || '';
         this.courseId = data.course_id || data.courseId;
+        
+        // Map database lesson_type to frontend type
+        if (this.lessonType === 'Content-Based') {
+            this.type = 'content';
+        } else if (this.lessonType === 'ILTS') {
+            this.type = 'live';
+        } else {
+            this.type = this.lessonType;
+        }
+
+        // Map content files for frontend compatibility
+        this.file = null;
+        if (this.contentDocument) this.file = this.contentDocument;
+        if (this.contentScorm) this.file = this.contentScorm;
+        if (this.contentMp4) this.file = this.contentMp4;
+
+        // Map content type for frontend
+        if (this.contentType === 'mp4') {
+            this.contentType = 'video';
+        } else if (this.contentType === 'content_url') {
+            this.contentType = 'url';
+        }
+
         this.createdAt = data.created_date || data.createdAt || new Date().toISOString();
         this.updatedAt = data.last_updated || data.updatedAt || this.createdAt;
     }

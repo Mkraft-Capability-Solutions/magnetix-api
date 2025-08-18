@@ -56,7 +56,7 @@ const courseSchema = Joi.object({
 
         // Content-Based fields
         contentType: Joi.string()
-          .valid("document", "scrom", "mp4", "content_url")
+          .valid("document", "scorm", "mp4", "url")
           .optional(),
         lessonContentDocument: Joi.alternatives()
           .try(
@@ -81,6 +81,7 @@ const courseSchema = Joi.object({
           .optional(),
         contentUrl: Joi.string().allow("").optional(),
         lessonDuration: Joi.string().allow("").optional(),
+        description: Joi.string().allow("").optional(),
 
         // ILTS fields
         iltsType: Joi.string().valid("Online", "Offline").optional(),
@@ -342,7 +343,7 @@ exports.addCourseRequirements = async (req, res, next) => {
         message: "Requirements must be an array",
       });
     }
-    requirements.creatorId = req.user.uuid;
+    // requirements.creatorId = req.user.uuid; // Not needed, handled in service
     const result = await instructorCourseService.addCourseRequirements(
       courseId,
       requirements
@@ -362,7 +363,7 @@ exports.addCourseOutcomes = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;
     const outcomes = req.body.outcomes;
-    outcomes.creatorId = req.user.uuid;
+    // outcomes.creatorId = req.user.uuid; // Not needed, handled in service
     if (!Array.isArray(outcomes)) {
       return res.status(400).json({
         success: false,
@@ -394,7 +395,7 @@ exports.updateMetaKeywords = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;
     const { metaKeywords, metaDescription } = req.body;
-    metaKeywords.creatorId = req.user.uuid;
+    // metaKeywords.creatorId = req.user.uuid; // Not needed, handled in service
     if (!metaKeywords || typeof metaKeywords !== "string") {
       return res.status(400).json({
         success: false,
@@ -423,7 +424,7 @@ exports.addCourseFAQs = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;
     const faqs = req.body.faqs;
-    faqs.creatorId = req.user.uuid;
+    // faqs.creatorId = req.user.uuid; // Not needed, handled in service
     if (!Array.isArray(faqs)) {
       return res.status(400).json({
         success: false,
@@ -449,7 +450,7 @@ exports.addSection = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;
     const section = req.body.title;
-    creatorId = req.user.uuid;
+    const creatorId = req.user.uuid;
 
     if (!section) {
       return res.status(400).json({

@@ -1,4 +1,5 @@
 const { promisePool } = require("../../config/db");
+const uploadService = require("../upload_service");
 const {
   CourseDTO,
   CourseOutcomeDTO,
@@ -145,6 +146,50 @@ class InstructorCourseService {
           // Process lessons in this section
           for (const lesson of sectionLessons) {
             console.log(`Processing lesson: ${lesson.title}`);
+            console.log(`Processing lesson contentType: ${lesson.contentType}`);
+            console.log(`Processing lesson data:`, lesson);
+
+            // Map frontend contentType to database enum values
+            let dbContentType = null;
+            let documentFile = null;
+            let scormFile = null; 
+            let mp4File = null;
+            let contentUrl = null;
+
+            if (lesson.contentType) {
+              switch (lesson.contentType) {
+                case 'video':
+                case 'mp4':
+                  dbContentType = 'mp4';
+                  // If file is a string (filename), use it; if it's a File object, it will be handled after lesson creation
+                  mp4File = typeof (lesson.videoUpload || lesson.file) === 'string' ? (lesson.videoUpload || lesson.file) : null;
+                  break;
+                case 'document':
+                  dbContentType = 'document';
+                  // If file is a string (filename), use it; if it's a File object, it will be handled after lesson creation
+                  documentFile = typeof (lesson.lessonContentDocument || lesson.file) === 'string' ? (lesson.lessonContentDocument || lesson.file) : null;
+                  break;
+                case 'scorm':
+                  dbContentType = 'scorm';
+                  // If file is a string (filename), use it; if it's a File object, it will be handled after lesson creation
+                  scormFile = typeof (lesson.scromPackage || lesson.file) === 'string' ? (lesson.scromPackage || lesson.file) : null;
+                  break;
+                case 'url':
+                case 'content_url':
+                case 'external_url':
+                  dbContentType = 'url';
+                  contentUrl = lesson.contentUrl || lesson.url;
+                  break;
+                default:
+                  dbContentType = lesson.contentType;
+              }
+            }
+
+            console.log(`Mapped content type: ${dbContentType}`);
+            console.log(`Document file: ${documentFile}`);
+            console.log(`SCORM file: ${scormFile}`);
+            console.log(`MP4 file: ${mp4File}`);
+            console.log(`Content URL: ${contentUrl}`);
 
             const [lessonResult] = await connection.query(
               "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -152,12 +197,12 @@ class InstructorCourseService {
                 lesson.title,
                 sectionId,
                 lesson.lessonType || "Content-Based",
-                lesson.contentType || null,
-                lesson.lessonContentDocument || null,
-                lesson.scromPackage || null,
-                lesson.videoUpload || null,
-                lesson.contentUrl || null,
-                lesson.lessonDuration || null,
+                dbContentType,
+                documentFile,
+                scormFile,
+                mp4File,
+                contentUrl,
+                lesson.lessonDuration || lesson.duration || null,
                 courseId,
                 userId,
                 userId,
@@ -167,24 +212,94 @@ class InstructorCourseService {
             const lessonId = lessonResult[0][0].id;
             console.log(`Lesson created with ID: ${lessonId}`);
 
+            // Handle file uploads if file objects are provided
+            if (lesson.file && typeof lesson.file === 'object' && lesson.file.name) {
+              console.log(`Uploading file for lesson ${lessonId}:`, lesson.file.name);
+              try {
+                let uploadedFilename = null;
+                
+                if (dbContentType === 'mp4') {
+                  uploadedFilename = await uploadService.uploadLessonMp4(lesson.file, lessonId);
+                } else if (dbContentType === 'document') {
+                  uploadedFilename = await uploadService.uploadLessonDocument(lesson.file, lessonId);
+                } else if (dbContentType === 'scorm') {
+                  uploadedFilename = await uploadService.uploadLessonScorm(lesson.file, lessonId);
+                }
+                
+                console.log(`File uploaded successfully: ${uploadedFilename}`);
+              } catch (uploadError) {
+                console.error(`Failed to upload file for lesson ${lessonId}:`, uploadError);
+                // Don't throw error, just log it - the lesson is still created
+              }
+            }
+
             // Handle ILTS if lesson type is ILTS
             if (lesson.lessonType === "ILTS") {
               console.log("Adding ILTS session for lesson:", lessonId);
-              await connection.query(
-                "CALL add_ilts_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                  courseId,
-                  lessonId,
-                  lesson.iltsType || lesson.iltsMode,
-                  lesson.iltsUrl || lesson.meetUrl,
-                  lesson.eventVenue || lesson.venue,
-                  lesson.startDate,
-                  lesson.startTime,
-                  lesson.endDate,
-                  lesson.endTime,
-                  userId,
-                ]
-              );
+              console.log("ILTS data received:", {
+                iltsType: lesson.iltsType,
+                iltsMode: lesson.iltsMode,
+                iltsUrl: lesson.iltsUrl,
+                meetUrl: lesson.meetUrl,
+                eventVenue: lesson.eventVenue,
+                venue: lesson.venue,
+                startDate: lesson.startDate,
+                startTime: lesson.startTime,
+                endDate: lesson.endDate,
+                endTime: lesson.endTime
+              });
+
+              // Prepare ILTS parameters with proper null handling
+              const iltsMode = lesson.iltsType || lesson.iltsMode || "Online";
+              const meetUrl = lesson.iltsUrl || lesson.meetUrl || null;
+              const venue = lesson.eventVenue || lesson.venue || null;
+              const startDate = lesson.startDate || null;
+              const startTime = lesson.startTime || null;
+              const endDate = lesson.endDate || null;
+              const endTime = lesson.endTime || null;
+
+              // Convert empty strings to null
+              const cleanMeetUrl = (meetUrl === "" || meetUrl === undefined) ? null : meetUrl;
+              const cleanVenue = (venue === "" || venue === undefined) ? null : venue;
+              const cleanStartDate = (startDate === "" || startDate === undefined) ? null : startDate;
+              const cleanStartTime = (startTime === "" || startTime === undefined) ? null : startTime;
+              const cleanEndDate = (endDate === "" || endDate === undefined) ? null : endDate;
+              const cleanEndTime = (endTime === "" || endTime === undefined) ? null : endTime;
+
+              console.log("ILTS parameters for stored procedure:", {
+                courseId,
+                lessonId,
+                iltsMode,
+                cleanMeetUrl,
+                cleanVenue,
+                cleanStartDate,
+                cleanStartTime,
+                cleanEndDate,
+                cleanEndTime,
+                userId
+              });
+
+              try {
+                const [iltsResult] = await connection.query(
+                  "CALL add_ilts_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  [
+                    courseId,
+                    lessonId,
+                    iltsMode,
+                    cleanMeetUrl,
+                    cleanVenue,
+                    cleanStartDate,
+                    cleanStartTime,
+                    cleanEndDate,
+                    cleanEndTime,
+                    userId,
+                  ]
+                );
+                console.log("ILTS session added successfully for lesson:", lessonId);
+              } catch (iltsError) {
+                console.error("Error adding ILTS session for lesson", lessonId, ":", iltsError);
+                // Don't throw error, just log it - the lesson is still created
+              }
             }
 
             // Handle skills
@@ -243,9 +358,9 @@ class InstructorCourseService {
       title,
       shortDescription,
       description,
-      language,
-      category,
-      subcategory,
+      languageId,
+      categoryId,
+      subCategoryId,
       level,
       courseDuration,
       thumbnail,
@@ -272,9 +387,9 @@ class InstructorCourseService {
           title,
           shortDescription,
           description,
-          language,
-          category,
-          subcategory,
+          languageId,
+          categoryId,
+          subCategoryId,
           level,
           courseDuration,
           thumbnail,
@@ -337,22 +452,30 @@ class InstructorCourseService {
 
       // Update lessons - Delete existing and recreate
       if (lessons && lessons.length > 0) {
-        // Delete existing lessons and sections
+        console.log("Updating lessons, total count:", lessons.length);
+        
+        // Delete existing lessons and sections for this course
+        console.log("Deleting existing lesson skills...");
         await connection.query(
           "DELETE FROM lesson_skills WHERE lesson_id IN (SELECT id FROM course_lesson WHERE course_id = ?)",
           [courseId]
         );
+        console.log("Deleting existing ILTS records...");
         await connection.query("DELETE FROM ilts WHERE course_id = ?", [
           courseId,
         ]);
-        await connection.query(
+        console.log("Deleting existing lessons...");
+        const lessonDeleteResult = await connection.query(
           "DELETE FROM course_lesson WHERE course_id = ?",
           [courseId]
         );
-        await connection.query(
+        console.log(`Deleted ${lessonDeleteResult[0].affectedRows} lessons`);
+        console.log("Deleting existing sections...");
+        const sectionDeleteResult = await connection.query(
           "DELETE FROM course_section WHERE course_id = ?",
           [courseId]
         );
+        console.log(`Deleted ${sectionDeleteResult[0].affectedRows} sections`);
 
         // Recreate lessons and sections
         const sectionsMap = new Map();
@@ -378,18 +501,58 @@ class InstructorCourseService {
 
           // Process lessons in this section
           for (const lesson of sectionLessons) {
+            console.log(`Update - Processing lesson: ${lesson.title}`);
+            console.log(`Update - Processing lesson contentType: ${lesson.contentType}`);
+            console.log(`Update - Processing lesson data:`, lesson);
+
+            // Map frontend contentType to database enum values
+            let dbContentType = null;
+            let documentFile = null;
+            let scormFile = null; 
+            let mp4File = null;
+            let contentUrl = null;
+
+            if (lesson.contentType) {
+              switch (lesson.contentType) {
+                case 'mp4':
+                  dbContentType = 'mp4';
+                  mp4File = lesson.videoUpload || lesson.file;
+                  break;
+                case 'document':
+                  dbContentType = 'document';
+                  documentFile = lesson.lessonContentDocument || lesson.file;
+                  break;
+                case 'scorm':
+                  dbContentType = 'scorm';
+                  scormFile = lesson.scromPackage || lesson.file;
+                  break;
+                case 'url':
+                  dbContentType = 'url';
+                  contentUrl = lesson.contentUrl || lesson.url;
+                  break;
+                default:
+                  dbContentType = lesson.contentType;
+              }
+            }
+
+            console.log(`Update - Mapped content type: ${dbContentType}`);
+            console.log(`Update - Document file: ${documentFile}`);
+            console.log(`Update - SCORM file: ${scormFile}`);
+            console.log(`Update - MP4 file: ${mp4File}`);
+            console.log(`Update - Content URL: ${contentUrl}`);
+
             const [lessonResult] = await connection.query(
               "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               [
                 lesson.title,
                 sectionId,
                 lesson.lessonType || "Content-Based",
-                lesson.contentType || null,
-                lesson.lessonContentDocument || null,
-                lesson.scromPackage || null,
-                lesson.videoUpload || null,
-                lesson.contentUrl || null,
-                lesson.lessonDuration || null,
+                dbContentType,
+                documentFile,
+                scormFile,
+                mp4File,
+                contentUrl,
+                lesson.lessonDuration || lesson.duration || null,
                 courseId,
                 userId,
                 userId,
@@ -400,21 +563,71 @@ class InstructorCourseService {
 
             // Handle ILTS if lesson type is ILTS
             if (lesson.lessonType === "ILTS") {
-              await connection.query(
-                "CALL add_ilts_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                  courseId,
-                  lessonId,
-                  lesson.iltsType || lesson.iltsMode,
-                  lesson.iltsUrl || lesson.meetUrl,
-                  lesson.eventVenue || lesson.venue,
-                  lesson.startDate,
-                  lesson.startTime,
-                  lesson.endDate,
-                  lesson.endTime,
-                  userId,
-                ]
-              );
+              console.log("Update - Adding ILTS session for lesson:", lessonId);
+              console.log("Update - ILTS data received:", {
+                iltsType: lesson.iltsType,
+                iltsMode: lesson.iltsMode,
+                iltsUrl: lesson.iltsUrl,
+                meetUrl: lesson.meetUrl,
+                eventVenue: lesson.eventVenue,
+                venue: lesson.venue,
+                startDate: lesson.startDate,
+                startTime: lesson.startTime,
+                endDate: lesson.endDate,
+                endTime: lesson.endTime
+              });
+
+              // Prepare ILTS parameters with proper null handling
+              const iltsMode = lesson.iltsType || lesson.iltsMode || "Online";
+              const meetUrl = lesson.iltsUrl || lesson.meetUrl || null;
+              const venue = lesson.eventVenue || lesson.venue || null;
+              const startDate = lesson.startDate || null;
+              const startTime = lesson.startTime || null;
+              const endDate = lesson.endDate || null;
+              const endTime = lesson.endTime || null;
+
+              // Convert empty strings to null
+              const cleanMeetUrl = (meetUrl === "" || meetUrl === undefined) ? null : meetUrl;
+              const cleanVenue = (venue === "" || venue === undefined) ? null : venue;
+              const cleanStartDate = (startDate === "" || startDate === undefined) ? null : startDate;
+              const cleanStartTime = (startTime === "" || startTime === undefined) ? null : startTime;
+              const cleanEndDate = (endDate === "" || endDate === undefined) ? null : endDate;
+              const cleanEndTime = (endTime === "" || endTime === undefined) ? null : endTime;
+
+              console.log("Update - ILTS parameters for stored procedure:", {
+                courseId,
+                lessonId,
+                iltsMode,
+                cleanMeetUrl,
+                cleanVenue,
+                cleanStartDate,
+                cleanStartTime,
+                cleanEndDate,
+                cleanEndTime,
+                userId
+              });
+
+              try {
+                const [iltsResult] = await connection.query(
+                  "CALL add_ilts_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  [
+                    courseId,
+                    lessonId,
+                    iltsMode,
+                    cleanMeetUrl,
+                    cleanVenue,
+                    cleanStartDate,
+                    cleanStartTime,
+                    cleanEndDate,
+                    cleanEndTime,
+                    userId,
+                  ]
+                );
+                console.log("Update - ILTS session added successfully for lesson:", lessonId);
+              } catch (iltsError) {
+                console.error("Update - Error adding ILTS session for lesson", lessonId, ":", iltsError);
+                // Don't throw error, just log it - the lesson is still created
+              }
             }
 
             // Handle skills
@@ -812,31 +1025,60 @@ class InstructorCourseService {
   // Add a lesson to a course
   async addLesson(courseId, lessonData, creatorId) {
     console.log("addLesson called with courseId:", courseId);
-    console.log(lessonData);
+    console.log("Single lesson data:", lessonData);
 
     const connection = await promisePool.getConnection();
-    //lets add through sql not stored procedure
     try {
       await connection.beginTransaction();
-      if (lessonData.contentType === "scorm") {
-        lessonData.scromPackage = lessonData.file;
-      } else if (lessonData.contentType === "document") {
-        lessonData.lessonContentDocument = lessonData.file;
-      } else if (lessonData.contentType === "video") {
-        lessonData.videoUpload = lessonData.file;
+      
+      // Map frontend contentType to database enum values
+      let dbContentType = null;
+      let documentFile = null;
+      let scormFile = null; 
+      let mp4File = null;
+      let contentUrl = null;
+
+      if (lessonData.contentType) {
+        switch (lessonData.contentType) {
+          case 'mp4':
+            dbContentType = 'mp4';
+            mp4File = lessonData.videoUpload || lessonData.file;
+            break;
+          case 'document':
+            dbContentType = 'document';
+            documentFile = lessonData.lessonContentDocument || lessonData.file;
+            break;
+          case 'scorm':
+            dbContentType = 'scorm';
+            scormFile = lessonData.scromPackage || lessonData.file;
+            break;
+          case 'url':
+            dbContentType = 'url';
+            contentUrl = lessonData.contentUrl || lessonData.url;
+            break;
+          default:
+            dbContentType = lessonData.contentType;
+        }
       }
+
+      console.log(`Single lesson - Mapped content type: ${dbContentType}`);
+      console.log(`Single lesson - Document file: ${documentFile}`);
+      console.log(`Single lesson - SCORM file: ${scormFile}`);
+      console.log(`Single lesson - MP4 file: ${mp4File}`);
+      console.log(`Single lesson - Content URL: ${contentUrl}`);
+
       const result = await connection.query(
         "INSERT INTO course_lesson (title, section_id, lesson_type, lesson_content_type, lesson_content_document, lesson_content_scorm, lesson_content_mp4, lesson_content_url, lesson_duration, course_id, creator_id, last_updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           lessonData.title,
           lessonData.sectionId,
           lessonData.lessonType || "Content-Based",
-          lessonData.contentType || null,
-          lessonData.lessonContentDocument || null,
-          lessonData.scromPackage || null,
-          lessonData.videoUpload || null,
-          lessonData.contentUrl || null,
-          lessonData.lessonDuration || null,
+          dbContentType,
+          documentFile,
+          scormFile,
+          mp4File,
+          contentUrl,
+          lessonData.lessonDuration || lessonData.duration || null,
           courseId,
           creatorId,
           creatorId,
