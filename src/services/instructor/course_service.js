@@ -266,7 +266,7 @@ class InstructorCourseService {
               const cleanEndDate = (endDate === "" || endDate === undefined) ? null : endDate;
               const cleanEndTime = (endTime === "" || endTime === undefined) ? null : endTime;
 
-              console.log("ILTS parameters for stored procedure:", {
+              console.log("ILTS parameters for insertion:", {
                 courseId,
                 lessonId,
                 iltsMode,
@@ -280,22 +280,46 @@ class InstructorCourseService {
               });
 
               try {
-                const [iltsResult] = await connection.query(
-                  "CALL add_ilts_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                  [
-                    courseId,
-                    lessonId,
-                    iltsMode,
-                    cleanMeetUrl,
-                    cleanVenue,
-                    cleanStartDate,
-                    cleanStartTime,
-                    cleanEndDate,
-                    cleanEndTime,
-                    userId,
-                  ]
-                );
-                console.log("ILTS session added successfully for lesson:", lessonId);
+                // Try stored procedure first, if it fails, use direct INSERT
+                try {
+                  const [iltsResult] = await connection.query(
+                    "CALL add_ilts_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                      courseId,
+                      lessonId,
+                      iltsMode,
+                      cleanMeetUrl,
+                      cleanVenue,
+                      cleanStartDate,
+                      cleanStartTime,
+                      cleanEndDate,
+                      cleanEndTime,
+                      userId,
+                    ]
+                  );
+                  console.log("ILTS session added successfully using stored procedure for lesson:", lessonId);
+                } catch (spError) {
+                  console.log("Stored procedure failed, trying direct INSERT:", spError.message);
+                  // Fallback to direct INSERT if stored procedure doesn't exist
+                  const [iltsResult] = await connection.query(
+                    `INSERT INTO ilts (course_id, lesson_id, lesson_mode, meet_url, venue, start_date, start_time, end_date, end_time, creator_id, last_updated_by, created_at, last_updated) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+                    [
+                      courseId,
+                      lessonId,
+                      iltsMode,
+                      cleanMeetUrl,
+                      cleanVenue,
+                      cleanStartDate,
+                      cleanStartTime,
+                      cleanEndDate,
+                      cleanEndTime,
+                      userId,
+                      userId,
+                    ]
+                  );
+                  console.log("ILTS session added successfully using direct INSERT for lesson:", lessonId);
+                }
               } catch (iltsError) {
                 console.error("Error adding ILTS session for lesson", lessonId, ":", iltsError);
                 // Don't throw error, just log it - the lesson is still created
@@ -594,7 +618,7 @@ class InstructorCourseService {
               const cleanEndDate = (endDate === "" || endDate === undefined) ? null : endDate;
               const cleanEndTime = (endTime === "" || endTime === undefined) ? null : endTime;
 
-              console.log("Update - ILTS parameters for stored procedure:", {
+              console.log("Update - ILTS parameters for insertion:", {
                 courseId,
                 lessonId,
                 iltsMode,
@@ -608,22 +632,46 @@ class InstructorCourseService {
               });
 
               try {
-                const [iltsResult] = await connection.query(
-                  "CALL add_ilts_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                  [
-                    courseId,
-                    lessonId,
-                    iltsMode,
-                    cleanMeetUrl,
-                    cleanVenue,
-                    cleanStartDate,
-                    cleanStartTime,
-                    cleanEndDate,
-                    cleanEndTime,
-                    userId,
-                  ]
-                );
-                console.log("Update - ILTS session added successfully for lesson:", lessonId);
+                // Try stored procedure first, if it fails, use direct INSERT
+                try {
+                  const [iltsResult] = await connection.query(
+                    "CALL add_ilts_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                      courseId,
+                      lessonId,
+                      iltsMode,
+                      cleanMeetUrl,
+                      cleanVenue,
+                      cleanStartDate,
+                      cleanStartTime,
+                      cleanEndDate,
+                      cleanEndTime,
+                      userId,
+                    ]
+                  );
+                  console.log("Update - ILTS session added successfully using stored procedure for lesson:", lessonId);
+                } catch (spError) {
+                  console.log("Update - Stored procedure failed, trying direct INSERT:", spError.message);
+                  // Fallback to direct INSERT if stored procedure doesn't exist
+                  const [iltsResult] = await connection.query(
+                    `INSERT INTO ilts (course_id, lesson_id, lesson_mode, meet_url, venue, start_date, start_time, end_date, end_time, creator_id, last_updated_by, created_at, last_updated) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+                    [
+                      courseId,
+                      lessonId,
+                      iltsMode,
+                      cleanMeetUrl,
+                      cleanVenue,
+                      cleanStartDate,
+                      cleanStartTime,
+                      cleanEndDate,
+                      cleanEndTime,
+                      userId,
+                      userId,
+                    ]
+                  );
+                  console.log("Update - ILTS session added successfully using direct INSERT for lesson:", lessonId);
+                }
               } catch (iltsError) {
                 console.error("Update - Error adding ILTS session for lesson", lessonId, ":", iltsError);
                 // Don't throw error, just log it - the lesson is still created
@@ -867,9 +915,10 @@ class InstructorCourseService {
   // );
 
   // const result = await instructorCourseService.addCourseFAQs(courseId, faqs);
-  async addCourseRequirements(courseId, requirements) {
+  async addCourseRequirements(courseId, requirements, creatorId) {
     console.log("addCourseRequirements called with courseId:", courseId);
     console.log("Requirements data:", JSON.stringify(requirements, null, 2));
+    console.log("Creator ID:", creatorId);
 
     const connection = await promisePool.getConnection();
     try {
@@ -883,8 +932,8 @@ class InstructorCourseService {
             [
               requirement,
               courseId,
-              requirements.creatorId,
-              requirements.creatorId,
+              creatorId,
+              creatorId,
             ]
           );
 
@@ -904,9 +953,10 @@ class InstructorCourseService {
       connection.release();
     }
   }
-  async addCourseOutcomes(courseId, outcomes) {
+  async addCourseOutcomes(courseId, outcomes, creatorId) {
     console.log("addCourseOutcomes called with courseId:", courseId);
     console.log("Outcomes data:", JSON.stringify(outcomes, null, 2));
+    console.log("Creator ID:", creatorId);
 
     const connection = await promisePool.getConnection();
     try {
@@ -916,7 +966,7 @@ class InstructorCourseService {
         if (outcome.trim()) {
           const [result] = await connection.query(
             "INSERT INTO course_outcomes (outcome, course_id, creator_id, last_updated_by) VALUES (?, ?, ?, ?)",
-            [outcome, courseId, outcomes.creatorId, outcomes.creatorId]
+            [outcome, courseId, creatorId, creatorId]
           );
 
           if (result.affectedRows === 0) {
@@ -935,9 +985,10 @@ class InstructorCourseService {
       connection.release();
     }
   }
-  async addCourseFAQs(courseId, faqs) {
+  async addCourseFAQs(courseId, faqs, creatorId) {
     console.log("addCourseFAQs called with courseId:", courseId);
     console.log("FAQs data:", JSON.stringify(faqs, null, 2));
+    console.log("Creator ID:", creatorId);
 
     const connection = await promisePool.getConnection();
     try {
@@ -947,7 +998,7 @@ class InstructorCourseService {
         if (faq.question && faq.answer) {
           const [result] = await connection.query(
             "INSERT INTO course_faq (question, answer, course_id, creator_id, last_updated_by) VALUES (?, ?, ?, ?, ?)",
-            [faq.question, faq.answer, courseId, faqs.creatorId, faqs.creatorId]
+            [faq.question, faq.answer, courseId, creatorId, creatorId]
           );
 
           if (result.affectedRows === 0) {
@@ -1067,7 +1118,7 @@ class InstructorCourseService {
       console.log(`Single lesson - MP4 file: ${mp4File}`);
       console.log(`Single lesson - Content URL: ${contentUrl}`);
 
-      const result = await connection.query(
+      const [result] = await connection.query(
         "INSERT INTO course_lesson (title, section_id, lesson_type, lesson_content_type, lesson_content_document, lesson_content_scorm, lesson_content_mp4, lesson_content_url, lesson_duration, course_id, creator_id, last_updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           lessonData.title,
@@ -1084,9 +1135,129 @@ class InstructorCourseService {
           creatorId,
         ]
       );
+
+      const lessonId = result.insertId;
+      console.log("Lesson created with ID:", lessonId);
+
+      // Handle file uploads after lesson creation
+      if (lessonData.file && typeof lessonData.file === 'object' && lessonData.file.name && dbContentType) {
+        console.log(`Uploading ${dbContentType} file for lesson ${lessonId}:`, lessonData.file.name);
+        
+        try {
+          let uploadedFilename = null;
+          const uploadService = require("../upload_service");
+          
+          if (dbContentType === 'mp4') {
+            uploadedFilename = await uploadService.uploadLessonMp4(lessonData.file, lessonId);
+            console.log(`MP4 file uploaded successfully: ${uploadedFilename}`);
+            
+          } else if (dbContentType === 'document') {
+            uploadedFilename = await uploadService.uploadLessonDocument(lessonData.file, lessonId);
+            console.log(`Document file uploaded successfully: ${uploadedFilename}`);
+            
+          } else if (dbContentType === 'scorm') {
+            uploadedFilename = await uploadService.uploadLessonScorm(lessonData.file, lessonId);
+            console.log(`SCORM file uploaded successfully: ${uploadedFilename}`);
+          }
+        } catch (uploadError) {
+          console.error(`Failed to upload file for lesson ${lessonId}:`, uploadError);
+          // Don't throw error - the lesson is still created, just without the file
+        }
+      }
+
+      // Handle ILTS if lesson type is ILTS
+      if (lessonData.lessonType === "ILTS") {
+        console.log("Single lesson - Adding ILTS session for lesson:", lessonId);
+        console.log("Single lesson - ILTS data received:", {
+          iltsType: lessonData.iltsType,
+          meetingUrl: lessonData.meetingUrl,
+          venue: lessonData.venue,
+          startDate: lessonData.startDate,
+          startTime: lessonData.startTime,
+          endDate: lessonData.endDate,
+          endTime: lessonData.endTime
+        });
+
+        // Prepare ILTS parameters with proper null handling
+        const iltsMode = lessonData.iltsType || "Online";
+        const meetUrl = lessonData.meetingUrl || null;
+        const venue = lessonData.venue || null;
+        const startDate = lessonData.startDate || null;
+        const startTime = lessonData.startTime || null;
+        const endDate = lessonData.endDate || null;
+        const endTime = lessonData.endTime || null;
+
+        // Convert empty strings to null
+        const cleanMeetUrl = (meetUrl === "" || meetUrl === undefined) ? null : meetUrl;
+        const cleanVenue = (venue === "" || venue === undefined) ? null : venue;
+        const cleanStartDate = (startDate === "" || startDate === undefined) ? null : startDate;
+        const cleanStartTime = (startTime === "" || startTime === undefined) ? null : startTime;
+        const cleanEndDate = (endDate === "" || endDate === undefined) ? null : endDate;
+        const cleanEndTime = (endTime === "" || endTime === undefined) ? null : endTime;
+
+        console.log("Single lesson - ILTS parameters for insertion:", {
+          courseId,
+          lessonId,
+          iltsMode,
+          cleanMeetUrl,
+          cleanVenue,
+          cleanStartDate,
+          cleanStartTime,
+          cleanEndDate,
+          cleanEndTime,
+          creatorId
+        });
+
+        try {
+          // Try stored procedure first, if it fails, use direct INSERT
+          try {
+            const [iltsResult] = await connection.query(
+              "CALL add_ilts_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              [
+                courseId,
+                lessonId,
+                iltsMode,
+                cleanMeetUrl,
+                cleanVenue,
+                cleanStartDate,
+                cleanStartTime,
+                cleanEndDate,
+                cleanEndTime,
+                creatorId,
+              ]
+            );
+            console.log("Single lesson - ILTS session added successfully using stored procedure for lesson:", lessonId);
+          } catch (spError) {
+            console.log("Single lesson - Stored procedure failed, trying direct INSERT:", spError.message);
+            // Fallback to direct INSERT if stored procedure doesn't exist
+            const [iltsResult] = await connection.query(
+              `INSERT INTO ilts (course_id, lesson_id, lesson_mode, meet_url, venue, start_date, start_time, end_date, end_time, creator_id, last_updated_by, created_at, last_updated) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+              [
+                courseId,
+                lessonId,
+                iltsMode,
+                cleanMeetUrl,
+                cleanVenue,
+                cleanStartDate,
+                cleanStartTime,
+                cleanEndDate,
+                cleanEndTime,
+                creatorId,
+                creatorId,
+              ]
+            );
+            console.log("Single lesson - ILTS session added successfully using direct INSERT for lesson:", lessonId);
+          }
+        } catch (iltsError) {
+          console.error("Single lesson - Error adding ILTS session for lesson", lessonId, ":", iltsError);
+          // Don't throw error, just log it - the lesson is still created
+        }
+      }
+
       await connection.commit();
-      console.log(result);
-      return result.insertId;
+      console.log("Lesson creation completed for ID:", lessonId);
+      return lessonId;
     } catch (error) {
       await connection.rollback();
       console.error("Error in addLesson:", error);
@@ -1108,6 +1279,305 @@ class InstructorCourseService {
     }
 
     return rows.map((row) => new CourseSectionDTO(row));
+  }
+
+  // Individual section update methods for editing
+  async updateCourseBasicInfo(courseId, basicInfo, updatedBy) {
+    const connection = await promisePool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const [result] = await connection.query(
+        `UPDATE course SET 
+         title = ?, 
+         short_description = ?, 
+         description = ?, 
+         category_id = ?, 
+         sub_category_id = ?, 
+         level = ?, 
+         language_id = ?, 
+         course_duration = ?, 
+         last_updated_by = ?, 
+         last_updated = NOW()
+         WHERE id = ?`,
+        [
+          basicInfo.title,
+          basicInfo.shortDescription,
+          basicInfo.description,
+          basicInfo.categoryId,
+          basicInfo.subCategoryId,
+          basicInfo.level,
+          basicInfo.languageId,
+          basicInfo.courseDuration,
+          updatedBy,
+          courseId
+        ]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error("Course not found or no changes made");
+      }
+
+      await connection.commit();
+      return { success: true };
+    } catch (error) {
+      await connection.rollback();
+      console.error("Error in updateCourseBasicInfo:", error);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateCourseDetails(courseId, details, updatedBy) {
+    const connection = await promisePool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      // Clear existing requirements, outcomes, and FAQs
+      await connection.query("DELETE FROM course_requirements WHERE course_id = ?", [courseId]);
+      await connection.query("DELETE FROM course_outcomes WHERE course_id = ?", [courseId]);
+      await connection.query("DELETE FROM course_faq WHERE course_id = ?", [courseId]);
+
+      // Add new requirements
+      if (details.requirements && details.requirements.length > 0) {
+        for (const requirement of details.requirements) {
+          if (requirement.trim()) {
+            await connection.query(
+              "INSERT INTO course_requirements (requirement, course_id, creator_id, last_updated_by) VALUES (?, ?, ?, ?)",
+              [requirement, courseId, updatedBy, updatedBy]
+            );
+          }
+        }
+      }
+
+      // Add new outcomes
+      if (details.outcomes && details.outcomes.length > 0) {
+        for (const outcome of details.outcomes) {
+          if (outcome.trim()) {
+            await connection.query(
+              "INSERT INTO course_outcomes (outcome, course_id, creator_id, last_updated_by) VALUES (?, ?, ?, ?)",
+              [outcome, courseId, updatedBy, updatedBy]
+            );
+          }
+        }
+      }
+
+      // Add new FAQs
+      if (details.faqs && details.faqs.length > 0) {
+        for (const faq of details.faqs) {
+          if (faq.question && faq.answer) {
+            await connection.query(
+              "INSERT INTO course_faq (question, answer, course_id, creator_id, last_updated_by) VALUES (?, ?, ?, ?, ?)",
+              [faq.question, faq.answer, courseId, updatedBy, updatedBy]
+            );
+          }
+        }
+      }
+
+      await connection.commit();
+      return { success: true };
+    } catch (error) {
+      await connection.rollback();
+      console.error("Error in updateCourseDetails:", error);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateCourseMedia(courseId, media, updatedBy) {
+    const connection = await promisePool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const [result] = await connection.query(
+        `UPDATE course SET 
+         course_overview_provider = ?, 
+         course_overview_video_url = ?, 
+         last_updated_by = ?, 
+         last_updated = NOW()
+         WHERE id = ?`,
+        [media.mediaType, media.mediaUrl, updatedBy, courseId]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error("Course not found or no changes made");
+      }
+
+      await connection.commit();
+      return { success: true };
+    } catch (error) {
+      await connection.rollback();
+      console.error("Error in updateCourseMedia:", error);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateLesson(courseId, lessonId, lessonData, updatedBy) {
+    const connection = await promisePool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      // Map content type
+      let dbContentType = null;
+      if (lessonData.contentType) {
+        switch (lessonData.contentType) {
+          case 'mp4':
+            dbContentType = 'mp4';
+            break;
+          case 'document':
+            dbContentType = 'document';
+            break;
+          case 'scorm':
+            dbContentType = 'scorm';
+            break;
+          case 'url':
+            dbContentType = 'url';
+            break;
+          default:
+            dbContentType = lessonData.contentType;
+        }
+      }
+
+      // Update lesson basic info
+      const [result] = await connection.query(
+        `UPDATE course_lesson SET 
+         title = ?, 
+         section_id = ?, 
+         lesson_type = ?, 
+         lesson_content_type = ?, 
+         lesson_duration = ?, 
+         lesson_content_url = ?, 
+         last_updated_by = ?, 
+         last_updated = NOW()
+         WHERE id = ? AND course_id = ?`,
+        [
+          lessonData.title,
+          lessonData.sectionId,
+          lessonData.lessonType || "Content-Based",
+          dbContentType,
+          lessonData.duration,
+          lessonData.url,
+          updatedBy,
+          lessonId,
+          courseId
+        ]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error("Lesson not found or no changes made");
+      }
+
+      // Handle ILTS updates
+      if (lessonData.lessonType === "ILTS") {
+        // Remove existing ILTS data
+        await connection.query("DELETE FROM ilts WHERE lesson_id = ?", [lessonId]);
+        
+        // Add new ILTS data
+        const iltsMode = lessonData.iltsType || "Online";
+        const meetUrl = lessonData.meetingUrl || null;
+        const venue = lessonData.venue || null;
+        const startDate = lessonData.startDate || null;
+        const startTime = lessonData.startTime || null;
+        const endDate = lessonData.endDate || null;
+        const endTime = lessonData.endTime || null;
+
+        // Convert empty strings to null
+        const cleanMeetUrl = (meetUrl === "" || meetUrl === undefined) ? null : meetUrl;
+        const cleanVenue = (venue === "" || venue === undefined) ? null : venue;
+        const cleanStartDate = (startDate === "" || startDate === undefined) ? null : startDate;
+        const cleanStartTime = (startTime === "" || startTime === undefined) ? null : startTime;
+        const cleanEndDate = (endDate === "" || endDate === undefined) ? null : endDate;
+        const cleanEndTime = (endTime === "" || endTime === undefined) ? null : endTime;
+
+        try {
+          // Try stored procedure first, if it fails, use direct INSERT
+          try {
+            await connection.query(
+              "CALL add_ilts_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              [
+                courseId,
+                lessonId,
+                iltsMode,
+                cleanMeetUrl,
+                cleanVenue,
+                cleanStartDate,
+                cleanStartTime,
+                cleanEndDate,
+                cleanEndTime,
+                updatedBy,
+              ]
+            );
+          } catch (spError) {
+            console.log("Stored procedure failed, trying direct INSERT:", spError.message);
+            await connection.query(
+              `INSERT INTO ilts (course_id, lesson_id, lesson_mode, meet_url, venue, start_date, start_time, end_date, end_time, creator_id, last_updated_by, created_at, last_updated) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+              [
+                courseId,
+                lessonId,
+                iltsMode,
+                cleanMeetUrl,
+                cleanVenue,
+                cleanStartDate,
+                cleanStartTime,
+                cleanEndDate,
+                cleanEndTime,
+                updatedBy,
+                updatedBy,
+              ]
+            );
+          }
+        } catch (iltsError) {
+          console.error("Error updating ILTS session:", iltsError);
+          // Don't throw error, just log it
+        }
+      } else {
+        // Remove ILTS data if lesson type changed from ILTS to something else
+        await connection.query("DELETE FROM ilts WHERE lesson_id = ?", [lessonId]);
+      }
+
+      await connection.commit();
+      return { success: true };
+    } catch (error) {
+      await connection.rollback();
+      console.error("Error in updateLesson:", error);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteLesson(courseId, lessonId) {
+    const connection = await promisePool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      // Delete related ILTS data first
+      await connection.query("DELETE FROM ilts WHERE lesson_id = ?", [lessonId]);
+      
+      // Delete the lesson
+      const [result] = await connection.query(
+        "DELETE FROM course_lesson WHERE id = ? AND course_id = ?",
+        [lessonId, courseId]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error("Lesson not found");
+      }
+
+      await connection.commit();
+      return { success: true };
+    } catch (error) {
+      await connection.rollback();
+      console.error("Error in deleteLesson:", error);
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 }
 

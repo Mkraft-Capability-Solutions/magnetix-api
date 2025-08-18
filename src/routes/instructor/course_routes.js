@@ -36,6 +36,28 @@ router.post(
   instructorCourseController.addSection
 );
 router.post("/courses/:courseId/lessons", instructorCourseController.addLesson);
+
+// Individual section update endpoints for editing
+router.put(
+  "/courses/:courseId/basic",
+  instructorCourseController.updateCourseBasicInfo
+);
+router.put(
+  "/courses/:courseId/details",
+  instructorCourseController.updateCourseDetails  
+);
+router.put(
+  "/courses/:courseId/media",
+  instructorCourseController.updateCourseMedia
+);
+router.put(
+  "/courses/:courseId/lessons/:lessonId",
+  instructorCourseController.updateLesson
+);
+router.delete(
+  "/courses/:courseId/lessons/:lessonId", 
+  instructorCourseController.deleteLesson
+);
 router.get(
   "/courses/:courseId/sections",
   instructorCourseController.getSectionsByCourseId

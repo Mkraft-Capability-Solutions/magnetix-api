@@ -343,10 +343,10 @@ exports.addCourseRequirements = async (req, res, next) => {
         message: "Requirements must be an array",
       });
     }
-    // requirements.creatorId = req.user.uuid; // Not needed, handled in service
     const result = await instructorCourseService.addCourseRequirements(
       courseId,
-      requirements
+      requirements,
+      req.user.uuid
     );
 
     res.json({
@@ -373,7 +373,8 @@ exports.addCourseOutcomes = async (req, res, next) => {
 
     const result = await instructorCourseService.addCourseOutcomes(
       courseId,
-      outcomes
+      outcomes,
+      req.user.uuid
     );
 
     res.json({
@@ -432,7 +433,7 @@ exports.addCourseFAQs = async (req, res, next) => {
       });
     }
 
-    const result = await instructorCourseService.addCourseFAQs(courseId, faqs);
+    const result = await instructorCourseService.addCourseFAQs(courseId, faqs, req.user.uuid);
 
     res.json({
       success: true,
@@ -502,6 +503,129 @@ exports.addLesson = async (req, res, next) => {
     });
   } catch (error) {
     console.error("Error in addLesson:", error);
+    next(error);
+  }
+};
+
+// Individual section update controllers for editing
+exports.updateCourseBasicInfo = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const { title, shortDescription, description, category, subcategory, level, language, courseDuration } = req.body;
+    const updatedBy = req.user.uuid;
+
+    const result = await instructorCourseService.updateCourseBasicInfo(
+      courseId,
+      {
+        title,
+        shortDescription,  
+        description,
+        categoryId: category,
+        subCategoryId: subcategory,
+        level,
+        languageId: language,
+        courseDuration
+      },
+      updatedBy
+    );
+
+    res.json({
+      success: true,
+      message: "Course basic information updated successfully", 
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateCourseBasicInfo:", error);
+    next(error);
+  }
+};
+
+exports.updateCourseDetails = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const { requirements, outcomes, faqs } = req.body;
+    const updatedBy = req.user.uuid;
+
+    // Clear existing data first, then add new data
+    const result = await instructorCourseService.updateCourseDetails(
+      courseId,
+      { requirements, outcomes, faqs },
+      updatedBy
+    );
+
+    res.json({
+      success: true,
+      message: "Course details updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateCourseDetails:", error);
+    next(error);
+  }
+};
+
+exports.updateCourseMedia = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const { mediaType, mediaUrl } = req.body;
+    const updatedBy = req.user.uuid;
+
+    const result = await instructorCourseService.updateCourseMedia(
+      courseId,
+      { mediaType, mediaUrl },
+      updatedBy  
+    );
+
+    res.json({
+      success: true,
+      message: "Course media updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateCourseMedia:", error);
+    next(error);
+  }
+};
+
+exports.updateLesson = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const lessonId = req.params.lessonId;
+    const lessonData = req.body;
+    const updatedBy = req.user.uuid;
+
+    const result = await instructorCourseService.updateLesson(
+      courseId,
+      lessonId, 
+      lessonData,
+      updatedBy
+    );
+
+    res.json({
+      success: true,
+      message: "Lesson updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateLesson:", error);
+    next(error);
+  }
+};
+
+exports.deleteLesson = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const lessonId = req.params.lessonId;
+
+    const result = await instructorCourseService.deleteLesson(courseId, lessonId);
+
+    res.json({
+      success: true,
+      message: "Lesson deleted successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in deleteLesson:", error);
     next(error);
   }
 };
