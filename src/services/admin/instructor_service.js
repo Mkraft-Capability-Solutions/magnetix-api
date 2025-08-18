@@ -3,10 +3,20 @@ const { v4: uuidv4 } = require("uuid");
 const crypto = require("crypto");
 
 class AdminInstructorService {
-  async getAllInstructors() {
-    const [rows] = await promisePool.query("SELECT * FROM instructors");
-    return rows;
-  }
+ async getAllInstructors() {
+  const [rows] = await promisePool.query(`
+    SELECT 
+      instructors.*, 
+      users.email,
+       users.is_deleted,
+      users.status
+    FROM instructors
+    JOIN users 
+      ON instructors.user_id = users.uuid
+  `);
+  return rows;
+}
+
 
   async getInstructorById(instructorId) {
     const [rows] = await promisePool.query(
@@ -76,3 +86,4 @@ class AdminInstructorService {
     return true;
   }
 }
+module.exports = new AdminInstructorService();
