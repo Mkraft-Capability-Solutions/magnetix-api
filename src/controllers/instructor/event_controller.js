@@ -1,5 +1,6 @@
 // instructor_event_controller.js
 const instructorEventService = require('../../services/instructor/event_service');
+const uploadService = require('../../services/upload_service');
 const { authenticate, authorize } = require('../../middleware/auth_middleware');
 const Joi = require('joi');
 
@@ -54,12 +55,36 @@ const eventAttendeesSchema = Joi.object({
 
 exports.createEvent = async (req, res, next) => {
     try {
-        const { error } = createEventSchema.validate(req.body);
+        // Handle file upload first if present
+        let eventThumbnailFilename = '';
+        if (req.file) {
+            eventThumbnailFilename = await uploadService.uploadEventThumbnail(req.file, null);
+        }
+
+        // Process FormData and convert string values to appropriate types
+        const processedData = {
+            title: req.body.title,
+            description: req.body.description || '',
+            startDate: req.body.startDate,
+            startTime: req.body.startTime,
+            endDate: req.body.endDate,
+            endTime: req.body.endTime,
+            eventAudienceTypeId: parseInt(req.body.eventAudienceTypeId),
+            speakers: req.body.speakers || '',
+            eventCategory: req.body.eventCategory || '',
+            eventThumbnail: eventThumbnailFilename,
+            onlineEvent: req.body.onlineEvent === 'true',
+            eventVenue: req.body.eventVenue || '',
+            maxLimit: parseInt(req.body.maxLimit),
+            url: req.body.url || ''
+        };
+
+        const { error } = createEventSchema.validate(processedData);
         if (error) {
             return res.status(400).json({ message: error.details[0].message });
         }
 
-        const eventId = await instructorEventService.createEvent(req.user.uuid, req.body);
+        const eventId = await instructorEventService.createEvent(req.user.uuid, processedData);
         
         res.status(201).json({
             success: true,
