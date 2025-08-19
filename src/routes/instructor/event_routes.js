@@ -15,12 +15,13 @@ const upload = multer({
 router.use(authenticate);
 router.use(authorize(2)); 
 
-// Events
+// Events - specific routes must come before parameterized routes
 router.post('/', upload.single('eventThumbnail'), instructorEventController.createEvent);
-router.put('/', instructorEventController.updateEvent);
+router.put('/', upload.single('eventThumbnail'), instructorEventController.updateEvent);
 router.delete('/', instructorEventController.deleteEvent);
 router.get('/upcoming', instructorEventController.getMyUpcomingEvents);
 router.get('/past', instructorEventController.getMyPastEvents);
+router.get('/:eventId', instructorEventController.getEventById);
 router.get('/:eventId/attendees', instructorEventController.getEventAttendees);
 
 module.exports = router;
