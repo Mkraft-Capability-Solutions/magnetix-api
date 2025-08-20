@@ -20,11 +20,14 @@ const createEventSchema = Joi.object({
     eventAudienceTypeId: Joi.number().integer().required(),
     speakers: Joi.string().allow('').optional(),
     eventCategory: Joi.string().allow('').optional(),
-    eventThumbnail: Joi.string().allow('').optional(),
+    eventThumbnail: Joi.string().allow('', null).optional(),
     onlineEvent: Joi.boolean().default(false),
     eventVenue: Joi.string().allow('', null).optional(),
     maxLimit: Joi.number().integer().min(1).required(),
-    url: Joi.string().uri().allow('').optional(),
+    url: Joi.alternatives().try(
+        Joi.string().uri(),
+        Joi.string().allow('', null)
+    ).optional(),
     target_audience_emails: Joi.string().allow('').optional()
 });
 
@@ -39,11 +42,14 @@ const updateEventSchema = Joi.object({
     eventAudienceTypeId: Joi.number().integer().required(),
     speakers: Joi.string().allow('').optional(),
     eventCategory: Joi.string().allow('').optional(),
-    eventThumbnail: Joi.string().allow('').optional(),
+    eventThumbnail: Joi.string().allow('', null).optional(),
     onlineEvent: Joi.boolean().default(false),
     eventVenue: Joi.string().allow('', null).optional(),
     maxLimit: Joi.number().integer().min(1).required(),
-    url: Joi.string().uri().allow('').optional(),
+    url: Joi.alternatives().try(
+        Joi.string().uri(),
+        Joi.string().allow('', null)
+    ).optional(),
     target_audience_emails: Joi.string().allow('').optional()
 });
 
@@ -57,25 +63,20 @@ const eventAttendeesSchema = Joi.object({
 
 exports.createEvent = async (req, res, next) => {
     try {
-        // Handle file upload first if present
-        let eventThumbnailFilename = '';
-        if (req.file) {
-            eventThumbnailFilename = await uploadService.uploadEventThumbnail(req.file, null);
-        }
-
         // Process FormData and convert string values to appropriate types
+        console.log('Raw request body:', req.body);
         const isOnline = req.body.onlineEvent === 'true';
         const processedData = {
             title: req.body.title,
             description: req.body.description || '',
-            startDate: req.body.startDate,
+            startDate: new Date(req.body.startDate),
             startTime: req.body.startTime,
-            endDate: req.body.endDate,
+            endDate: new Date(req.body.endDate),
             endTime: req.body.endTime,
             eventAudienceTypeId: parseInt(req.body.eventAudienceTypeId),
             speakers: req.body.speakers || '',
             eventCategory: req.body.eventCategory || '',
-            eventThumbnail: eventThumbnailFilename,
+            eventThumbnail: req.body.eventThumbnail || '',
             onlineEvent: isOnline,
             eventVenue: isOnline ? null : (req.body.eventVenue || ''),
             maxLimit: parseInt(req.body.maxLimit),
@@ -83,9 +84,17 @@ exports.createEvent = async (req, res, next) => {
             target_audience_emails: req.body.target_audience_emails || ''
         };
 
+        console.log('Processed eventThumbnail:', processedData.eventThumbnail);
+
+        console.log('Data being validated:', processedData);
         const { error } = createEventSchema.validate(processedData);
         if (error) {
-            return res.status(400).json({ message: error.details[0].message });
+            console.error('Validation error:', error.details);
+            return res.status(400).json({ 
+                message: error.details[0].message,
+                field: error.details[0].path.join('.'),
+                value: error.details[0].context?.value
+            });
         }
 
         const eventId = await instructorEventService.createEvent(req.user.uuid, processedData);
@@ -93,7 +102,10 @@ exports.createEvent = async (req, res, next) => {
         res.status(201).json({
             success: true,
             message: 'Event created successfully',
-            eventId
+            data: {
+                eventId: eventId,
+                eventThumbnail: processedData.eventThumbnail
+            }
         });
     } catch (error) {
         next(error);
@@ -123,32 +135,29 @@ exports.getEventById = async (req, res, next) => {
 
 exports.updateEvent = async (req, res, next) => {
     try {
-        // Handle file upload first if present
-        let eventThumbnailFilename = '';
-        if (req.file) {
-            eventThumbnailFilename = await uploadService.uploadEventThumbnail(req.file, null);
-        }
-
         // Process FormData and convert string values to appropriate types
+        console.log('Raw request body for update:', req.body);
         const isOnline = req.body.onlineEvent === 'true';
         const processedData = {
             eventId: parseInt(req.body.eventId),
             title: req.body.title,
             description: req.body.description || '',
-            startDate: req.body.startDate,
+            startDate: new Date(req.body.startDate),
             startTime: req.body.startTime,
-            endDate: req.body.endDate,
+            endDate: new Date(req.body.endDate),
             endTime: req.body.endTime,
             eventAudienceTypeId: parseInt(req.body.eventAudienceTypeId),
             speakers: req.body.speakers || '',
             eventCategory: req.body.eventCategory || '',
-            eventThumbnail: eventThumbnailFilename || req.body.existingThumbnail || '',
+            eventThumbnail: req.body.eventThumbnail || req.body.existingThumbnail || '',
             onlineEvent: isOnline,
             eventVenue: isOnline ? null : (req.body.eventVenue || ''),
             maxLimit: parseInt(req.body.maxLimit),
             url: req.body.url || '',
             target_audience_emails: req.body.target_audience_emails || ''
         };
+
+        console.log('Processed eventThumbnail for update:', processedData.eventThumbnail);
 
         const { error } = updateEventSchema.validate(processedData);
         if (error) {
