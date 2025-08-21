@@ -3,20 +3,20 @@ class EventDTO {
         this.id = data.id;
         this.title = data.title;
         this.description = data.description;
-        this.startDate = data.start_date;
-        this.startTime = data.start_time;
-        this.endDate = data.end_date;
-        this.endTime = data.end_time;
-        this.eventAudienceTypeId = data.event_audience_type_id;
+        this.start_date = data.start_date;
+        this.start_time = data.start_time;
+        this.end_date = data.end_date;
+        this.end_time = data.end_time;
+        this.audience_type = data.event_audience_type_id;
         this.speakers = data.speakers;
-        this.eventCategory = data.event_category;
-        this.eventThumbnail = data.event_thumbnail;
-        this.onlineEvent = data.online_event;
-        this.eventVenue = data.event_venue;
-        this.maxLimit = data.max_limit;
-        this.attendeesCount = data.attendees_count || 0;
+        this.event_category = data.event_category;
+        this.event_thumbnail = data.event_thumbnail;
+        this.online_event = data.online_event;
+        this.event_venue = data.event_venue;
+        this.max_limit = data.max_limit;
+        this.attendees_count = data.attendees_count || 0;
         this.url = data.url;
-        this.createdDate = data.created_date;
+        this.created_date = data.created_date;
     }
 }
 

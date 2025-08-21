@@ -145,42 +145,137 @@ class InstructorEventService {
     }
 
     async getEventById(creatorId, eventId) {
-        const [rows] = await promisePool.query(
-            'CALL instructor_get_event_by_id(?, ?)',
-            [creatorId, eventId]
-        );
-        
-        if (rows[0] && rows[0].length > 0) {
-            return new EventDTO(rows[0][0]);
+        try {
+            // Try using the stored procedure first
+            const [rows] = await promisePool.query(
+                'CALL instructor_get_event_by_id(?, ?)',
+                [creatorId, eventId]
+            );
+            
+            if (rows[0] && rows[0].length > 0) {
+                return new EventDTO(rows[0][0]);
+            }
+        } catch (error) {
+            console.log('Stored procedure failed, falling back to direct query:', error.message);
+            
+            // Fallback to direct SQL query
+            const [rows] = await promisePool.query(
+                `SELECT 
+                    e.id,
+                    e.start_date,
+                    e.start_time,
+                    e.title,
+                    e.url,
+                    e.description,
+                    e.end_date,
+                    e.end_time,
+                    e.event_audience_type_id,
+                    e.speakers,
+                    e.event_category,
+                    e.event_thumbnail,
+                    e.online_event,
+                    e.event_venue,
+                    e.max_limit,
+                    e.attendees_count,
+                    e.created_date,
+                    e.last_updated
+                FROM events e
+                WHERE e.id = ? 
+                AND e.creator_id = ? 
+                AND e.is_deleted = 0`,
+                [eventId, creatorId]
+            );
+            
+            if (rows && rows.length > 0) {
+                return new EventDTO(rows[0]);
+            }
         }
+        
         return null;
     }
 
     async updateEvent(creatorId, eventId, data) {
-        await promisePool.query(
-            'CALL instructor_update_event(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 
-            [
-                creatorId,
-                eventId,
-                data.title,
-                data.description,
-                data.startDate,
-                data.startTime,
-                data.endDate,
-                data.endTime,
-                data.eventAudienceTypeId,
-                data.speakers || null,
-                data.eventCategory || null,
-                data.eventThumbnail || null,
-                data.onlineEvent || 0,
-                data.eventVenue || null,
-                data.maxLimit,
-                data.url || null
-            ]
-        );
-
-            return true;
+        try {
+            // Try using the stored procedure first
+            await promisePool.query(
+                'CALL instructor_update_event(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 
+                [
+                    creatorId,
+                    eventId,
+                    data.title,
+                    data.description,
+                    data.startDate,
+                    data.startTime,
+                    data.endDate,
+                    data.endTime,
+                    data.eventAudienceTypeId,
+                    data.speakers || null,
+                    data.eventCategory || null,
+                    data.eventThumbnail || null,
+                    data.onlineEvent || 0,
+                    data.eventVenue || null,
+                    data.maxLimit,
+                    data.url || null
+                ]
+            );
+        } catch (error) {
+            console.log('Stored procedure failed, falling back to direct query:', error.message);
+            
+            // Fallback to direct SQL query
+            const [result] = await promisePool.query(
+                `UPDATE events SET
+                    title = ?,
+                    description = ?,
+                    start_date = ?,
+                    start_time = ?,
+                    end_date = ?,
+                    end_time = ?,
+                    event_audience_type_id = ?,
+                    speakers = ?,
+                    event_category = ?,
+                    event_thumbnail = CASE 
+                        WHEN ? IS NOT NULL AND ? != '' THEN ?
+                        ELSE event_thumbnail 
+                    END,
+                    online_event = ?,
+                    event_venue = CASE 
+                        WHEN ? = 1 THEN NULL 
+                        ELSE ? 
+                    END,
+                    max_limit = ?,
+                    url = ?,
+                    last_updated = CURRENT_TIMESTAMP
+                WHERE id = ? AND creator_id = ? AND is_deleted = 0`,
+                [
+                    data.title,
+                    data.description,
+                    data.startDate,
+                    data.startTime,
+                    data.endDate,
+                    data.endTime,
+                    data.eventAudienceTypeId,
+                    data.speakers || null,
+                    data.eventCategory || null,
+                    data.eventThumbnail || null,
+                    data.eventThumbnail || null,
+                    data.eventThumbnail || null,
+                    data.onlineEvent || 0,
+                    data.onlineEvent || 0,
+                    data.eventVenue || null,
+                    data.maxLimit,
+                    data.url || null,
+                    eventId,
+                    creatorId
+                ]
+            );
+            
+            if (result.affectedRows === 0) {
+                throw new Error('Event not found or unauthorized');
+            }
         }
+
+        return true;
+    }
 
     async deleteEvent(creatorId, eventId) {
         await promisePool.query(
@@ -191,19 +286,91 @@ class InstructorEventService {
     }
 
     async getMyUpcomingEvents(creatorId, limit = 10, offset = 0) {
-        const [rows] = await promisePool.query(
-            'CALL instructor_get_my_upcoming_events(?, ?, ?)',
-            [creatorId, limit, offset]
-        );
-        return rows[0].map(row => new EventDTO(row));
+        try {
+            const [rows] = await promisePool.query(
+                'CALL instructor_get_my_upcoming_events(?, ?, ?)',
+                [creatorId, limit, offset]
+            );
+            return rows[0].map(row => new EventDTO(row));
+        } catch (error) {
+            console.log('Stored procedure failed, falling back to direct query for upcoming events:', error.message);
+            
+            // Fallback to direct SQL query
+            const [rows] = await promisePool.query(
+                `SELECT 
+                    e.id,
+                    e.start_date,
+                    e.start_time,
+                    e.title,
+                    e.url,
+                    e.description,
+                    e.end_date,
+                    e.end_time,
+                    e.event_audience_type_id,
+                    e.speakers,
+                    e.event_category,
+                    e.event_thumbnail,
+                    e.online_event,
+                    e.event_venue,
+                    e.max_limit,
+                    e.attendees_count,
+                    e.created_date,
+                    e.last_updated
+                FROM events e
+                WHERE e.creator_id = ? 
+                AND e.is_deleted = 0
+                AND CONCAT(e.start_date, ' ', e.start_time) >= NOW()
+                ORDER BY e.start_date ASC, e.start_time ASC
+                LIMIT ? OFFSET ?`,
+                [creatorId, limit, offset]
+            );
+            
+            return rows.map(row => new EventDTO(row));
+        }
     }
 
     async getMyPastEvents(creatorId, limit = 10, offset = 0) {
-        const [rows] = await promisePool.query(
-            'CALL instructor_get_my_past_events(?, ?, ?)',
-            [creatorId, limit, offset]
-        );
-        return rows[0].map(row => new EventDTO(row));
+        try {
+            const [rows] = await promisePool.query(
+                'CALL instructor_get_my_past_events(?, ?, ?)',
+                [creatorId, limit, offset]
+            );
+            return rows[0].map(row => new EventDTO(row));
+        } catch (error) {
+            console.log('Stored procedure failed, falling back to direct query for past events:', error.message);
+            
+            // Fallback to direct SQL query
+            const [rows] = await promisePool.query(
+                `SELECT 
+                    e.id,
+                    e.start_date,
+                    e.start_time,
+                    e.title,
+                    e.url,
+                    e.description,
+                    e.end_date,
+                    e.end_time,
+                    e.event_audience_type_id,
+                    e.speakers,
+                    e.event_category,
+                    e.event_thumbnail,
+                    e.online_event,
+                    e.event_venue,
+                    e.max_limit,
+                    e.attendees_count,
+                    e.created_date,
+                    e.last_updated
+                FROM events e
+                WHERE e.creator_id = ? 
+                AND e.is_deleted = 0
+                AND CONCAT(e.start_date, ' ', e.start_time) < NOW()
+                ORDER BY e.start_date DESC, e.start_time DESC
+                LIMIT ? OFFSET ?`,
+                [creatorId, limit, offset]
+            );
+            
+            return rows.map(row => new EventDTO(row));
+        }
     }
 
     async getEventAttendees(eventId) {
