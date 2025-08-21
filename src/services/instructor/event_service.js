@@ -374,11 +374,38 @@ class InstructorEventService {
     }
 
     async getEventAttendees(eventId) {
-        const [rows] = await promisePool.query(
-            'CALL instructor_get_event_attendees(?)',
-            [eventId]
-        );
-        return rows[0].map(row => new EventAttendeeDTO(row));
+        try {
+            const [rows] = await promisePool.query(
+                'CALL instructor_get_event_attendees(?)',
+                [eventId]
+            );
+            return rows[0].map(row => new EventAttendeeDTO(row));
+        } catch (error) {
+            console.log('Stored procedure failed, falling back to direct query for event attendees:', error.message);
+            
+            // Fallback to direct SQL query
+            const [rows] = await promisePool.query(
+                `SELECT 
+                    ea.id,
+                    ea.event_id,
+                    ea.recipient_id,
+                    ea.registered_at,
+                    COALESCE(
+                        CONCAT(s.first_name, ' ', s.last_name),
+                        CONCAT(i.first_name, ' ', i.last_name),
+                        'Unknown User'
+                    ) as recipient_name,
+                    COALESCE(s.email, i.email, 'no-email@example.com') as recipient_email
+                FROM event_attendees ea
+                LEFT JOIN students s ON ea.recipient_id = s.user_id
+                LEFT JOIN instructors i ON ea.recipient_id = i.user_id
+                WHERE ea.event_id = ?
+                ORDER BY ea.registered_at DESC`,
+                [eventId]
+            );
+            
+            return rows.map(row => new EventAttendeeDTO(row));
+        }
     }
 }
 
