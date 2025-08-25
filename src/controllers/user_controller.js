@@ -10,6 +10,7 @@ const updateDetailsSchema = Joi.object({
   dob: Joi.date().optional(),
   address: Joi.string().optional().allow(""),
   specialization: Joi.string().optional().allow(""),
+  expertise: Joi.string().optional().allow(""),
   city: Joi.string().optional().allow(""),
   state: Joi.string().optional().allow(""),
   country: Joi.string().optional().allow(""),
