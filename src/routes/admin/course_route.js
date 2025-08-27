@@ -10,5 +10,8 @@ router.get("/:courseId", adminCourseController.getCourse);
 router.post("/", adminCourseController.createCourse);
 router.put("/:courseId", adminCourseController.updateCourse);
 router.delete("/:courseId", adminCourseController.deleteCourse);
+router.patch("/:courseId/approve", adminCourseController.approveCourse);
+router.patch("/:courseId/reject", adminCourseController.rejectCourse);
+router.get("/:courseId/details", adminCourseController.getCourseDetails);
 
 module.exports = router;

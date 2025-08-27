@@ -1,3 +1,4 @@
+const e = require("express");
 const AdminCourseService = require("../../services/admin/course_service");
 
 exports.getAllCourses = async (req, res) => {
@@ -13,7 +14,7 @@ exports.getAllCourses = async (req, res) => {
 };
 exports.getCourse = async (req, res) => {
   try {
-    const course = await AdminCourseService.getCourseById(req.params.id);
+    const course = await AdminCourseService.getCourseById(req.params.courseId);
     res.json({
       success: true,
       data: course,
@@ -45,17 +46,17 @@ exports.updateCourse = async (req, res) => {
     res.status(400).json({ success: false, message: error.message });
   }
 };
-exports.deleteCourse = async (req, res) => {
-  try {
-    await AdminCourseService.deleteCourse(req.params.id);
-    res.json({
-      success: true,
-      message: "Course deleted successfully",
-    });
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
-  }
-};
+// exports.deleteCourse = async (req, res) => {
+//   try {
+//     await AdminCourseService.deleteCourse(req.params.id);
+//     res.json({
+//       success: true,
+//       message: "Course deleted successfully",
+//     });
+//   } catch (error) {
+//     res.status(400).json({ success: false, message: error.message });
+//   }
+// };
 exports.getCourseByInstructor = async (req, res) => {
   try {
     const courses = await AdminCourseService.getCoursesByInstructor(
@@ -67,5 +68,56 @@ exports.getCourseByInstructor = async (req, res) => {
     });
   } catch (error) {
     res.status(404).json({ success: false, message: error.message });
+  }
+};
+
+exports.approveCourse = async (req, res) => {
+  try {
+    await AdminCourseService.approveCourse(req.params.courseId);
+    res.json({
+      success: true,
+      message: "Course approved successfully",
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+}
+
+exports.rejectCourse = async (req, res) => {  
+  try {
+    await AdminCourseService.rejectCourse(req.params.courseId);
+    res.json({
+      success: true,
+      message: "Course rejected successfully",
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+}
+exports.deleteCourse = async (req, res) => {  
+  try {
+    await AdminCourseService.deleteCourse(req.params.courseId);
+    res.json({
+      success: true,
+      message: "Course deleted successfully",
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+}
+
+exports.getCourseDetails = async (req, res) => {
+  try {
+    const courseDetails = await AdminCourseService.getCourseDetails(req.params.courseId);
+    res.json({
+      success: true,
+      data: courseDetails,
+    });
+  } catch (error) {
+    if (error.message.includes("not found")) {
+      res.status(404).json({ success: false, message: error.message });
+    } else {
+      res.status(500).json({ success: false, message: error.message });
+    }
   }
 };
