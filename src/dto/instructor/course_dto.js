@@ -25,8 +25,8 @@ class CourseDTO {
         this.creatorId = data.creator_id || data.creatorId;
         
         this.instructorName = data.instructorName || data.instructor_name;
-        this.instructorDp = data.instructorDp || data.dp;
-        this.instructorAbout = data.instructorAbout || data.about;
+        this.instructorDp = data.instructorDp || data.instructor_dp || data.dp;
+        this.instructorAbout = data.instructorAbout || data.instructor_about || data.about;
         this.instructorSocialLinks = data.instructorSocialLinks || data.social_links;
         this.instructorExpertise = data.instructorExpertise || data.expertise;
     }
