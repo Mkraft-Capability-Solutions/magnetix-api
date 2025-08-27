@@ -23,6 +23,12 @@ class CourseDTO {
         this.createdAt = data.created_at || data.createdDate || new Date().toISOString();
         this.updatedAt = data.last_updated || data.updatedAt || this.createdAt;
         this.creatorId = data.creator_id || data.creatorId;
+        
+        this.instructorName = data.instructorName || data.instructor_name;
+        this.instructorDp = data.instructorDp || data.instructor_dp || data.dp;
+        this.instructorAbout = data.instructorAbout || data.instructor_about || data.about;
+        this.instructorSocialLinks = data.instructorSocialLinks || data.social_links;
+        this.instructorExpertise = data.instructorExpertise || data.expertise;
     }
 
     static fromDatabase(data) {
@@ -53,7 +59,12 @@ class CourseDTO {
             thumbnail: data.thumbnail,
             status: data.status,
             created_at: data.createdAt || data.created_at,
-            creator_id: data.creatorId || data.creator_id
+            creator_id: data.creatorId || data.creator_id,
+            instructorName: data.instructorName || data.instructor_name,
+            instructorDp: data.instructorDp || data.dp,
+            instructorAbout: data.instructorAbout || data.about,
+            instructorSocialLinks: data.instructorSocialLinks || data.social_links,
+            instructorExpertise: data.instructorExpertise || data.expertise,
         });
     }
 

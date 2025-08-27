@@ -65,21 +65,33 @@ exports.createEvent = async (req, res, next) => {
     try {
         // Process FormData and convert string values to appropriate types
         console.log('Raw request body:', req.body);
-        const isOnline = req.body.onlineEvent === 'true';
+        
+        // Validate required fields exist
+        if (!req.body || !req.body.title) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Title is required',
+                error: {}
+            });
+        }
+
+        // Safely parse onlineEvent with fallback
+        const isOnline = req.body.onlineEvent === 'true' || req.body.onlineEvent === '1' || req.body.onlineEvent === 1;
+        
         const processedData = {
-            title: req.body.title,
+            title: req.body.title || '',
             description: req.body.description || '',
-            startDate: new Date(req.body.startDate),
-            startTime: req.body.startTime,
-            endDate: new Date(req.body.endDate),
-            endTime: req.body.endTime,
-            eventAudienceTypeId: parseInt(req.body.eventAudienceTypeId),
+            startDate: req.body.startDate ? new Date(req.body.startDate) : null,
+            startTime: req.body.startTime || '',
+            endDate: req.body.endDate ? new Date(req.body.endDate) : null,
+            endTime: req.body.endTime || '',
+            eventAudienceTypeId: req.body.eventAudienceTypeId ? parseInt(req.body.eventAudienceTypeId) : null,
             speakers: req.body.speakers || '',
             eventCategory: req.body.eventCategory || '',
             eventThumbnail: req.body.eventThumbnail || '',
             onlineEvent: isOnline,
             eventVenue: isOnline ? null : (req.body.eventVenue || ''),
-            maxLimit: parseInt(req.body.maxLimit),
+            maxLimit: req.body.maxLimit ? parseInt(req.body.maxLimit) : null,
             url: req.body.url || '',
             target_audience_emails: req.body.target_audience_emails || ''
         };
@@ -91,24 +103,45 @@ exports.createEvent = async (req, res, next) => {
         if (error) {
             console.error('Validation error:', error.details);
             return res.status(400).json({ 
+                success: false,
                 message: error.details[0].message,
-                field: error.details[0].path.join('.'),
-                value: error.details[0].context?.value
+                error: {
+                    field: error.details[0].path.join('.'),
+                    value: error.details[0].context?.value
+                }
             });
         }
 
-        const eventId = await instructorEventService.createEvent(req.user.uuid, processedData);
-        
-        res.status(201).json({
-            success: true,
-            message: 'Event created successfully',
-            data: {
-                eventId: eventId,
-                eventThumbnail: processedData.eventThumbnail
+        try {
+            const eventId = await instructorEventService.createEvent(req.user.uuid, processedData);
+            
+            res.status(201).json({
+                success: true,
+                message: 'Event created successfully',
+                data: {
+                    eventId: eventId,
+                    eventThumbnail: processedData.eventThumbnail
+                }
+            });
+        } catch (serviceError) {
+            console.error('Service error in createEvent:', serviceError);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to create event',
+                error: {
+                    message: serviceError.message || 'Internal server error'
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Controller error in createEvent:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to create event',
+            error: {
+                message: error.message || 'Internal server error'
             }
         });
-    } catch (error) {
-        next(error);
     }
 };
 
@@ -137,22 +170,34 @@ exports.updateEvent = async (req, res, next) => {
     try {
         // Process FormData and convert string values to appropriate types
         console.log('Raw request body for update:', req.body);
-        const isOnline = req.body.onlineEvent === 'true';
+        
+        // Validate required fields exist
+        if (!req.body || !req.body.title || !req.body.eventId) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Title and Event ID are required',
+                error: {}
+            });
+        }
+
+        // Safely parse onlineEvent with fallback
+        const isOnline = req.body.onlineEvent === 'true' || req.body.onlineEvent === '1' || req.body.onlineEvent === 1;
+        
         const processedData = {
-            eventId: parseInt(req.body.eventId),
-            title: req.body.title,
+            eventId: req.body.eventId ? parseInt(req.body.eventId) : null,
+            title: req.body.title || '',
             description: req.body.description || '',
-            startDate: new Date(req.body.startDate),
-            startTime: req.body.startTime,
-            endDate: new Date(req.body.endDate),
-            endTime: req.body.endTime,
-            eventAudienceTypeId: parseInt(req.body.eventAudienceTypeId),
+            startDate: req.body.startDate ? new Date(req.body.startDate) : null,
+            startTime: req.body.startTime || '',
+            endDate: req.body.endDate ? new Date(req.body.endDate) : null,
+            endTime: req.body.endTime || '',
+            eventAudienceTypeId: req.body.eventAudienceTypeId ? parseInt(req.body.eventAudienceTypeId) : null,
             speakers: req.body.speakers || '',
             eventCategory: req.body.eventCategory || '',
             eventThumbnail: req.body.eventThumbnail || req.body.existingThumbnail || '',
             onlineEvent: isOnline,
             eventVenue: isOnline ? null : (req.body.eventVenue || ''),
-            maxLimit: parseInt(req.body.maxLimit),
+            maxLimit: req.body.maxLimit ? parseInt(req.body.maxLimit) : null,
             url: req.body.url || '',
             target_audience_emails: req.body.target_audience_emails || ''
         };
@@ -161,23 +206,54 @@ exports.updateEvent = async (req, res, next) => {
 
         const { error } = updateEventSchema.validate(processedData);
         if (error) {
-            return res.status(400).json({ message: error.details[0].message });
+            console.error('Validation error in updateEvent:', error.details);
+            return res.status(400).json({ 
+                success: false,
+                message: error.details[0].message,
+                error: {
+                    field: error.details[0].path.join('.'),
+                    value: error.details[0].context?.value
+                }
+            });
         }
 
-        await instructorEventService.updateEvent(req.user.uuid, processedData.eventId, processedData);
-        
-        // Handle individual target audience emails if provided and audience type is individual
-        if (processedData.eventAudienceTypeId === 1 && processedData.target_audience_emails) {
-            // Clear existing target audience attendees and add new ones
-            await instructorEventService.updateTargetAudienceAttendees(processedData.eventId, processedData.target_audience_emails);
+        try {
+            await instructorEventService.updateEvent(req.user.uuid, processedData.eventId, processedData);
+            
+            // Handle individual target audience emails if provided and audience type is individual
+            if (processedData.eventAudienceTypeId === 1 && processedData.target_audience_emails) {
+                try {
+                    // Clear existing target audience attendees and add new ones
+                    await instructorEventService.updateTargetAudienceAttendees(processedData.eventId, processedData.target_audience_emails);
+                } catch (emailError) {
+                    console.error('Error updating target audience emails:', emailError);
+                    // Don't fail the entire update if email processing fails
+                }
+            }
+            
+            res.json({
+                success: true,
+                message: 'Event updated successfully'
+            });
+        } catch (serviceError) {
+            console.error('Service error in updateEvent:', serviceError);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to update event',
+                error: {
+                    message: serviceError.message || 'Internal server error'
+                }
+            });
         }
-        
-        res.json({
-            success: true,
-            message: 'Event updated successfully'
-        });
     } catch (error) {
-        next(error);
+        console.error('Controller error in updateEvent:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to update event',
+            error: {
+                message: error.message || 'Internal server error'
+            }
+        });
     }
 };
 

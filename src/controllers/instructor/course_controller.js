@@ -304,8 +304,7 @@ exports.getEnrolledStudentsWithProgress = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;
     const data = await instructorCourseService.getEnrolledStudentsWithProgress(
-      courseId,
-      req.user.uuid
+      courseId
     );
 
     res.json({
@@ -317,6 +316,32 @@ exports.getEnrolledStudentsWithProgress = async (req, res, next) => {
     res.status(500).json({
       success: false,
       message: "Failed to get enrolled students with progress",
+      error: error.message,
+    });
+  }
+};
+
+// Get course analytics
+exports.getCourseAnalytics = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const timeFilter = req.query.timeFilter || 'all'; // 7days, 30days, 6months, all
+    
+    const analytics = await instructorCourseService.getCourseAnalytics(
+      courseId,
+      req.user.uuid,
+      timeFilter
+    );
+
+    res.json({
+      success: true,
+      data: analytics,
+    });
+  } catch (error) {
+    console.error("Error in getCourseAnalytics:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get course analytics",
       error: error.message,
     });
   }

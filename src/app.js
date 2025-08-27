@@ -34,6 +34,7 @@ const notificationPermissionRoutes = require("./routes/notification_permission_r
 const instructorMentorshipRoutes = require("./routes/instructor/mentorship_routes");
 const instructorEventRoutes = require("./routes/instructor/event_routes");
 const instructorCourseRoutes = require("./routes/instructor/course_routes");
+const instructorNotificationRoutes = require("./routes/instructor/notification_routes");
 const adminInstructorRoutes = require("./routes/admin/instructor_routes");
 const adminStudentRoutes = require("./routes/admin/student_routes");
 
@@ -52,6 +53,7 @@ app.use("/notification-permissions", notificationPermissionRoutes);
 app.use("/instructor/mentorship", instructorMentorshipRoutes);
 app.use("/instructor/events", instructorEventRoutes);
 app.use("/instructor", instructorCourseRoutes);
+app.use("/instructor/notifications", instructorNotificationRoutes);
 app.use("/admin/instructors", adminInstructorRoutes);
 app.use("/admin/students", adminStudentRoutes);
 app.use("/admin/profile", require("./routes/admin/profile_route"));

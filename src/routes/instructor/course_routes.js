@@ -90,4 +90,10 @@ router.get(
   instructorCourseController.getEnrolledStudentsWithProgress
 );
 
+// Course Analytics
+router.get(
+  "/courses/:courseId/analytics",
+  instructorCourseController.getCourseAnalytics
+);
+
 module.exports = router;

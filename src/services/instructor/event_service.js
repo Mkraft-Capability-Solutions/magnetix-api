@@ -3,39 +3,93 @@ const { EventDTO, EventAttendeeDTO } = require('../../dto/instructor/event_dto')
 
 class InstructorEventService {
     async createEvent(creatorId, data) {
-        if (!data.title) {
-            throw new Error('Title is required');
-        }
+        try {
+            console.log('CreateEvent Service - Input data:', data);
+            
+            // Validate required fields
+            if (!data || !data.title) {
+                throw new Error('Title is required');
+            }
+            if (!data.startDate) {
+                throw new Error('Start date is required');
+            }
+            if (!data.startTime) {
+                throw new Error('Start time is required');
+            }
+            if (!data.endDate) {
+                throw new Error('End date is required');
+            }
+            if (!data.endTime) {
+                throw new Error('End time is required');
+            }
+            if (!data.eventAudienceTypeId) {
+                throw new Error('Event audience type is required');
+            }
+            if (!data.maxLimit) {
+                throw new Error('Max limit is required');
+            }
 
-        const [result] = await promisePool.query(
-            'CALL instructor_create_event(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [
+            // Convert boolean values properly
+            const onlineEvent = data.onlineEvent === 'true' || data.onlineEvent === '1' || data.onlineEvent === 1 || data.onlineEvent === true ? 1 : 0;
+
+            const params = [
                 creatorId,
-                data.title,
-                data.description,
+                data.title || '',
+                data.description || '',
                 data.startDate,
                 data.startTime,
                 data.endDate,
                 data.endTime,
-                data.eventAudienceTypeId,
-                data.speakers,
-                data.eventCategory,
-                data.eventThumbnail,
-                data.onlineEvent || 0,
-                data.eventVenue,
-                data.maxLimit,
-                data.url
-            ]
-        );
-        
-        const eventId = result[0][0].event_id;
-        
-        // Handle individual target audience emails if provided
-        if (data.eventAudienceTypeId === 1 && data.target_audience_emails) {
-            await this.addTargetAudienceAttendees(eventId, data.target_audience_emails);
+                parseInt(data.eventAudienceTypeId),
+                data.speakers || '',
+                data.eventCategory || '',
+                data.eventThumbnail || '',
+                onlineEvent,
+                onlineEvent === 1 ? null : (data.eventVenue || ''),
+                parseInt(data.maxLimit),
+                data.url || ''
+            ];
+
+            console.log('CreateEvent Service - Parameters:', params);
+            console.log('Parameter types:', params.map(p => typeof p));
+
+            let eventId;
+            
+            try {
+                const [result] = await promisePool.query(
+                    'CALL instructor_create_event(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    params
+                );
+                
+                console.log('CreateEvent Service - Raw result:', result);
+                
+                if (!result || !result[0] || !result[0][0] || !result[0][0].event_id) {
+                    throw new Error('No event ID returned from stored procedure');
+                }
+                
+                eventId = result[0][0].event_id;
+                console.log('CreateEvent Service - Event ID:', eventId);
+                
+            } catch (dbError) {
+                console.error('Database error in createEvent:', dbError);
+                throw new Error(`Database error: ${dbError.message}`);
+            }
+            
+            // Handle individual target audience emails if provided
+            if (parseInt(data.eventAudienceTypeId) === 1 && data.target_audience_emails) {
+                try {
+                    await this.addTargetAudienceAttendees(eventId, data.target_audience_emails);
+                } catch (emailError) {
+                    console.error('Error adding target audience emails:', emailError);
+                    // Don't fail the entire event creation if email processing fails
+                }
+            }
+            
+            return eventId;
+        } catch (error) {
+            console.error('CreateEvent Service - Error:', error);
+            throw error;
         }
-        
-        return eventId;
     }
 
     async addTargetAudienceAttendees(eventId, emailsString) {
@@ -196,31 +250,76 @@ class InstructorEventService {
 
     async updateEvent(creatorId, eventId, data) {
         try {
-            // Try using the stored procedure first
-            await promisePool.query(
-                'CALL instructor_update_event(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 
-                [
-                    creatorId,
-                    eventId,
-                    data.title,
-                    data.description,
-                    data.startDate,
-                    data.startTime,
-                    data.endDate,
-                    data.endTime,
-                    data.eventAudienceTypeId,
-                    data.speakers || null,
-                    data.eventCategory || null,
-                    data.eventThumbnail || null,
-                    data.onlineEvent || 0,
-                    data.eventVenue || null,
-                    data.maxLimit,
-                    data.url || null
-                ]
-            );
+            console.log('UpdateEvent Service - Input data:', data);
+            
+            // Validate required fields
+            if (!data || !data.title) {
+                throw new Error('Title is required');
+            }
+            if (!eventId) {
+                throw new Error('Event ID is required');
+            }
+            if (!data.startDate) {
+                throw new Error('Start date is required');
+            }
+            if (!data.startTime) {
+                throw new Error('Start time is required');
+            }
+            if (!data.endDate) {
+                throw new Error('End date is required');
+            }
+            if (!data.endTime) {
+                throw new Error('End time is required');
+            }
+            if (!data.eventAudienceTypeId) {
+                throw new Error('Event audience type is required');
+            }
+            if (!data.maxLimit) {
+                throw new Error('Max limit is required');
+            }
+
+            // Convert boolean values properly
+            const onlineEvent = data.onlineEvent === 'true' || data.onlineEvent === '1' || data.onlineEvent === 1 || data.onlineEvent === true ? 1 : 0;
+
+            const params = [
+                creatorId,
+                parseInt(eventId),
+                data.title,
+                data.description,
+                data.startDate,
+                data.startTime,
+                data.endDate,
+                data.endTime,
+                parseInt(data.eventAudienceTypeId),
+                data.speakers || null,
+                data.eventCategory || null,
+                data.eventThumbnail || null,
+                onlineEvent,
+                data.eventVenue || null,
+                parseInt(data.maxLimit),
+                data.url || null
+            ];
+
+            console.log('UpdateEvent Service - Parameters:', params);
+            console.log('Parameter types:', params.map(p => typeof p));
+
+            try {
+                // Try using the stored procedure first
+                await promisePool.query(
+                    'CALL instructor_update_event(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 
+                    params
+                );
+                console.log('UpdateEvent Service - Event updated successfully via stored procedure');
+            } catch (spError) {
+                console.error('Stored procedure failed in updateEvent:', spError);
+                throw new Error(`Database error: ${spError.message}`);
+            }
         } catch (error) {
             console.log('Stored procedure failed, falling back to direct query:', error.message);
             
+            // Convert boolean values properly for fallback
+            const onlineEvent = data.onlineEvent === 'true' || data.onlineEvent === '1' || data.onlineEvent === 1 || data.onlineEvent === true ? 1 : 0;
+
             // Fallback to direct SQL query
             const [result] = await promisePool.query(
                 `UPDATE events SET
@@ -259,8 +358,8 @@ class InstructorEventService {
                     data.eventThumbnail || null,
                     data.eventThumbnail || null,
                     data.eventThumbnail || null,
-                    data.onlineEvent || 0,
-                    data.onlineEvent || 0,
+                    onlineEvent,
+                    onlineEvent,
                     data.eventVenue || null,
                     data.maxLimit,
                     data.url || null,

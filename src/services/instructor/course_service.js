@@ -793,6 +793,17 @@ class InstructorCourseService {
       throw new Error("Course not found or not authorized");
     }
 
+    console.log('Raw stored procedure results:', {
+      course: results[0][0],
+      outcomes: results[1]?.length || 0,
+      requirements: results[2]?.length || 0,
+      faqs: results[3]?.length || 0,
+      sectionsWithLessons: results[4]?.length || 0,
+      skills: results[5]?.length || 0,
+      ratings: results[6]?.length || 0,
+      enrollments: results[7]?.length || 0
+    });
+
     // Transform the results into a structured object
     const courseDetails = {
       course: new CourseDTO(results[0][0]),
@@ -803,106 +814,224 @@ class InstructorCourseService {
         ? results[2].map((req) => new CourseRequirementDTO(req))
         : [],
       faqs: results[3] ? results[3].map((faq) => new CourseFAQDTO(faq)) : [],
-      sections: results[4]
-        ? results[4].map((section) => new CourseSectionDTO(section))
-        : [],
-      lessons: [], // This will be populated from the lessons data
-      lessonSkills: [], // This will be populated from the skills data
+      sections: [],
+      lessons: [],
+      ratings: results[6] ? results[6].map(rating => ({
+        id: rating.id,
+        rating: rating.rating,
+        review: rating.review,
+        user_id: rating.user_id,
+        student_name: rating.student_name,
+        student_dp: rating.student_dp,
+        createdAt: rating.createdAt
+      })) : [],
+      enrollments: results[7] ? results[7].map(enrollment => ({
+        user_id: enrollment.user_id,
+        firstName: enrollment.first_name,
+        lastName: enrollment.last_name,
+        email: enrollment.email,
+        profile_image: enrollment.profile_image,
+        completion_percentage: enrollment.completion_percentage,
+        completed_lessons: enrollment.completed_lessons,
+        total_lessons_attempted: enrollment.total_lessons_attempted || enrollment.total_lessons,
+        total_lessons_available: enrollment.total_lessons_available,
+        last_accessed: enrollment.last_accessed,
+        enrollment_status: enrollment.enrollment_status,
+        enrolled_date: enrollment.enrolled_date
+      })) : [],
+      lessonSkills: [],
+      ilts: []
     };
 
-    // Process lessons and ILTS details
+    // Process sections with lessons from the combined result set (results[4])
+    const sectionsMap = {};
     const lessonsMap = {};
-    if (results[5]) {
-      results[5].forEach((lessonData) => {
-        const lesson = new CourseLessonDTO(lessonData);
-        if (lessonData.ilts_id) {
-          lesson.iltsDetails = new ILTSDTO({
-            id: lessonData.ilts_id,
-            lesson_mode: lessonData.lesson_mode,
-            meet_url: lessonData.meet_url,
-            venue: lessonData.venue,
-            start_date: lessonData.start_date,
-            start_time: lessonData.start_time,
-            end_date: lessonData.end_date,
-            end_time: lessonData.end_time,
-          });
+
+    if (results[4]) {
+      results[4].forEach((row) => {
+        // Process section data
+        if (!sectionsMap[row.section_id]) {
+          sectionsMap[row.section_id] = {
+            id: row.section_id,
+            title: row.section_title,
+            courseId: row.course_id,
+            createdAt: row.section_created_at,
+            updatedAt: row.section_updated_at,
+            lessons: []
+          };
         }
-        lessonsMap[lesson.id] = lesson;
-        courseDetails.lessons.push(lesson);
+
+        // Process lesson data (if exists for this section)
+        if (row.lesson_id) {
+          if (!lessonsMap[row.lesson_id]) {
+            const lesson = {
+              id: row.lesson_id,
+              title: row.lesson_title,
+              sectionId: row.section_id,
+              lessonType: row.lesson_type,
+              contentType: row.content_type,
+              duration: row.duration,
+              description: row.lesson_description,
+              courseId: row.course_id,
+              createdAt: row.lesson_created_at,
+              updatedAt: row.lesson_updated_at,
+              skills: []
+            };
+
+            // Add content-based lesson details
+            if (row.lesson_type === 'Content-Based') {
+              lesson.content = {
+                type: row.content_type,
+                document: row.content_document,
+                scorm: row.content_scorm,
+                mp4: row.content_mp4,
+                url: row.content_url
+              };
+            }
+
+            // Add ILTS details if it's an ILTS lesson
+            if (row.lesson_type === 'ILTS' && row.ilts_id) {
+              lesson.ilts_info = {
+                id: row.ilts_id,
+                mode: row.ilts_mode,
+                meet_url: row.ilts_meet_url,
+                venue: row.ilts_venue,
+                start_date: row.ilts_start_date,
+                start_time: row.ilts_start_time,
+                end_date: row.ilts_end_date,
+                end_time: row.ilts_end_time
+              };
+              
+              // Add to ILTS array for backward compatibility
+              courseDetails.ilts.push({
+                lesson_id: row.lesson_id,
+                lesson_mode: row.ilts_mode,
+                meet_url: row.ilts_meet_url,
+                venue: row.ilts_venue,
+                start_date: row.ilts_start_date,
+                start_time: row.ilts_start_time,
+                end_date: row.ilts_end_date,
+                end_time: row.ilts_end_time
+              });
+            }
+
+            lessonsMap[row.lesson_id] = lesson;
+            courseDetails.lessons.push(lesson);
+          }
+
+          // Add lesson to section if not already added
+          const section = sectionsMap[row.section_id];
+          if (!section.lessons.find(l => l.id === row.lesson_id)) {
+            section.lessons.push(lessonsMap[row.lesson_id]);
+          }
+        }
       });
     }
 
-    // Process skills
-    if (results[6]) {
+    // Convert sections map to array and sort
+    courseDetails.sections = Object.values(sectionsMap)
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+    // Process lesson skills (results[5])
+    if (results[5]) {
       const lessonSkillsMap = {};
-      results[6].forEach((skillData) => {
-        if (!lessonsMap[skillData.lesson_id]) return;
+      results[5].forEach((skillData) => {
+        const lessonId = skillData.lesson_id;
+        if (lessonsMap[lessonId]) {
+          // Add skill to lesson
+          if (!lessonsMap[lessonId].skills) {
+            lessonsMap[lessonId].skills = [];
+          }
+          lessonsMap[lessonId].skills.push(skillData.skill_name);
 
-        if (!lessonsMap[skillData.lesson_id].skills) {
-          lessonsMap[skillData.lesson_id].skills = [];
+          // Group skills for frontend compatibility
+          if (!lessonSkillsMap[lessonId]) {
+            lessonSkillsMap[lessonId] = {
+              lessonId: lessonId,
+              skills: []
+            };
+          }
+          lessonSkillsMap[lessonId].skills.push(skillData.skill_name);
         }
-        lessonsMap[skillData.lesson_id].skills.push(skillData.skill_name);
-
-        // Group skills by lesson for frontend compatibility
-        if (!lessonSkillsMap[skillData.lesson_id]) {
-          lessonSkillsMap[skillData.lesson_id] = {
-            lessonId: skillData.lesson_id,
-            skills: [],
-          };
-        }
-        lessonSkillsMap[skillData.lesson_id].skills.push(skillData.skill_name);
       });
 
       courseDetails.lessonSkills = Object.values(lessonSkillsMap);
     }
 
-    // Group lessons by section
-    courseDetails.sections.forEach((section) => {
-      section.lessons = Object.values(lessonsMap)
-        .filter((lesson) => lesson.sectionId === section.id)
-        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    console.log('Processed course details:', {
+      sectionsCount: courseDetails.sections.length,
+      lessonsCount: courseDetails.lessons.length,
+      iltsCount: courseDetails.ilts.length,
+      enrollmentsCount: courseDetails.enrollments.length,
+      ratingsCount: courseDetails.ratings.length
     });
-
-    // Add ILTS data to course details
-    if (results[5]) {
-      courseDetails.ilts = results[5]
-        .filter((lesson) => lesson.ilts_id)
-        .map((lesson) => ({
-          lesson_id: lesson.id,
-          lesson_mode: lesson.lesson_mode,
-          meet_url: lesson.meet_url,
-          venue: lesson.venue,
-          start_date: lesson.start_date,
-          start_time: lesson.start_time,
-          end_date: lesson.end_date,
-          end_time: lesson.end_time,
-        }));
-    } else {
-      courseDetails.ilts = [];
-    }
 
     return courseDetails;
   }
 
   async getEnrolledStudentsWithProgress(courseId) {
-    const [rows] = await promisePool.query(
-      "CALL get_enrolled_students_with_progress(?)",
-      [courseId]
-    );
+    try {
+      const [rows] = await promisePool.query(
+        "CALL get_enrolled_students_with_progress(?)",
+        [courseId]
+      );
 
-    return rows[0].map((data) => ({
-      userId: data.user_id,
-      firstName: data.first_name,
-      lastName: data.last_name,
-      email: data.email,
-      profileImage: data.profile_image,
-      progressPercentage: data.progress_percentage || 0,
-      completedLessons: data.completed_lessons || 0,
-      totalLessonsAvailable: data.total_lessons_available || 0,
-      lastAccessed: data.last_accessed,
-      lastAccessedLessonId: data.last_accessed_lesson_id,
-      lastAccessedLessonTitle: data.last_accessed_lesson_title,
-    }));
+      return rows[0].map((data) => ({
+        userId: data.user_id,
+        firstName: data.first_name,
+        lastName: data.last_name,
+        email: data.email,
+        profileImage: data.profile_image,
+        progressPercentage: data.completion_percentage || 0,
+        completedLessons: data.completed_lessons || 0,
+        totalLessonsAttempted: data.total_lessons_attempted || 0,
+        totalLessonsAvailable: data.total_lessons_available || 0,
+        lastAccessed: data.last_accessed,
+        enrollmentStatus: data.enrollment_status,
+        enrolledDate: data.enrolled_date,
+        currentLessonId: data.current_lesson_id,
+        currentLessonTitle: data.current_lesson_title
+      }));
+    } catch (error) {
+      console.error('Error in getEnrolledStudentsWithProgress:', error);
+      // Fallback to basic enrollment data if the stored procedure fails
+      const [rows] = await promisePool.query(
+        `SELECT 
+          e.user_id,
+          s.first_name,
+          s.last_name,
+          s.email,
+          s.dp as profile_image,
+          e.enrolled_date,
+          e.status as enrollment_status,
+          0 as completion_percentage,
+          0 as completed_lessons,
+          0 as total_lessons_attempted,
+          (SELECT COUNT(*) FROM course_lesson WHERE course_id = ?) as total_lessons_available
+        FROM enrol e
+        JOIN students s ON e.user_id = s.user_id
+        WHERE e.course_id = ?
+        ORDER BY e.enrolled_date DESC`,
+        [courseId, courseId]
+      );
+
+      return rows.map((data) => ({
+        userId: data.user_id,
+        firstName: data.first_name,
+        lastName: data.last_name,
+        email: data.email,
+        profileImage: data.profile_image,
+        progressPercentage: 0,
+        completedLessons: 0,
+        totalLessonsAttempted: 0,
+        totalLessonsAvailable: data.total_lessons_available || 0,
+        lastAccessed: null,
+        enrollmentStatus: data.enrollment_status,
+        enrolledDate: data.enrolled_date,
+        currentLessonId: null,
+        currentLessonTitle: null
+      }));
+    }
   }
 
   // const result = await instructorCourseService.addCourseRequirements(
@@ -1574,6 +1703,228 @@ class InstructorCourseService {
     } catch (error) {
       await connection.rollback();
       console.error("Error in deleteLesson:", error);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  // Get comprehensive course analytics
+  async getCourseAnalytics(courseId, instructorId, timeFilter = 'all') {
+    const connection = await promisePool.getConnection();
+    
+    try {
+      // Calculate date range based on timeFilter
+      let dateCondition = '';
+      let enrollmentDateCondition = '';
+      
+      const now = new Date();
+      let startDate;
+      
+      switch (timeFilter) {
+        case '7days':
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case '30days':
+          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          break;
+        case '6months':
+          startDate = new Date(now.getTime() - 6 * 30 * 24 * 60 * 60 * 1000);
+          break;
+        default:
+          startDate = null;
+      }
+      
+      if (startDate) {
+        dateCondition = `AND e.enrolled_date >= '${startDate.toISOString().split('T')[0]}'`;
+        enrollmentDateCondition = `WHERE enrolled_date >= '${startDate.toISOString().split('T')[0]}'`;
+      }
+
+      // 1. Get basic course info and verify ownership
+      const [courseRows] = await connection.query(
+        `SELECT c.*, 
+         (SELECT COUNT(*) FROM enrol e WHERE e.course_id = c.id ${dateCondition}) as total_enrollments,
+         (SELECT COUNT(*) FROM enrol e 
+          WHERE e.course_id = c.id AND e.status = 'active' ${dateCondition}) as active_enrollments
+         FROM course c 
+         WHERE c.id = ? AND c.creator_id = ?`,
+        [courseId, instructorId]
+      );
+
+      if (courseRows.length === 0) {
+        throw new Error('Course not found or access denied');
+      }
+
+      const course = courseRows[0];
+
+      // 2. Get enrollment progress data
+      const [progressRows] = await connection.query(
+        `SELECT 
+          CASE 
+            WHEN p.completion_percentage = 100 THEN 'completed'
+            WHEN p.completion_percentage > 0 THEN 'in_progress'
+            ELSE 'not_started'
+          END as status,
+          COUNT(*) as count,
+          AVG(p.completion_percentage) as avg_progress
+         FROM enrol e
+         LEFT JOIN student_progress p ON e.user_id = p.user_id AND e.course_id = p.course_id
+         WHERE e.course_id = ? ${dateCondition}
+         GROUP BY status`,
+        [courseId]
+      );
+
+      // 3. Get lesson analytics
+      const [lessonRows] = await connection.query(
+        `SELECT 
+          cl.id,
+          cl.title,
+          cl.lesson_type,
+          COUNT(DISTINCT sp.user_id) as total_students,
+          COUNT(DISTINCT CASE WHEN spl.completed_at IS NOT NULL THEN sp.user_id END) as completed_count,
+          AVG(CASE WHEN spl.completed_at IS NOT NULL THEN 
+            TIMESTAMPDIFF(MINUTE, spl.started_at, spl.completed_at) END) as avg_time_spent
+         FROM course_lesson cl
+         LEFT JOIN student_progress sp ON sp.course_id = cl.course_id
+         LEFT JOIN student_progress_lessons spl ON spl.lesson_id = cl.id AND spl.user_id = sp.user_id
+         WHERE cl.course_id = ?
+         GROUP BY cl.id, cl.title, cl.lesson_type
+         ORDER BY cl.id`,
+        [courseId]
+      );
+
+      // 4. Get ratings and reviews
+      const [ratingsRows] = await connection.query(
+        `SELECT 
+          r.rating,
+          r.review,
+          r.created_at,
+          s.first_name,
+          s.last_name
+         FROM course_ratings r
+         JOIN students s ON r.user_id = s.user_id
+         WHERE r.course_id = ?
+         ORDER BY r.created_at DESC`,
+        [courseId]
+      );
+
+      // 5. Get enrollment trend data
+      const [enrollmentTrendRows] = await connection.query(
+        `SELECT 
+          DATE(enrolled_date) as enrollment_date,
+          COUNT(*) as enrollments
+         FROM enrol 
+         WHERE course_id = ? ${enrollmentDateCondition}
+         GROUP BY DATE(enrolled_date)
+         ORDER BY enrollment_date DESC
+         LIMIT 30`,
+        [courseId]
+      );
+
+      // 6. Calculate revenue (if course has pricing)
+      const [revenueRows] = await connection.query(
+        `SELECT 
+          SUM(CASE WHEN c.price > 0 THEN c.price ELSE 0 END) as total_revenue,
+          c.price as course_price
+         FROM enrol e
+         JOIN course c ON e.course_id = c.id
+         WHERE e.course_id = ? ${dateCondition}`,
+        [courseId]
+      );
+
+      // Process the data
+      const progressDistribution = {
+        completed: 0,
+        inProgress: 0,
+        notStarted: 0
+      };
+
+      let totalProgress = 0;
+      let studentCount = 0;
+
+      progressRows.forEach(row => {
+        if (row.status === 'completed') {
+          progressDistribution.completed = row.count;
+        } else if (row.status === 'in_progress') {
+          progressDistribution.inProgress = row.count;
+        } else {
+          progressDistribution.notStarted = row.count;
+        }
+        
+        totalProgress += (row.avg_progress || 0) * row.count;
+        studentCount += row.count;
+      });
+
+      const averageProgress = studentCount > 0 ? Math.round(totalProgress / studentCount) : 0;
+      const completionRate = course.total_enrollments > 0 
+        ? Math.round((progressDistribution.completed / course.total_enrollments) * 100) 
+        : 0;
+
+      // Process lesson analytics
+      const lessonAnalytics = lessonRows.map(lesson => ({
+        lessonId: lesson.id,
+        lesson: lesson.title,
+        lessonType: lesson.lesson_type,
+        completionRate: lesson.total_students > 0 
+          ? Math.round((lesson.completed_count / lesson.total_students) * 100) 
+          : 0,
+        avgTimeSpent: Math.round(lesson.avg_time_spent || 0)
+      }));
+
+      // Process ratings
+      const ratingCounts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      let totalRatingSum = 0;
+
+      ratingsRows.forEach(rating => {
+        if (rating.rating >= 1 && rating.rating <= 5) {
+          ratingCounts[rating.rating]++;
+          totalRatingSum += rating.rating;
+        }
+      });
+
+      const averageRating = ratingsRows.length > 0 
+        ? Math.round((totalRatingSum / ratingsRows.length) * 10) / 10 
+        : 0;
+
+      // Process enrollment trend
+      const enrollmentTrend = enrollmentTrendRows.map(row => ({
+        date: row.enrollment_date,
+        enrollments: row.enrollments
+      }));
+
+      // Calculate engagement score (simple formula based on completion rate and activity)
+      const engagementScore = Math.min(10, Math.round(
+        (completionRate * 0.4 + averageProgress * 0.3 + (averageRating * 2) * 0.3) / 10
+      ));
+
+      return {
+        overview: {
+          totalEnrollments: course.total_enrollments || 0,
+          activeStudents: course.active_enrollments || 0,
+          completionRate,
+          averageProgress,
+          totalRevenue: revenueRows[0]?.total_revenue || 0,
+          coursePrice: revenueRows[0]?.course_price || 0,
+          engagementScore
+        },
+        enrollmentTrend,
+        lessonAnalytics,
+        studentProgress: progressDistribution,
+        feedbackSummary: {
+          averageRating,
+          totalReviews: ratingsRows.length,
+          ratingDistribution: ratingCounts,
+          recentReviews: ratingsRows.slice(0, 5).map(review => ({
+            rating: review.rating,
+            review: review.review,
+            studentName: `${review.first_name} ${review.last_name}`,
+            createdAt: review.created_at
+          }))
+        }
+      };
+
+    } catch (error) {
+      console.error('Error in getCourseAnalytics:', error);
       throw error;
     } finally {
       connection.release();

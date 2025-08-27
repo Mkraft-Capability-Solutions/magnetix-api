@@ -29,7 +29,7 @@ class UserService {
     
     try {
       const [rows] = await connection.query(
-        'CALL update_user_details(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'CALL update_user_details(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           uuid,
           updateData.first_name || null,
@@ -44,7 +44,9 @@ class UserService {
           updateData.social_links ? JSON.stringify(updateData.social_links) : null,
           updateData.about || null,
           updateData.resume_url || null,
-          updateData.profile_visibility || null
+          updateData.profile_visibility || null,
+          updateData.expertise || null,
+          updateData.specialization || null
         ]
       );
 
