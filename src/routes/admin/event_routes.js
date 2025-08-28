@@ -25,5 +25,6 @@ router.put('/', upload.single('eventThumbnail'), adminEventController.updateEven
 router.delete('/', adminEventController.deleteEvent);
 router.get('/:eventId', adminEventController.getEventById);
 router.get('/:eventId/attendees', adminEventController.getEventAttendees);
+router.post('/:eventId/bulk-enroll', adminEventController.bulkEnrollStudents);
 
 module.exports = router;
