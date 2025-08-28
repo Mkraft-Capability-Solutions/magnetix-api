@@ -58,6 +58,11 @@ const eventAttendeesSchema = Joi.object({
     eventId: Joi.number().integer().required()
 });
 
+const bulkEnrollSchema = Joi.object({
+    eventId: Joi.number().integer().required(),
+    emails: Joi.array().items(Joi.string().email()).min(1).required()
+});
+
 // Create new event (admin can create events)
 exports.createEvent = async (req, res, next) => {
     try {
@@ -323,6 +328,41 @@ exports.getEventAttendees = async (req, res, next) => {
         res.json({
             success: true,
             data: attendees
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Bulk enroll students in an event
+exports.bulkEnrollStudents = async (req, res, next) => {
+    try {
+        const eventId = parseInt(req.params.eventId);
+        if (!eventId) {
+            return res.status(400).json({ message: 'Invalid event ID' });
+        }
+
+        // Validate request body
+        const { error } = bulkEnrollSchema.validate({ eventId, ...req.body });
+        if (error) {
+            return res.status(400).json({ message: error.details[0].message });
+        }
+
+        const { emails } = req.body;
+        
+        // Check if event exists
+        const event = await adminEventService.getEventById(eventId);
+        if (!event) {
+            return res.status(404).json({ message: 'Event not found' });
+        }
+
+        // Process bulk enrollment
+        const result = await adminEventService.bulkEnrollStudents(eventId, emails);
+        
+        res.json({
+            success: true,
+            message: `Bulk enrollment completed. ${result.enrolled} students enrolled, ${result.skipped} skipped.`,
+            data: result
         });
     } catch (error) {
         next(error);

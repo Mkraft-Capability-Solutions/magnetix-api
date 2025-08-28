@@ -452,6 +452,100 @@ class AdminEventService {
         
         return rows.map(row => new AdminEventAttendeeDTO(row));
     }
+
+    // Bulk enroll students in an event
+    async bulkEnrollStudents(eventId, emails) {
+        const results = {
+            enrolled: 0,
+            skipped: 0,
+            errors: []
+        };
+
+        // Get event details for email notifications
+        const event = await this.getEventById(eventId);
+        if (!event) {
+            throw new Error('Event not found');
+        }
+
+        const emailHelper = require('../../utils/email_helper');
+
+        for (const email of emails) {
+            try {
+                // Get user info by email
+                const [userRows] = await promisePool.query(
+                    'SELECT uuid, role_id FROM users WHERE email = ? AND is_deleted = 0',
+                    [email]
+                );
+                
+                if (userRows.length === 0) {
+                    results.errors.push(`User not found for email: ${email}`);
+                    results.skipped++;
+                    continue;
+                }
+                
+                const user = userRows[0];
+                
+                // Only allow students to be enrolled via bulk enrollment
+                if (user.role_id !== 1) {
+                    results.errors.push(`${email} is not a student account`);
+                    results.skipped++;
+                    continue;
+                }
+
+                let recipientName = '';
+                
+                // Get student's name
+                const [studentRows] = await promisePool.query(
+                    'SELECT first_name, last_name FROM students WHERE user_id = ?',
+                    [user.uuid]
+                );
+                if (studentRows.length > 0) {
+                    recipientName = `${studentRows[0].first_name} ${studentRows[0].last_name}`;
+                }
+                
+                // Check if already registered
+                const [existingRows] = await promisePool.query(
+                    'SELECT id FROM event_attendees WHERE event_id = ? AND recipient_id = ?',
+                    [eventId, user.uuid]
+                );
+                
+                if (existingRows.length === 0) {
+                    // Insert into event_attendees
+                    await promisePool.query(
+                        'INSERT INTO event_attendees (event_id, recipient_id, recipient_name, recipient_email, registered_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)',
+                        [eventId, user.uuid, recipientName, email]
+                    );
+                    
+                    // Update attendees count
+                    await promisePool.query(
+                        'UPDATE events SET attendees_count = attendees_count + 1 WHERE id = ?',
+                        [eventId]
+                    );
+
+                    // Send registration confirmation email
+                    try {
+                        const firstName = studentRows[0]?.first_name || 'Student';
+                        await emailHelper.sendBulkEventRegistrationEmail(email, firstName, event);
+                    } catch (emailError) {
+                        console.error(`Failed to send email to ${email}:`, emailError);
+                        // Don't fail the enrollment if email fails
+                    }
+
+                    results.enrolled++;
+                } else {
+                    results.errors.push(`${email} is already enrolled in this event`);
+                    results.skipped++;
+                }
+                
+            } catch (error) {
+                console.error(`Error processing email ${email}:`, error);
+                results.errors.push(`Failed to process ${email}: ${error.message}`);
+                results.skipped++;
+            }
+        }
+
+        return results;
+    }
 }
 
 module.exports = new AdminEventService();
