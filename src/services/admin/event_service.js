@@ -525,7 +525,7 @@ class AdminEventService {
                     // Send registration confirmation email
                     try {
                         const firstName = studentRows[0]?.first_name || 'Student';
-                        await emailHelper.sendEventRegistrationEmail(email, firstName, event);
+                        await emailHelper.sendBulkEventRegistrationEmail(email, firstName, event);
                     } catch (emailError) {
                         console.error(`Failed to send email to ${email}:`, emailError);
                         // Don't fail the enrollment if email fails
