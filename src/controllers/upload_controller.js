@@ -96,15 +96,27 @@ exports.uploadLessonScorm = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
 
+    if (!req.body.lessonId) {
+      return res.status(400).json({ success: false, message: 'Lesson ID is required' });
+    }
+
+    console.log('Uploading SCORM for lesson:', req.body.lessonId, 'File:', req.file.originalname);
+    
     const folderName = await uploadService.uploadLessonScorm(req.file, req.body.lessonId);
+    
+    console.log('SCORM upload successful, folder:', folderName);
     
     res.json({ 
       success: true, 
       message: 'Lesson SCORM content uploaded and extracted successfully',
-      folderName 
+      data: { folderName }
     });
   } catch (error) {
-    next(error);
+    console.error('SCORM upload error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to upload SCORM package'
+    });
   }
 };
 

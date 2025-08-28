@@ -38,19 +38,48 @@ class UploadService {
     return filename;
   }
 
-  async uploadAndExtractZip(file, dirPath) {
-  await this.ensureDirectoryExists(dirPath);
+  async uploadAndExtractZip(file, dirPath, allowedExtensions = ['.zip']) {
+    console.log('Upload service - Starting SCORM extraction:', {
+      filename: file.originalname,
+      size: file.buffer.length,
+      directory: dirPath
+    });
 
-  try {
-    const zip = new AdmZip(file.buffer);
-    const folderName = `${Date.now()}`;
-    const extractPath = path.join(dirPath, folderName);
-    zip.extractAllTo(extractPath, true);
-    return folderName;
-  } catch (error) {
-    throw new Error(`Invalid or corrupted zip file: ${error.message}`);
+    await this.ensureDirectoryExists(dirPath);
+
+    // Check file extension
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!allowedExtensions.includes(ext)) {
+      throw new Error(`Invalid file type. Allowed types: ${allowedExtensions.join(', ')}`);
+    }
+
+    try {
+      console.log('Upload service - Creating AdmZip instance');
+      const zip = new AdmZip(file.buffer);
+      
+      console.log('Upload service - Checking zip contents');
+      const entries = zip.getEntries();
+      console.log(`Upload service - Found ${entries.length} entries in zip`);
+      
+      const folderName = `${Date.now()}`;
+      const extractPath = path.join(dirPath, folderName);
+      
+      console.log('Upload service - Extracting to:', extractPath);
+      zip.extractAllTo(extractPath, true);
+      
+      console.log('Upload service - Extraction completed successfully');
+      
+      // Verify extraction by checking if directory exists
+      if (!fs.existsSync(extractPath)) {
+        throw new Error('Extraction failed - directory not created');
+      }
+      
+      return folderName;
+    } catch (error) {
+      console.error('Upload service - Extraction error:', error);
+      throw new Error(`Invalid or corrupted zip file: ${error.message}`);
+    }
   }
-}
 
 
   // Course Thumbnail
@@ -146,7 +175,8 @@ class UploadService {
   async uploadLessonScorm(file, lessonId) {
     const folderName = await this.uploadAndExtractZip(
       file,
-      this.uploadPaths.lessonScorm
+      this.uploadPaths.lessonScorm,
+      ['.zip']
     );
 
     if (lessonId) {
