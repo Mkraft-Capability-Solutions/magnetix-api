@@ -65,7 +65,7 @@ const courseSchema = Joi.object({
             Joi.allow(null)
           )
           .optional(),
-        scromPackage: Joi.alternatives()
+        scormPackage: Joi.alternatives()
           .try(
             Joi.string().allow(""),
             Joi.object().unknown(true),

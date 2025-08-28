@@ -61,6 +61,11 @@ const server = app.listen(PORT, async () => {
   setupShutdownHandlers();
 });
 
+// Increase server timeout for large file uploads
+server.setTimeout(10 * 60 * 1000); // 10 minutes
+server.keepAliveTimeout = 5 * 60 * 1000; // 5 minutes
+server.headersTimeout = 6 * 60 * 1000; // 6 minutes
+
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled Rejection:', err);

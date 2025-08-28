@@ -115,36 +115,187 @@ class InstructorCourseService {
         }
       }
 
-      // Group lessons by section and process them
+      // Process lessons - if they have sectionId, add them to existing sections; otherwise create new sections
       if (lessons && lessons.length > 0) {
-        const sectionsMap = new Map();
-
-        // Group lessons by section
+        // Separate lessons by whether they have existing sectionIds or need new sections
+        const existingSectionLessons = [];
+        const newSectionLessons = [];
+        
         for (const lesson of lessons) {
-          const sectionTitle = lesson.section || "Default Section";
-          if (!sectionsMap.has(sectionTitle)) {
-            sectionsMap.set(sectionTitle, []);
+          if (lesson.sectionId && lesson.sectionId !== "") {
+            existingSectionLessons.push(lesson);
+          } else {
+            // Group by section title for new sections
+            const sectionTitle = lesson.section || "Default Section";
+            const existingGroup = newSectionLessons.find(group => group.sectionTitle === sectionTitle);
+            if (existingGroup) {
+              existingGroup.lessons.push(lesson);
+            } else {
+              newSectionLessons.push({
+                sectionTitle,
+                lessons: [lesson]
+              });
+            }
           }
-          sectionsMap.get(sectionTitle).push(lesson);
         }
+        
+        // Process lessons for existing sections
+        for (const lesson of existingSectionLessons) {
+          console.log(`Processing lesson for existing section: ${lesson.title}, sectionId: ${lesson.sectionId}`);
+          
+          // Map frontend contentType to database enum values
+          let dbContentType = null;
+          let documentFile = null;
+          let scormFile = null; 
+          let mp4File = null;
+          let contentUrl = null;
 
-        // Process each section
-        for (const [sectionTitle, sectionLessons] of sectionsMap) {
-          console.log(
-            `Processing section: ${sectionTitle} with ${sectionLessons.length} lessons`
+          if (lesson.contentType) {
+            switch (lesson.contentType) {
+              case 'video':
+              case 'mp4':
+                dbContentType = 'mp4';
+                mp4File = typeof (lesson.videoUpload || lesson.file) === 'string' ? (lesson.videoUpload || lesson.file) : null;
+                break;
+              case 'document':
+                dbContentType = 'document';
+                documentFile = typeof (lesson.lessonContentDocument || lesson.file) === 'string' ? (lesson.lessonContentDocument || lesson.file) : null;
+                break;
+              case 'scorm':
+                dbContentType = 'scorm';
+                scormFile = typeof (lesson.scormPackage || lesson.file) === 'string' ? (lesson.scormPackage || lesson.file) : null;
+                break;
+              case 'url':
+              case 'content_url':
+              case 'external_url':
+                dbContentType = 'url';
+                contentUrl = lesson.contentUrl || lesson.url;
+                break;
+              default:
+                dbContentType = lesson.contentType;
+            }
+          }
+
+          const [lessonResult] = await connection.query(
+            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+              lesson.title,
+              lesson.sectionId, // Use existing section ID
+              lesson.lessonType || "Content-Based",
+              dbContentType,
+              documentFile,
+              scormFile,
+              mp4File,
+              contentUrl,
+              lesson.lessonDuration || lesson.duration || null,
+              courseId,
+              userId,
+              userId,
+            ]
           );
+
+          const lessonId = lessonResult[0][0].id;
+          console.log(`Lesson created with ID: ${lessonId} in existing section: ${lesson.sectionId}`);
+
+          // Handle file uploads and ILTS similar to new sections...
+          if (lesson.file && typeof lesson.file === 'object' && lesson.file.name) {
+            console.log(`Uploading file for lesson ${lessonId}:`, lesson.file.name);
+            try {
+              let uploadedFilename = null;
+              
+              if (dbContentType === 'mp4') {
+                uploadedFilename = await uploadService.uploadLessonMp4(lesson.file, lessonId);
+                console.log(`MP4 file uploaded successfully: ${uploadedFilename}`);
+              } else if (dbContentType === 'document') {
+                uploadedFilename = await uploadService.uploadLessonDocument(lesson.file, lessonId);
+                console.log(`Document file uploaded successfully: ${uploadedFilename}`);
+              } else if (dbContentType === 'scorm') {
+                uploadedFilename = await uploadService.uploadLessonScorm(lesson.file, lessonId);
+                console.log(`SCORM file uploaded successfully: ${uploadedFilename}`);
+                
+                const [checkResult] = await connection.query(
+                  "SELECT lesson_content_scorm FROM course_lesson WHERE id = ?",
+                  [lessonId]
+                );
+                console.log(`SCORM content in DB after upload: ${checkResult[0]?.lesson_content_scorm}`);
+              }
+            } catch (uploadError) {
+              console.error(`Failed to upload file for lesson ${lessonId}:`, uploadError);
+              if (dbContentType === 'scorm') {
+                throw new Error(`SCORM upload failed: ${uploadError.message}`);
+              }
+            }
+          }
+
+          // Handle ILTS if lesson type is ILTS
+          if (lesson.lessonType === "ILTS") {
+            // Same ILTS handling code as in the original...
+            const iltsMode = lesson.iltsType || lesson.iltsMode || "Online";
+            const meetUrl = lesson.iltsUrl || lesson.meetUrl || null;
+            const venue = lesson.eventVenue || lesson.venue || null;
+            const startDate = lesson.startDate || null;
+            const startTime = lesson.startTime || null;
+            const endDate = lesson.endDate || null;
+            const endTime = lesson.endTime || null;
+
+            const formatDateForDB = (dateValue) => {
+              if (!dateValue || dateValue === "") return null;
+              try {
+                if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+                  return dateValue;
+                }
+                const date = new Date(dateValue);
+                if (isNaN(date.getTime())) return null;
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+              } catch (error) {
+                console.error('Error formatting date for DB:', dateValue, error);
+                return null;
+              }
+            };
+
+            const cleanMeetUrl = (meetUrl === "" || meetUrl === undefined) ? null : meetUrl;
+            const cleanVenue = (venue === "" || venue === undefined) ? null : venue;
+            const cleanStartDate = formatDateForDB(startDate);
+            const cleanStartTime = (startTime === "" || startTime === undefined) ? null : startTime;
+            const cleanEndDate = formatDateForDB(endDate);
+            const cleanEndTime = (endTime === "" || endTime === undefined) ? null : endTime;
+
+            try {
+              try {
+                const [iltsResult] = await connection.query(
+                  "CALL add_ilts_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  [courseId, lessonId, iltsMode, cleanMeetUrl, cleanVenue, cleanStartDate, cleanStartTime, cleanEndDate, cleanEndTime, userId]
+                );
+              } catch (spError) {
+                const [iltsResult] = await connection.query(
+                  `INSERT INTO ilts (course_id, lesson_id, lesson_mode, meet_url, venue, start_date, start_time, end_date, end_time, creator_id, last_updated_by, created_at, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+                  [courseId, lessonId, iltsMode, cleanMeetUrl, cleanVenue, cleanStartDate, cleanStartTime, cleanEndDate, cleanEndTime, userId, userId]
+                );
+              }
+            } catch (iltsError) {
+              console.error("Error adding ILTS session for lesson", lessonId, ":", iltsError);
+            }
+          }
+        }
+        
+        // Process lessons that need new sections
+        for (const sectionGroup of newSectionLessons) {
+          console.log(`Processing new section: ${sectionGroup.sectionTitle} with ${sectionGroup.lessons.length} lessons`);
 
           // Create section
           const [sectionResult] = await connection.query(
             "CALL add_course_section(?, ?, ?, ?)",
-            [sectionTitle, courseId, userId, userId]
+            [sectionGroup.sectionTitle, courseId, userId, userId]
           );
 
           const sectionId = sectionResult[0][0].id;
           console.log(`Section created with ID: ${sectionId}`);
 
-          // Process lessons in this section
-          for (const lesson of sectionLessons) {
+          // Process lessons in this new section
+          for (const lesson of sectionGroup.lessons) {
             console.log(`Processing lesson: ${lesson.title}`);
             console.log(`Processing lesson contentType: ${lesson.contentType}`);
             console.log(`Processing lesson data:`, lesson);
@@ -172,7 +323,7 @@ class InstructorCourseService {
                 case 'scorm':
                   dbContentType = 'scorm';
                   // If file is a string (filename), use it; if it's a File object, it will be handled after lesson creation
-                  scormFile = typeof (lesson.scromPackage || lesson.file) === 'string' ? (lesson.scromPackage || lesson.file) : null;
+                  scormFile = typeof (lesson.scormPackage || lesson.file) === 'string' ? (lesson.scormPackage || lesson.file) : null;
                   break;
                 case 'url':
                 case 'content_url':
@@ -220,16 +371,28 @@ class InstructorCourseService {
                 
                 if (dbContentType === 'mp4') {
                   uploadedFilename = await uploadService.uploadLessonMp4(lesson.file, lessonId);
+                  console.log(`MP4 file uploaded successfully: ${uploadedFilename}`);
                 } else if (dbContentType === 'document') {
                   uploadedFilename = await uploadService.uploadLessonDocument(lesson.file, lessonId);
+                  console.log(`Document file uploaded successfully: ${uploadedFilename}`);
                 } else if (dbContentType === 'scorm') {
                   uploadedFilename = await uploadService.uploadLessonScorm(lesson.file, lessonId);
+                  console.log(`SCORM file uploaded successfully: ${uploadedFilename}`);
+                  
+                  // Double-check that the database was updated correctly
+                  const [checkResult] = await connection.query(
+                    "SELECT lesson_content_scorm FROM course_lesson WHERE id = ?",
+                    [lessonId]
+                  );
+                  console.log(`SCORM content in DB after upload: ${checkResult[0]?.lesson_content_scorm}`);
                 }
                 
-                console.log(`File uploaded successfully: ${uploadedFilename}`);
               } catch (uploadError) {
                 console.error(`Failed to upload file for lesson ${lessonId}:`, uploadError);
-                // Don't throw error, just log it - the lesson is still created
+                // For SCORM files, this is critical - the lesson won't work without the content
+                if (dbContentType === 'scorm') {
+                  throw new Error(`SCORM upload failed: ${uploadError.message}`);
+                }
               }
             }
 
@@ -258,12 +421,39 @@ class InstructorCourseService {
               const endDate = lesson.endDate || null;
               const endTime = lesson.endTime || null;
 
-              // Convert empty strings to null
+              // Helper function to ensure date is in YYYY-MM-DD format
+              const formatDateForDB = (dateValue) => {
+                if (!dateValue || dateValue === "") return null;
+                
+                try {
+                  // If it's already in YYYY-MM-DD format, return as is
+                  if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+                    return dateValue;
+                  }
+                  
+                  // Handle other date formats
+                  const date = new Date(dateValue);
+                  if (isNaN(date.getTime())) {
+                    return null;
+                  }
+                  
+                  // Format to YYYY-MM-DD
+                  const year = date.getFullYear();
+                  const month = String(date.getMonth() + 1).padStart(2, '0');
+                  const day = String(date.getDate()).padStart(2, '0');
+                  return `${year}-${month}-${day}`;
+                } catch (error) {
+                  console.error('Error formatting date for DB:', dateValue, error);
+                  return null;
+                }
+              };
+
+              // Convert empty strings to null and format dates
               const cleanMeetUrl = (meetUrl === "" || meetUrl === undefined) ? null : meetUrl;
               const cleanVenue = (venue === "" || venue === undefined) ? null : venue;
-              const cleanStartDate = (startDate === "" || startDate === undefined) ? null : startDate;
+              const cleanStartDate = formatDateForDB(startDate);
               const cleanStartTime = (startTime === "" || startTime === undefined) ? null : startTime;
-              const cleanEndDate = (endDate === "" || endDate === undefined) ? null : endDate;
+              const cleanEndDate = formatDateForDB(endDate);
               const cleanEndTime = (endTime === "" || endTime === undefined) ? null : endTime;
 
               console.log("ILTS parameters for insertion:", {
@@ -501,30 +691,185 @@ class InstructorCourseService {
         );
         console.log(`Deleted ${sectionDeleteResult[0].affectedRows} sections`);
 
-        // Recreate lessons and sections
-        const sectionsMap = new Map();
-
-        // Group lessons by section
+        // Recreate lessons and sections - same logic as addCourse
+        // Separate lessons by whether they have existing sectionIds or need new sections
+        const existingSectionLessons = [];
+        const newSectionLessons = [];
+        
         for (const lesson of lessons) {
-          const sectionTitle = lesson.section || "Default Section";
-          if (!sectionsMap.has(sectionTitle)) {
-            sectionsMap.set(sectionTitle, []);
+          if (lesson.sectionId && lesson.sectionId !== "") {
+            existingSectionLessons.push(lesson);
+          } else {
+            // Group by section title for new sections
+            const sectionTitle = lesson.section || "Default Section";
+            const existingGroup = newSectionLessons.find(group => group.sectionTitle === sectionTitle);
+            if (existingGroup) {
+              existingGroup.lessons.push(lesson);
+            } else {
+              newSectionLessons.push({
+                sectionTitle,
+                lessons: [lesson]
+              });
+            }
           }
-          sectionsMap.get(sectionTitle).push(lesson);
         }
+        
+        // Process lessons for existing sections
+        for (const lesson of existingSectionLessons) {
+          console.log(`Update - Processing lesson for existing section: ${lesson.title}, sectionId: ${lesson.sectionId}`);
+          
+          // Map frontend contentType to database enum values
+          let dbContentType = null;
+          let documentFile = null;
+          let scormFile = null; 
+          let mp4File = null;
+          let contentUrl = null;
 
-        // Process each section
-        for (const [sectionTitle, sectionLessons] of sectionsMap) {
+          if (lesson.contentType) {
+            switch (lesson.contentType) {
+              case 'video':
+              case 'mp4':
+                dbContentType = 'mp4';
+                mp4File = typeof (lesson.videoUpload || lesson.file) === 'string' ? (lesson.videoUpload || lesson.file) : null;
+                break;
+              case 'document':
+                dbContentType = 'document';
+                documentFile = typeof (lesson.lessonContentDocument || lesson.file) === 'string' ? (lesson.lessonContentDocument || lesson.file) : null;
+                break;
+              case 'scorm':
+                dbContentType = 'scorm';
+                scormFile = typeof (lesson.scormPackage || lesson.file) === 'string' ? (lesson.scormPackage || lesson.file) : null;
+                break;
+              case 'url':
+              case 'content_url':
+              case 'external_url':
+                dbContentType = 'url';
+                contentUrl = lesson.contentUrl || lesson.url;
+                break;
+              default:
+                dbContentType = lesson.contentType;
+            }
+          }
+
+          const [lessonResult] = await connection.query(
+            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+              lesson.title,
+              lesson.sectionId, // Use existing section ID
+              lesson.lessonType || "Content-Based",
+              dbContentType,
+              documentFile,
+              scormFile,
+              mp4File,
+              contentUrl,
+              lesson.lessonDuration || lesson.duration || null,
+              courseId,
+              userId,
+              userId,
+            ]
+          );
+
+          const lessonId = lessonResult[0][0].id;
+          console.log(`Update - Lesson created with ID: ${lessonId} in existing section: ${lesson.sectionId}`);
+
+          // Handle file uploads and ILTS - same as in addCourse
+          if (lesson.file && typeof lesson.file === 'object' && lesson.file.name) {
+            console.log(`Update - Uploading file for lesson ${lessonId}:`, lesson.file.name);
+            try {
+              let uploadedFilename = null;
+              
+              if (dbContentType === 'mp4') {
+                uploadedFilename = await uploadService.uploadLessonMp4(lesson.file, lessonId);
+                console.log(`Update - MP4 file uploaded successfully: ${uploadedFilename}`);
+              } else if (dbContentType === 'document') {
+                uploadedFilename = await uploadService.uploadLessonDocument(lesson.file, lessonId);
+                console.log(`Update - Document file uploaded successfully: ${uploadedFilename}`);
+              } else if (dbContentType === 'scorm') {
+                uploadedFilename = await uploadService.uploadLessonScorm(lesson.file, lessonId);
+                console.log(`Update - SCORM file uploaded successfully: ${uploadedFilename}`);
+                
+                const [checkResult] = await connection.query(
+                  "SELECT lesson_content_scorm FROM course_lesson WHERE id = ?",
+                  [lessonId]
+                );
+                console.log(`Update - SCORM content in DB after upload: ${checkResult[0]?.lesson_content_scorm}`);
+              }
+            } catch (uploadError) {
+              console.error(`Update - Failed to upload file for lesson ${lessonId}:`, uploadError);
+              if (dbContentType === 'scorm') {
+                throw new Error(`SCORM upload failed: ${uploadError.message}`);
+              }
+            }
+          }
+
+          // Handle ILTS - same logic as addCourse
+          if (lesson.lessonType === "ILTS") {
+            const iltsMode = lesson.iltsType || lesson.iltsMode || "Online";
+            const meetUrl = lesson.iltsUrl || lesson.meetUrl || null;
+            const venue = lesson.eventVenue || lesson.venue || null;
+            const startDate = lesson.startDate || null;
+            const startTime = lesson.startTime || null;
+            const endDate = lesson.endDate || null;
+            const endTime = lesson.endTime || null;
+
+            const formatDateForDB = (dateValue) => {
+              if (!dateValue || dateValue === "") return null;
+              try {
+                if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+                  return dateValue;
+                }
+                const date = new Date(dateValue);
+                if (isNaN(date.getTime())) return null;
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+              } catch (error) {
+                console.error('Update - Error formatting date for DB:', dateValue, error);
+                return null;
+              }
+            };
+
+            const cleanMeetUrl = (meetUrl === "" || meetUrl === undefined) ? null : meetUrl;
+            const cleanVenue = (venue === "" || venue === undefined) ? null : venue;
+            const cleanStartDate = formatDateForDB(startDate);
+            const cleanStartTime = (startTime === "" || startTime === undefined) ? null : startTime;
+            const cleanEndDate = formatDateForDB(endDate);
+            const cleanEndTime = (endTime === "" || endTime === undefined) ? null : endTime;
+
+            try {
+              try {
+                const [iltsResult] = await connection.query(
+                  "CALL add_ilts_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  [courseId, lessonId, iltsMode, cleanMeetUrl, cleanVenue, cleanStartDate, cleanStartTime, cleanEndDate, cleanEndTime, userId]
+                );
+              } catch (spError) {
+                const [iltsResult] = await connection.query(
+                  `INSERT INTO ilts (course_id, lesson_id, lesson_mode, meet_url, venue, start_date, start_time, end_date, end_time, creator_id, last_updated_by, created_at, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+                  [courseId, lessonId, iltsMode, cleanMeetUrl, cleanVenue, cleanStartDate, cleanStartTime, cleanEndDate, cleanEndTime, userId, userId]
+                );
+              }
+            } catch (iltsError) {
+              console.error("Update - Error adding ILTS session for lesson", lessonId, ":", iltsError);
+            }
+          }
+        }
+        
+        // Process lessons that need new sections
+        for (const sectionGroup of newSectionLessons) {
+          console.log(`Update - Processing new section: ${sectionGroup.sectionTitle} with ${sectionGroup.lessons.length} lessons`);
+
           // Create section
           const [sectionResult] = await connection.query(
             "CALL add_course_section(?, ?, ?, ?)",
-            [sectionTitle, courseId, userId, userId]
+            [sectionGroup.sectionTitle, courseId, userId, userId]
           );
 
           const sectionId = sectionResult[0][0].id;
+          console.log(`Update - Section created with ID: ${sectionId}`);
 
-          // Process lessons in this section
-          for (const lesson of sectionLessons) {
+          // Process lessons in this new section
+          for (const lesson of sectionGroup.lessons) {
             console.log(`Update - Processing lesson: ${lesson.title}`);
             console.log(`Update - Processing lesson contentType: ${lesson.contentType}`);
             console.log(`Update - Processing lesson data:`, lesson);
@@ -548,7 +893,7 @@ class InstructorCourseService {
                   break;
                 case 'scorm':
                   dbContentType = 'scorm';
-                  scormFile = lesson.scromPackage || lesson.file;
+                  scormFile = lesson.scormPackage || lesson.file;
                   break;
                 case 'url':
                   dbContentType = 'url';
@@ -610,12 +955,39 @@ class InstructorCourseService {
               const endDate = lesson.endDate || null;
               const endTime = lesson.endTime || null;
 
-              // Convert empty strings to null
+              // Helper function to ensure date is in YYYY-MM-DD format
+              const formatDateForDB = (dateValue) => {
+                if (!dateValue || dateValue === "") return null;
+                
+                try {
+                  // If it's already in YYYY-MM-DD format, return as is
+                  if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+                    return dateValue;
+                  }
+                  
+                  // Handle other date formats
+                  const date = new Date(dateValue);
+                  if (isNaN(date.getTime())) {
+                    return null;
+                  }
+                  
+                  // Format to YYYY-MM-DD
+                  const year = date.getFullYear();
+                  const month = String(date.getMonth() + 1).padStart(2, '0');
+                  const day = String(date.getDate()).padStart(2, '0');
+                  return `${year}-${month}-${day}`;
+                } catch (error) {
+                  console.error('Error formatting date for DB:', dateValue, error);
+                  return null;
+                }
+              };
+
+              // Convert empty strings to null and format dates
               const cleanMeetUrl = (meetUrl === "" || meetUrl === undefined) ? null : meetUrl;
               const cleanVenue = (venue === "" || venue === undefined) ? null : venue;
-              const cleanStartDate = (startDate === "" || startDate === undefined) ? null : startDate;
+              const cleanStartDate = formatDateForDB(startDate);
               const cleanStartTime = (startTime === "" || startTime === undefined) ? null : startTime;
-              const cleanEndDate = (endDate === "" || endDate === undefined) ? null : endDate;
+              const cleanEndDate = formatDateForDB(endDate);
               const cleanEndTime = (endTime === "" || endTime === undefined) ? null : endTime;
 
               console.log("Update - ILTS parameters for insertion:", {
@@ -1230,7 +1602,7 @@ class InstructorCourseService {
             break;
           case 'scorm':
             dbContentType = 'scorm';
-            scormFile = lessonData.scromPackage || lessonData.file;
+            scormFile = lessonData.scormPackage || lessonData.file;
             break;
           case 'url':
             dbContentType = 'url';
@@ -1278,19 +1650,30 @@ class InstructorCourseService {
           
           if (dbContentType === 'mp4') {
             uploadedFilename = await uploadService.uploadLessonMp4(lessonData.file, lessonId);
-            console.log(`MP4 file uploaded successfully: ${uploadedFilename}`);
+            console.log(`Single lesson - MP4 file uploaded successfully: ${uploadedFilename}`);
             
           } else if (dbContentType === 'document') {
             uploadedFilename = await uploadService.uploadLessonDocument(lessonData.file, lessonId);
-            console.log(`Document file uploaded successfully: ${uploadedFilename}`);
+            console.log(`Single lesson - Document file uploaded successfully: ${uploadedFilename}`);
             
           } else if (dbContentType === 'scorm') {
             uploadedFilename = await uploadService.uploadLessonScorm(lessonData.file, lessonId);
-            console.log(`SCORM file uploaded successfully: ${uploadedFilename}`);
+            console.log(`Single lesson - SCORM file uploaded successfully: ${uploadedFilename}`);
+            
+            // Double-check that the database was updated correctly
+            const [checkResult] = await connection.query(
+              "SELECT lesson_content_scorm FROM course_lesson WHERE id = ?",
+              [lessonId]
+            );
+            console.log(`Single lesson - SCORM content in DB after upload: ${checkResult[0]?.lesson_content_scorm}`);
           }
+          
         } catch (uploadError) {
-          console.error(`Failed to upload file for lesson ${lessonId}:`, uploadError);
-          // Don't throw error - the lesson is still created, just without the file
+          console.error(`Single lesson - Failed to upload file for lesson ${lessonId}:`, uploadError);
+          // For SCORM files, this is critical - the lesson won't work without the content
+          if (dbContentType === 'scorm') {
+            throw new Error(`SCORM upload failed: ${uploadError.message}`);
+          }
         }
       }
 
@@ -1571,15 +1954,74 @@ class InstructorCourseService {
         }
       }
 
-      // Update lesson basic info
+      // Get current lesson data first to preserve existing files
+      const [currentLesson] = await connection.query(
+        `SELECT lesson_content_document, lesson_content_scorm, lesson_content_mp4, lesson_content_url FROM course_lesson WHERE id = ? AND course_id = ?`,
+        [lessonId, courseId]
+      );
+
+      let documentFile = currentLesson[0]?.lesson_content_document || null;
+      let scormFile = currentLesson[0]?.lesson_content_scorm || null;
+      let mp4File = currentLesson[0]?.lesson_content_mp4 || null;
+      let contentUrl = currentLesson[0]?.lesson_content_url || null;
+
+      // Update with new values if provided (only string values, not file objects)
+      if (dbContentType) {
+        switch (dbContentType) {
+          case 'document':
+            // Only update if it's a string filename, not a File object
+            if (lessonData.lessonContentDocument && typeof lessonData.lessonContentDocument === 'string') {
+              documentFile = lessonData.lessonContentDocument;
+            }
+            // Clear other content types when switching
+            if (dbContentType !== 'scorm') scormFile = null;
+            if (dbContentType !== 'mp4') mp4File = null;
+            if (dbContentType !== 'url') contentUrl = null;
+            break;
+          case 'scorm':
+            // Only update if it's a string filename, not a File object
+            if (lessonData.scormPackage && typeof lessonData.scormPackage === 'string') {
+              scormFile = lessonData.scormPackage;
+            }
+            // Clear other content types when switching
+            if (dbContentType !== 'document') documentFile = null;
+            if (dbContentType !== 'mp4') mp4File = null;
+            if (dbContentType !== 'url') contentUrl = null;
+            break;
+          case 'mp4':
+            // Only update if it's a string filename, not a File object
+            if (lessonData.videoUpload && typeof lessonData.videoUpload === 'string') {
+              mp4File = lessonData.videoUpload;
+            }
+            // Clear other content types when switching
+            if (dbContentType !== 'document') documentFile = null;
+            if (dbContentType !== 'scorm') scormFile = null;
+            if (dbContentType !== 'url') contentUrl = null;
+            break;
+          case 'url':
+            if (lessonData.url || lessonData.contentUrl) {
+              contentUrl = lessonData.url || lessonData.contentUrl;
+            }
+            // Clear other content types when switching
+            if (dbContentType !== 'document') documentFile = null;
+            if (dbContentType !== 'scorm') scormFile = null;
+            if (dbContentType !== 'mp4') mp4File = null;
+            break;
+        }
+      }
+
+      // Update lesson with preserved/updated content
       const [result] = await connection.query(
         `UPDATE course_lesson SET 
          title = ?, 
          section_id = ?, 
          lesson_type = ?, 
          lesson_content_type = ?, 
-         lesson_duration = ?, 
+         lesson_content_document = ?,
+         lesson_content_scorm = ?,
+         lesson_content_mp4 = ?,
          lesson_content_url = ?, 
+         lesson_duration = ?, 
          last_updated_by = ?, 
          last_updated = NOW()
          WHERE id = ? AND course_id = ?`,
@@ -1588,8 +2030,11 @@ class InstructorCourseService {
           lessonData.sectionId,
           lessonData.lessonType || "Content-Based",
           dbContentType,
+          documentFile,
+          scormFile,
+          mp4File,
+          contentUrl,
           lessonData.duration,
-          lessonData.url,
           updatedBy,
           lessonId,
           courseId
@@ -1598,6 +2043,32 @@ class InstructorCourseService {
 
       if (result.affectedRows === 0) {
         throw new Error("Lesson not found or no changes made");
+      }
+
+      // Handle file uploads if file objects are provided
+      if (lessonData.file && typeof lessonData.file === 'object' && lessonData.file.name) {
+        console.log(`Update - Uploading ${dbContentType} file for lesson ${lessonId}:`, lessonData.file.name);
+        
+        try {
+          let uploadedFilename = null;
+          const uploadService = require("../upload_service");
+          
+          if (dbContentType === 'mp4') {
+            uploadedFilename = await uploadService.uploadLessonMp4(lessonData.file, lessonId);
+            console.log(`Update - MP4 file uploaded successfully: ${uploadedFilename}`);
+            
+          } else if (dbContentType === 'document') {
+            uploadedFilename = await uploadService.uploadLessonDocument(lessonData.file, lessonId);
+            console.log(`Update - Document file uploaded successfully: ${uploadedFilename}`);
+            
+          } else if (dbContentType === 'scorm') {
+            uploadedFilename = await uploadService.uploadLessonScorm(lessonData.file, lessonId);
+            console.log(`Update - SCORM file uploaded successfully: ${uploadedFilename}`);
+          }
+        } catch (uploadError) {
+          console.error(`Update - Failed to upload file for lesson ${lessonId}:`, uploadError);
+          // Don't throw error - the lesson is still updated, just without the new file
+        }
       }
 
       // Handle ILTS updates
@@ -1613,14 +2084,55 @@ class InstructorCourseService {
         const startTime = lessonData.startTime || null;
         const endDate = lessonData.endDate || null;
         const endTime = lessonData.endTime || null;
+        
+        console.log("Update lesson - Original ILTS dates received:", {
+          startDate: lessonData.startDate,
+          endDate: lessonData.endDate,
+          startTime: lessonData.startTime,
+          endTime: lessonData.endTime
+        });
 
-        // Convert empty strings to null
+        // Helper function to ensure date is in YYYY-MM-DD format
+        const formatDateForDB = (dateValue) => {
+          if (!dateValue || dateValue === "") return null;
+          
+          try {
+            // If it's already in YYYY-MM-DD format, return as is
+            if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+              return dateValue;
+            }
+            
+            // Handle other date formats
+            const date = new Date(dateValue);
+            if (isNaN(date.getTime())) {
+              return null;
+            }
+            
+            // Format to YYYY-MM-DD
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          } catch (error) {
+            console.error('Error formatting date for DB:', dateValue, error);
+            return null;
+          }
+        };
+
+        // Convert empty strings to null and format dates
         const cleanMeetUrl = (meetUrl === "" || meetUrl === undefined) ? null : meetUrl;
         const cleanVenue = (venue === "" || venue === undefined) ? null : venue;
-        const cleanStartDate = (startDate === "" || startDate === undefined) ? null : startDate;
+        const cleanStartDate = formatDateForDB(startDate);
         const cleanStartTime = (startTime === "" || startTime === undefined) ? null : startTime;
-        const cleanEndDate = (endDate === "" || endDate === undefined) ? null : endDate;
+        const cleanEndDate = formatDateForDB(endDate);
         const cleanEndTime = (endTime === "" || endTime === undefined) ? null : endTime;
+        
+        console.log("Update lesson - Formatted ILTS dates for DB:", {
+          originalStartDate: startDate,
+          cleanStartDate,
+          originalEndDate: endDate,
+          cleanEndDate
+        });
 
         try {
           // Try stored procedure first, if it fails, use direct INSERT
