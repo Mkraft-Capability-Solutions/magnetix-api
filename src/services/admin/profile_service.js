@@ -1,12 +1,21 @@
 const { promisePool } = require("../../config/db");
 class AdminProfileService {
-  async getProfileById(userId) {
+ async getProfileById(userId) {
     const [rows] = await promisePool.query(
-      "SELECT * FROM admins WHERE user_id = ?",
+      `
+      SELECT 
+        admins.*, 
+        users.email
+      FROM admins
+      JOIN users 
+        ON admins.user_id = users.uuid
+      WHERE admins.user_id = ?
+      `,
       [userId]
     );
+
     if (rows.length === 0) {
-      throw new Error("User not found" + userId);
+      throw new Error("User not found " + userId);
     }
     return rows[0];
   }
