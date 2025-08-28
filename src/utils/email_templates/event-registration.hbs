@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Event Registration Confirmation - {{appName}}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: Arial, sans-serif; 
+      line-height: 1.6; 
+      color: #1e1b7e; 
+      background: #f8f9fa;
+      margin: 0;
+      padding: 0;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+    .email-container { 
+      width: 100%;
+      max-width: none;
+      margin: 0; 
+      background: #ffffff;
+      box-sizing: border-box;
+      table-layout: fixed;
+    }
+    .header { 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white; 
+      padding: 30px 20px;
+      text-align: center;
+    }
+    .header h1 { 
+      font-size: 28px; 
+      font-weight: 600;
+      margin-bottom: 8px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .header p {
+      font-size: 16px;
+      opacity: 0.9;
+      margin: 0;
+    }
+    .content { 
+      padding: 0;
+    }
+    .welcome-section {
+      padding: 30px 20px 20px;
+      text-align: center;
+    }
+    .welcome-section h2 {
+      color: #1e1b7e;
+      font-size: 24px;
+      margin-bottom: 12px;
+    }
+    .welcome-section p {
+      color: #4a5568;
+      font-size: 16px;
+      margin-bottom: 0;
+    }
+    .event-card {
+      margin: 20px;
+      background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 2px solid #e2e8f0;
+    }
+    .event-thumbnail {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      display: block;
+    }
+    .event-details {
+      padding: 20px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .event-title {
+      font-size: 22px;
+      font-weight: 600;
+      color: #1e1b7e;
+      margin-bottom: 15px;
+      line-height: 1.3;
+    }
+    .event-description {
+      color: #4a5568;
+      font-size: 15px;
+      margin-bottom: 20px;
+      line-height: 1.6;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      max-width: 100%;
+    }
+    .event-info {
+      width: 100%;
+      margin-bottom: 20px;
+    }
+    .info-item {
+      display: block;
+      width: 100%;
+      margin-bottom: 15px;
+      padding: 10px;
+      background: #f8f9fa;
+      border-radius: 6px;
+    }
+    .info-icon {
+      width: 20px;
+      height: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .info-icon::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: white;
+      border-radius: 2px;
+    }
+    .info-text {
+      color: #2d3748;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      display: block;
+    }
+    .info-value {
+      color: #4a5568;
+      font-size: 14px;
+      display: block;
+      word-wrap: break-word;
+    }
+    .speakers-section {
+      margin: 15px 0;
+      padding: 15px;
+      background: rgba(102, 126, 234, 0.05);
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+    }
+    .speakers-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1e1b7e;
+      margin-bottom: 8px;
+    }
+    .speakers-text {
+      color: #4a5568;
+      font-size: 14px;
+    }
+    .action-section {
+      padding: 25px 20px;
+      text-align: center;
+      background: #f8fafc;
+    }
+    .platform-info {
+      margin: 20px;
+      padding: 20px;
+      background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+      border-radius: 8px;
+      border-left: 4px solid #3b82f6;
+    }
+    .platform-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1e40af;
+      margin-bottom: 8px;
+    }
+    .platform-details {
+      color: #1e40af;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    .join-link {
+      color: #3b82f6;
+      text-decoration: none;
+      font-weight: 600;
+      word-break: break-all;
+    }
+    .join-link:hover {
+      text-decoration: underline;
+    }
+    .footer { 
+      background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+      color: #ffffff;
+      padding: 30px 20px;
+      text-align: center;
+    }
+    .footer-content {
+      margin-bottom: 20px;
+    }
+    .footer-content p {
+      margin-bottom: 10px;
+      font-size: 14px;
+      color: #ffffff;
+    }
+    .footer-links {
+      margin: 15px 0;
+    }
+    .footer-links a {
+      color: #90cdf4;
+      text-decoration: none;
+      margin: 0 15px;
+      font-size: 14px;
+    }
+    .footer-links a:hover {
+      text-decoration: underline;
+    }
+    .footer-bottom {
+      border-top: 1px solid #4a5568;
+      padding-top: 20px;
+      font-size: 12px;
+      color: #a0aec0;
+    }
+    
+    @media (max-width: 600px) {
+      .email-container { margin: 0 10px; }
+      .header { padding: 25px 15px; }
+      .header h1 { font-size: 24px; }
+      .event-card { margin: 15px; }
+      .event-details { padding: 20px; }
+      .info-item { min-width: 100%; margin-bottom: 8px; }
+      .action-section { padding: 20px 15px; }
+      .footer { padding: 25px 15px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <!-- Header -->
+    <div class="header">
+      <h1>🎉 Registration Confirmed!</h1>
+      <p>You're all set for an amazing learning experience</p>
+    </div>
+    
+    <!-- Welcome Section -->
+    <div class="welcome-section">
+      <h2>Hello {{firstName}}!</h2>
+      <p>Thank you for registering for this exciting event. We're thrilled to have you join us!</p>
+    </div>
+    
+    <!-- Event Card -->
+    <div class="event-card">
+      <div class="event-details">
+        <h3 class="event-title">{{eventTitle}}</h3>
+        
+        {{#if eventDescription}}
+        <p class="event-description">{{eventDescription}}</p>
+        {{/if}}
+        
+        <div class="event-info">
+          <div class="info-item">
+            <div class="info-text">📅 Date</div>
+            <div class="info-value">{{eventDate}}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-text">🕒 Time</div>
+            <div class="info-value">{{eventStartTime}}{{#if eventEndTime}} - {{eventEndTime}}{{/if}}</div>
+          </div>
+          {{#if eventVenue}}
+          <div class="info-item">
+            <div class="info-text">📍 Venue</div>
+            <div class="info-value">{{eventVenue}}</div>
+          </div>
+          {{/if}}
+          {{#if maxLimit}}
+          <div class="info-item">
+            <div class="info-text">👥 Capacity</div>
+            <div class="info-value">{{attendeesCount}} out of {{maxLimit}} attendees</div>
+          </div>
+          {{/if}}
+        </div>
+        
+        {{#if speakers}}
+        <div class="speakers-section">
+          <div class="speakers-title">🎤 Featured Speakers</div>
+          <div class="speakers-text">{{speakers}}</div>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+    
+    {{#if isOnlineEvent}}
+    <div class="platform-info">
+      <div class="platform-title">📱 Online Event Details</div>
+      <div class="platform-details">This event will be conducted online. Join us from the comfort of your home!</div>
+      {{#if eventUrl}}
+      <div>
+        <strong>Join Link:</strong> 
+        <a href="{{eventUrl}}" class="join-link" target="_blank">{{eventUrl}}</a>
+      </div>
+      {{/if}}
+    </div>
+    {{/if}}
+    
+    <!-- Action Section -->
+    <div class="action-section">
+      <p style="color: #4a5568; margin-bottom: 20px;">We look forward to seeing you at this amazing event!</p>
+    </div>
+    
+    <!-- Footer -->
+    <div class="footer">
+      <div class="footer-content">
+        <p><strong>{{appName}}</strong> - Empowering Learning, One Event at a Time</p>
+        <p>Need help or have questions about your registration?</p>
+        
+        <div class="footer-links">
+          <a href="mailto:{{supportEmail}}">{{supportEmail}}</a>
+          <a href="{{loginUrl}}">Access Portal</a>
+          <a href="{{eventsUrl}}">View All Events</a>
+        </div>
+      </div>
+      
+      <div class="footer-bottom">
+        <p>&copy; {{year}} {{appName}}. All rights reserved.</p>
+        <p>You're receiving this email because you registered for an event on our platform.</p>
+        <p>For support, contact us at <a href="mailto:{{supportEmail}}" style="color: #90cdf4;">{{supportEmail}}</a></p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
