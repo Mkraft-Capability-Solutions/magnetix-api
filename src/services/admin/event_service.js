@@ -201,14 +201,13 @@ class AdminEventService {
             LEFT JOIN admins a ON e.creator_id = a.user_id
             LEFT JOIN super_admins sa ON e.creator_id = sa.user_id
             WHERE e.is_deleted = 0 
-            AND e.creator_id != ?
             AND (
                 (e.start_date > CURDATE()) 
                 OR (e.start_date = CURDATE() AND e.start_time > CURTIME())
             )
             ORDER BY e.start_date ASC, e.start_time ASC
             LIMIT ? OFFSET ?
-        `, [adminId, limit, offset]);
+        `, [limit, offset]);
         
         return rows.map(row => new AdminEventDTO(row));
     }
