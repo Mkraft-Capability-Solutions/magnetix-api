@@ -44,7 +44,7 @@ app.use("/landing", landingRoutes);
 app.use("/auth", authRoutes);
 app.use("/protected", protectedRoutes);
 app.use("/users", userRoutes);
-app.use("/uploads", uploadRoutes);
+app.use("/content/uploads", uploadRoutes);
 app.use("/student/courses", studentCourseRoutes);
 app.use("/student/mentorship", studentMentorshipRoutes);
 app.use("/student/events", studentEventRoutes);
