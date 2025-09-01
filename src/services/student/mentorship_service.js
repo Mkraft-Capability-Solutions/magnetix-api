@@ -80,6 +80,33 @@ async isMentorshipRequestDeleted(studentId) {
   }
 }
 
+async getMentorDetails(mentorId) {
+  try {
+    const [results] = await promisePool.query('CALL get_mentor_details(?)', [mentorId]);
+    
+    if (results[0].length === 0) {
+      return new ErrorResponseDTO(new Error('Mentor not found'), 404);
+    }
+    
+    const email = results[0][0].email;
+    const instructorDetails = results[1][0] || {};
+    const courses = results[2];
+    const events = results[3];
+    const activeMentees = results[4];
+    
+    const details = {
+      email,
+      instructorDetails,
+      courses,
+      events,
+      activeMentees
+    };
+    
+    return new ServiceResponseDTO(true, details);
+  } catch (error) {
+    return new ErrorResponseDTO(error);
+  }
+}
 
 }
 
