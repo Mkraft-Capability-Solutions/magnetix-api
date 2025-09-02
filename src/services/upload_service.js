@@ -1,19 +1,31 @@
-const { promisePool } = require('../config/db');
-const path = require('path');
-const fs = require('fs');
-const AdmZip = require('adm-zip');
+const { promisePool } = require("../config/db");
+const path = require("path");
+const fs = require("fs");
+const AdmZip = require("adm-zip");
 
 class UploadService {
-    constructor() {
+  constructor() {
     this.uploadPaths = {
-      courseThumbnail: path.join(__dirname, '../../Uploads/courses/thumbnail'),
-      eventThumbnail: path.join(__dirname, '../../Uploads/events/thumbnail'),
-      userProfile: path.join(__dirname, '../../Uploads/users/profile_picture'),
-      courseOverviewUrl: path.join(__dirname, '../../Uploads/courses/course_overview/url'),
-      courseOverviewScorm: path.join(__dirname, '../../Uploads/courses/course_overview/scorm'),
-      lessonDocument: path.join(__dirname, '../../Uploads/courses/lessons/documents'),
-      lessonScorm: path.join(__dirname, '../../Uploads/courses/lessons/scorm_packages'),
-      lessonMp4: path.join(__dirname, '../../Uploads/courses/lessons/mp4'),
+      courseThumbnail: path.join(__dirname, "../../uploads/courses/thumbnail"),
+      eventThumbnail: path.join(__dirname, "../../uploads/events/thumbnail"),
+      userProfile: path.join(__dirname, "../../uploads/users/profile_picture"),
+      courseOverviewUrl: path.join(
+        __dirname,
+        "../../uploads/courses/course_overview/url"
+      ),
+      courseOverviewScorm: path.join(
+        __dirname,
+        "../../uploads/courses/course_overview/scorm"
+      ),
+      lessonDocument: path.join(
+        __dirname,
+        "../../uploads/courses/lessons/documents"
+      ),
+      lessonScorm: path.join(
+        __dirname,
+        "../../uploads/courses/lessons/scorm_packages"
+      ),
+      lessonMp4: path.join(__dirname, "../../uploads/courses/lessons/mp4"),
     };
   }
 
@@ -28,7 +40,9 @@ class UploadService {
 
     const ext = path.extname(file.originalname).toLowerCase();
     if (!allowedExtensions.includes(ext)) {
-      throw new Error(`Invalid file type. Allowed types: ${allowedExtensions.join(', ')}`);
+      throw new Error(
+        `Invalid file type. Allowed types: ${allowedExtensions.join(", ")}`
+      );
     }
 
     const filename = `${Date.now()}${ext}`;
@@ -38,11 +52,11 @@ class UploadService {
     return filename;
   }
 
-  async uploadAndExtractZip(file, dirPath, allowedExtensions = ['.zip']) {
-    console.log('Upload service - Starting SCORM extraction:', {
+  async uploadAndExtractZip(file, dirPath, allowedExtensions = [".zip"]) {
+    console.log("Upload service - Starting SCORM extraction:", {
       filename: file.originalname,
       size: file.buffer.length,
-      directory: dirPath
+      directory: dirPath,
     });
 
     await this.ensureDirectoryExists(dirPath);
@@ -50,51 +64,52 @@ class UploadService {
     // Check file extension
     const ext = path.extname(file.originalname).toLowerCase();
     if (!allowedExtensions.includes(ext)) {
-      throw new Error(`Invalid file type. Allowed types: ${allowedExtensions.join(', ')}`);
+      throw new Error(
+        `Invalid file type. Allowed types: ${allowedExtensions.join(", ")}`
+      );
     }
 
     try {
-      console.log('Upload service - Creating AdmZip instance');
+      console.log("Upload service - Creating AdmZip instance");
       const zip = new AdmZip(file.buffer);
-      
-      console.log('Upload service - Checking zip contents');
+
+      console.log("Upload service - Checking zip contents");
       const entries = zip.getEntries();
       console.log(`Upload service - Found ${entries.length} entries in zip`);
-      
+
       const folderName = `${Date.now()}`;
       const extractPath = path.join(dirPath, folderName);
-      
-      console.log('Upload service - Extracting to:', extractPath);
+
+      console.log("Upload service - Extracting to:", extractPath);
       zip.extractAllTo(extractPath, true);
-      
-      console.log('Upload service - Extraction completed successfully');
-      
+
+      console.log("Upload service - Extraction completed successfully");
+
       // Verify extraction by checking if directory exists
       if (!fs.existsSync(extractPath)) {
-        throw new Error('Extraction failed - directory not created');
+        throw new Error("Extraction failed - directory not created");
       }
-      
+
       return folderName;
     } catch (error) {
-      console.error('Upload service - Extraction error:', error);
+      console.error("Upload service - Extraction error:", error);
       throw new Error(`Invalid or corrupted zip file: ${error.message}`);
     }
   }
-
 
   // Course Thumbnail
   async uploadCourseThumbnail(file, courseId) {
     const filename = await this.uploadSingleFile(
       file,
       this.uploadPaths.courseThumbnail,
-      ['.jpg', '.jpeg', '.png', '.gif']
+      [".jpg", ".jpeg", ".png", ".gif"]
     );
 
     if (courseId) {
-      await promisePool.query(
-        'UPDATE course SET thumbnail = ? WHERE id = ?',
-        [filename, courseId]
-      );
+      await promisePool.query("UPDATE course SET thumbnail = ? WHERE id = ?", [
+        filename,
+        courseId,
+      ]);
     }
 
     return filename;
@@ -105,12 +120,12 @@ class UploadService {
     const filename = await this.uploadSingleFile(
       file,
       this.uploadPaths.eventThumbnail,
-      ['.jpg', '.jpeg', '.png', '.gif']
+      [".jpg", ".jpeg", ".png", ".gif"]
     );
 
     if (eventId) {
       await promisePool.query(
-        'UPDATE events SET event_thumbnail = ? WHERE id = ?',
+        "UPDATE events SET event_thumbnail = ? WHERE id = ?",
         [filename, eventId]
       );
     }
@@ -123,14 +138,14 @@ class UploadService {
     const filename = await this.uploadSingleFile(
       file,
       this.uploadPaths.userProfile,
-      ['.jpg', '.jpeg', '.png', '.gif']
+      [".jpg", ".jpeg", ".png", ".gif"]
     );
 
     if (userId) {
-      await promisePool.query(
-        'UPDATE users SET dp = ? WHERE uuid = ?',
-        [filename, userId]
-      );
+      await promisePool.query("UPDATE users SET dp = ? WHERE uuid = ?", [
+        filename,
+        userId,
+      ]);
     }
 
     return filename;
@@ -141,12 +156,12 @@ class UploadService {
     const filename = await this.uploadSingleFile(
       file,
       this.uploadPaths.courseOverviewUrl,
-      ['.mp4', '.webm', '.mov']
+      [".mp4", ".webm", ".mov"]
     );
 
     if (courseId) {
       await promisePool.query(
-        'UPDATE course SET course_overview_video_url = ? WHERE id = ?',
+        "UPDATE course SET course_overview_video_url = ? WHERE id = ?",
         [filename, courseId]
       );
     }
@@ -163,7 +178,7 @@ class UploadService {
 
     if (courseId) {
       await promisePool.query(
-        'UPDATE course SET course_overview_scorm_file = ? WHERE id = ?',
+        "UPDATE course SET course_overview_scorm_file = ? WHERE id = ?",
         [scormPath, courseId]
       );
     }
@@ -176,12 +191,12 @@ class UploadService {
     const folderName = await this.uploadAndExtractZip(
       file,
       this.uploadPaths.lessonScorm,
-      ['.zip']
+      [".zip"]
     );
 
     if (lessonId) {
       await promisePool.query(
-        'UPDATE course_lesson SET lesson_content_scorm = ? WHERE id = ?',
+        "UPDATE course_lesson SET lesson_content_scorm = ? WHERE id = ?",
         [folderName, lessonId]
       );
     }
@@ -194,12 +209,12 @@ class UploadService {
     const filename = await this.uploadSingleFile(
       file,
       this.uploadPaths.lessonDocument,
-      ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.txt']
+      [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".txt"]
     );
 
     if (lessonId) {
       await promisePool.query(
-        'UPDATE course_lesson SET lesson_content_document = ? WHERE id = ?',
+        "UPDATE course_lesson SET lesson_content_document = ? WHERE id = ?",
         [filename, lessonId]
       );
     }
@@ -212,12 +227,12 @@ class UploadService {
     const filename = await this.uploadSingleFile(
       file,
       this.uploadPaths.lessonMp4,
-      ['.mp4']
+      [".mp4"]
     );
 
     if (lessonId) {
       await promisePool.query(
-        'UPDATE course_lesson SET lesson_content_mp4 = ? WHERE id = ?',
+        "UPDATE course_lesson SET lesson_content_mp4 = ? WHERE id = ?",
         [filename, lessonId]
       );
     }
