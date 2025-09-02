@@ -115,6 +115,16 @@ exports.createEvent = async (req, res, next) => {
         try {
             const eventId = await instructorEventService.createEvent(req.user.uuid, processedData);
             
+            // Handle individual target audience emails if provided and audience type is individual
+            if (processedData.eventAudienceTypeId === 2 && processedData.target_audience_emails) {
+                try {
+                    await instructorEventService.addTargetAudienceAttendees(eventId, processedData.target_audience_emails);
+                } catch (emailError) {
+                    console.error('Error adding target audience emails:', emailError);
+                    // Don't fail the entire event creation if email processing fails
+                }
+            }
+            
             res.status(201).json({
                 success: true,
                 message: 'Event created successfully',
@@ -221,7 +231,7 @@ exports.updateEvent = async (req, res, next) => {
             await instructorEventService.updateEvent(req.user.uuid, processedData.eventId, processedData);
             
             // Handle individual target audience emails if provided and audience type is individual
-            if (processedData.eventAudienceTypeId === 1 && processedData.target_audience_emails) {
+            if (processedData.eventAudienceTypeId === 2 && processedData.target_audience_emails) {
                 try {
                     // Clear existing target audience attendees and add new ones
                     await instructorEventService.updateTargetAudienceAttendees(processedData.eventId, processedData.target_audience_emails);
