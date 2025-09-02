@@ -1,6 +1,7 @@
 require('dotenv').config();
 const app = require('./src/app');
 const { promisePool } = require('./src/config/db');
+const eventReminderScheduler = require('./src/schedulers/event_reminder_scheduler');
 const PORT = process.env.PORT || 3000;
 
 // Database connection test
@@ -21,6 +22,9 @@ function setupShutdownHandlers() {
     console.log(`\n${signal} received: shutting down gracefully...`);
     
     try {
+      // Stop event reminder scheduler
+      eventReminderScheduler.stop();
+      
       // Close database pool
       await promisePool.end();
       console.log('Database pool closed');
@@ -56,6 +60,13 @@ const server = app.listen(PORT, async () => {
   
   // Test database connection on startup
   await testDatabaseConnection();
+  
+  // Start event reminder scheduler
+  try {
+    await eventReminderScheduler.start();
+  } catch (error) {
+    console.error('⚠️  Failed to start event reminder scheduler:', error);
+  }
   
   // Setup shutdown handlers
   setupShutdownHandlers();

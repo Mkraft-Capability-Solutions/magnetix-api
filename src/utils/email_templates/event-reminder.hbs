@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Event Reminder - {{appName}}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: Arial, sans-serif; 
+      line-height: 1.6; 
+      color: #1e1b7e; 
+      background: #f8f9fa;
+      margin: 0;
+      padding: 0;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+    .email-container { 
+      width: 100%;
+      max-width: none;
+      margin: 0; 
+      background: #ffffff;
+      box-sizing: border-box;
+      table-layout: fixed;
+    }
+    .header { 
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      color: white; 
+      padding: 30px 20px;
+      text-align: center;
+    }
+    .header h1 { 
+      font-size: 28px; 
+      font-weight: 600;
+      margin-bottom: 8px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .header p {
+      font-size: 16px;
+      opacity: 0.9;
+      margin: 0;
+    }
+    .urgent-banner {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: white;
+      padding: 15px 20px;
+      text-align: center;
+      font-weight: 600;
+      font-size: 16px;
+    }
+    .countdown-section {
+      background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+      border: 2px solid #f59e0b;
+      border-radius: 8px;
+      margin: 20px;
+      padding: 20px;
+      text-align: center;
+    }
+    .countdown-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: #92400e;
+      margin-bottom: 10px;
+    }
+    .countdown-text {
+      font-size: 16px;
+      color: #b45309;
+      margin-bottom: 15px;
+    }
+    .countdown-time {
+      font-size: 24px;
+      font-weight: 700;
+      color: #d97706;
+      background: white;
+      padding: 10px 20px;
+      border-radius: 25px;
+      display: inline-block;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .content { 
+      padding: 0;
+    }
+    .welcome-section {
+      padding: 30px 20px 20px;
+      text-align: center;
+    }
+    .welcome-section h2 {
+      color: #1e1b7e;
+      font-size: 24px;
+      margin-bottom: 12px;
+    }
+    .welcome-section p {
+      color: #4a5568;
+      font-size: 16px;
+      margin-bottom: 0;
+    }
+    .event-card {
+      margin: 20px;
+      background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 2px solid #e2e8f0;
+    }
+    .event-details {
+      padding: 20px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .event-title {
+      font-size: 22px;
+      font-weight: 600;
+      color: #1e1b7e;
+      margin-bottom: 15px;
+      line-height: 1.3;
+    }
+    .event-description {
+      color: #4a5568;
+      font-size: 15px;
+      margin-bottom: 20px;
+      line-height: 1.6;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      max-width: 100%;
+    }
+    .event-info {
+      width: 100%;
+      margin-bottom: 20px;
+    }
+    .info-item {
+      display: block;
+      width: 100%;
+      margin-bottom: 15px;
+      padding: 10px;
+      background: #f8f9fa;
+      border-radius: 6px;
+    }
+    .info-text {
+      color: #2d3748;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      display: block;
+    }
+    .info-value {
+      color: #4a5568;
+      font-size: 14px;
+      display: block;
+      word-wrap: break-word;
+    }
+    .speakers-section {
+      margin: 15px 0;
+      padding: 15px;
+      background: rgba(245, 158, 11, 0.05);
+      border-radius: 8px;
+      border-left: 4px solid #f59e0b;
+    }
+    .speakers-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1e1b7e;
+      margin-bottom: 8px;
+    }
+    .speakers-text {
+      color: #4a5568;
+      font-size: 14px;
+    }
+    .action-section {
+      padding: 25px 20px;
+      text-align: center;
+      background: #f8fafc;
+    }
+    .cta-button {
+      display: inline-block;
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      color: white;
+      padding: 15px 30px;
+      border-radius: 25px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 16px;
+      margin: 10px;
+      box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
+      transition: all 0.3s ease;
+    }
+    .cta-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(245, 158, 11, 0.4);
+    }
+    .platform-info {
+      margin: 20px;
+      padding: 20px;
+      background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+      border-radius: 8px;
+      border-left: 4px solid #3b82f6;
+    }
+    .platform-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1e40af;
+      margin-bottom: 8px;
+    }
+    .platform-details {
+      color: #1e40af;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    .join-link {
+      color: #3b82f6;
+      text-decoration: none;
+      font-weight: 600;
+      word-break: break-all;
+    }
+    .join-link:hover {
+      text-decoration: underline;
+    }
+    .reminder-tips {
+      margin: 20px;
+      padding: 20px;
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+      border-radius: 8px;
+      border-left: 4px solid #0ea5e9;
+    }
+    .tips-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #0369a1;
+      margin-bottom: 12px;
+    }
+    .tips-list {
+      color: #0369a1;
+      font-size: 14px;
+      margin: 0;
+      padding-left: 20px;
+    }
+    .tips-list li {
+      margin-bottom: 8px;
+    }
+    .footer { 
+      background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+      color: #ffffff;
+      padding: 30px 20px;
+      text-align: center;
+    }
+    .footer-content {
+      margin-bottom: 20px;
+    }
+    .footer-content p {
+      margin-bottom: 10px;
+      font-size: 14px;
+      color: #ffffff;
+    }
+    .footer-links {
+      margin: 15px 0;
+    }
+    .footer-links a {
+      color: #90cdf4;
+      text-decoration: none;
+      margin: 0 15px;
+      font-size: 14px;
+    }
+    .footer-links a:hover {
+      text-decoration: underline;
+    }
+    .footer-bottom {
+      border-top: 1px solid #4a5568;
+      padding-top: 20px;
+      font-size: 12px;
+      color: #a0aec0;
+    }
+    
+    @media (max-width: 600px) {
+      .email-container { margin: 0 10px; }
+      .header { padding: 25px 15px; }
+      .header h1 { font-size: 24px; }
+      .event-card { margin: 15px; }
+      .event-details { padding: 20px; }
+      .countdown-section { margin: 15px; padding: 15px; }
+      .countdown-time { font-size: 20px; }
+      .action-section { padding: 20px 15px; }
+      .cta-button { padding: 12px 25px; font-size: 15px; }
+      .footer { padding: 25px 15px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <!-- Urgent Banner -->
+    <div class="urgent-banner">
+      ⚠️ EVENT REMINDER: Don't Miss Out!
+    </div>
+    
+    <!-- Header -->
+    <div class="header">
+      <h1>🔔 Event Reminder</h1>
+      <p>Your upcoming event is starting soon!</p>
+    </div>
+    
+    <!-- Countdown Section -->
+    <div class="countdown-section">
+      <div class="countdown-title">⏰ Starting Soon!</div>
+      <div class="countdown-text">Your event is happening within the next:</div>
+      <div class="countdown-time">48 Hours</div>
+    </div>
+    
+    <!-- Welcome Section -->
+    <div class="welcome-section">
+      <h2>Hi {{firstName}}!</h2>
+      <p>This is a friendly reminder that you have an exciting event coming up soon. Don't forget to join us!</p>
+    </div>
+    
+    <!-- Event Card -->
+    <div class="event-card">
+      <div class="event-details">
+        <h3 class="event-title">{{eventTitle}}</h3>
+        
+        {{#if eventDescription}}
+        <p class="event-description">{{eventDescription}}</p>
+        {{/if}}
+        
+        <div class="event-info">
+          <div class="info-item">
+            <div class="info-text">📅 Date</div>
+            <div class="info-value">{{eventDate}}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-text">🕒 Time</div>
+            <div class="info-value">{{eventStartTime}}{{#if eventEndTime}} - {{eventEndTime}}{{/if}}</div>
+          </div>
+          {{#if eventVenue}}
+          <div class="info-item">
+            <div class="info-text">📍 Venue</div>
+            <div class="info-value">{{eventVenue}}</div>
+          </div>
+          {{/if}}
+          {{#if maxLimit}}
+          <div class="info-item">
+            <div class="info-text">👥 Capacity</div>
+            <div class="info-value">{{attendeesCount}} out of {{maxLimit}} attendees</div>
+          </div>
+          {{/if}}
+        </div>
+        
+        {{#if speakers}}
+        <div class="speakers-section">
+          <div class="speakers-title">🎤 Featured Speakers</div>
+          <div class="speakers-text">{{speakers}}</div>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+    
+    {{#if isOnlineEvent}}
+    <div class="platform-info">
+      <div class="platform-title">💻 Online Event Access</div>
+      <div class="platform-details">Join us online soon! Make sure you have a stable internet connection.</div>
+      {{#if eventUrl}}
+      <div>
+        <strong>Join Link:</strong> 
+        <a href="{{eventUrl}}" class="join-link" target="_blank">{{eventUrl}}</a>
+      </div>
+      {{/if}}
+    </div>
+    {{/if}}
+    
+    <!-- Reminder Tips -->
+    <div class="reminder-tips">
+      <div class="tips-title">💡 Helpful Reminders</div>
+      <ul class="tips-list">
+        <li>Add this event to your calendar if you haven't already</li>
+        <li>Set up any necessary technology or accounts in advance</li>
+        {{#if isOnlineEvent}}
+        <li>Test your internet connection and audio/video setup</li>
+        {{else}}
+        <li>Plan your route to the venue and arrive 10-15 minutes early</li>
+        {{/if}}
+        <li>Prepare any questions you'd like to ask during the event</li>
+        <li>Have a notepad ready to jot down key insights</li>
+      </ul>
+    </div>
+    
+    <!-- Action Section -->
+    <div class="action-section">
+      <p style="color: #4a5568; margin-bottom: 20px;">We're excited to see you soon!</p>
+      {{#if eventUrl}}
+      <a href="{{eventUrl}}" class="cta-button" target="_blank">Join Event</a>
+      {{/if}}
+      <a href="{{eventsUrl}}" class="cta-button">View My Events</a>
+    </div>
+    
+    <!-- Footer -->
+    <div class="footer">
+      <div class="footer-content">
+        <p><strong>{{appName}}</strong> - Empowering Learning, One Event at a Time</p>
+        <p>Need help or have questions about tomorrow's event?</p>
+        
+        <div class="footer-links">
+          <a href="mailto:{{supportEmail}}">{{supportEmail}}</a>
+          <a href="{{loginUrl}}">Access Portal</a>
+          <a href="{{eventsUrl}}">View All Events</a>
+        </div>
+      </div>
+      
+      <div class="footer-bottom">
+        <p>&copy; {{year}} {{appName}}. All rights reserved.</p>
+        <p>You're receiving this reminder because you're registered for an upcoming event.</p>
+        <p>For support, contact us at <a href="mailto:{{supportEmail}}" style="color: #90cdf4;">{{supportEmail}}</a></p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

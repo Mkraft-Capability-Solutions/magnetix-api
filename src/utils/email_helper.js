@@ -257,6 +257,63 @@ Both options will expire in 1 hour.`;
       priority: 'normal'
     });
   }
+
+  async sendEventReminderEmail(email, firstName, eventData) {
+    // Format date and time for display
+    const formatDate = (dateString) => {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    };
+
+    const formatTime = (timeString) => {
+      if (!timeString) return '';
+      const [hours, minutes] = timeString.split(':');
+      const date = new Date();
+      date.setHours(parseInt(hours), parseInt(minutes));
+      return date.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    };
+
+    const templateData = {
+      appName: process.env.APP_NAME || 'Learning Management System',
+      firstName,
+      eventTitle: eventData.title,
+      eventDescription: eventData.description,
+      eventDate: formatDate(eventData.start_date),
+      eventStartTime: formatTime(eventData.start_time),
+      eventEndTime: formatTime(eventData.end_time),
+      eventVenue: eventData.event_venue,
+      eventUrl: eventData.url,
+      speakers: eventData.speakers,
+      maxLimit: eventData.max_limit,
+      attendeesCount: eventData.attendees_count || 0,
+      isOnlineEvent: !!eventData.online_event,
+      supportEmail: 'support@multiplierskraft.com',
+      supportUrl: `${process.env.FRONTEND_URL}/support`,
+      loginUrl: `${process.env.FRONTEND_URL}/login`,
+      eventsUrl: `${process.env.FRONTEND_URL}/student-events`,
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['event-reminder'](templateData);
+    const text = `REMINDER: "${eventData.title}" is starting soon!\n\nEvent Details:\n- Date: ${templateData.eventDate}\n- Time: ${templateData.eventStartTime}${templateData.eventEndTime ? ` - ${templateData.eventEndTime}` : ''}\n${eventData.event_venue ? `- Venue: ${eventData.event_venue}\n` : ''}${eventData.online_event ? '- This is an online event\n' : ''}${eventData.url ? `- Event URL: ${eventData.url}\n` : ''}\n\nDon't forget to join us! We're looking forward to seeing you there.`;
+
+    return this.sendEmail({
+      to: email,
+      subject: `🔔 Reminder: ${eventData.title} - Starting Soon!`,
+      html,
+      text,
+      priority: 'normal'
+    });
+  }
 }
 
 module.exports = new EmailHelper();
