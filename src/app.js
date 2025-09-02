@@ -10,8 +10,10 @@ const app = express();
 const corsOptions = {
   origin: "https://staging.milekraft.com",
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS","PATCH"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   allowedHeaders: ["Origin", "Content-Type", "Accept", "Authorization"],
+  preflightContinue: false,
+  optionsSuccessStatus: 200
 };
 
 
