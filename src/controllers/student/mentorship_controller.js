@@ -101,3 +101,15 @@ exports.isMentorshipRequestDeleted = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.getMentorDetails = async (req, res, next) => {
+  try {
+    const response = await mentorshipService.getMentorDetails(req.params.mentorId);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};

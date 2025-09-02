@@ -8,10 +8,12 @@ const app = express();
 
 // CORS configuration
 const corsOptions = {
-  origin: ["https://isms.milekraft.com", "http://localhost:3000"],
+  origin: "http://localhost:3000",
   credentials: true,
-  optionsSuccessStatus: 200,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS","PATCH"],
+  allowedHeaders: ["Origin", "Content-Type", "Accept", "Authorization"],
 };
+
 
 app.use(cors(corsOptions));
 app.use(cookieParser());
