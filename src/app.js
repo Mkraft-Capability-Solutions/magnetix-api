@@ -8,7 +8,7 @@ const app = express();
 
 // CORS configuration
 const corsOptions = {
-  origin: "http://localhost:3000",
+  origin: "https://staging.milekraft.com",
   credentials: true,
   methods: ["GET", "POST","PATCH", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Origin", "Content-Type", "Accept", "Authorization"],
