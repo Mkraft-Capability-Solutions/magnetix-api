@@ -29,16 +29,6 @@ class EventReminderScheduler {
             console.log(`📧 Event reminder scheduler started`);
             console.log(`📅 Scheduled to run: ${cronPattern} (${process.env.TZ || 'America/New_York'})`);
             console.log(`⏰ Next execution: ${this.getNextExecutionTime()}`);
-
-            // Run immediately on startup to catch any events within 48 hours
-            console.log(`🚀 Running initial event reminder check on startup...`);
-            setTimeout(async () => {
-                try {
-                    await this.executeReminderJob();
-                } catch (error) {
-                    console.error('❌ Initial reminder run failed:', error);
-                }
-            }, 5000); // Wait 5 seconds after startup to ensure all services are ready
             
         } catch (error) {
             console.error('❌ Error starting event reminder scheduler:', error);
