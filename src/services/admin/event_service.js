@@ -168,6 +168,9 @@ class AdminEventService {
     
     // Get all upcoming events created by other users (not current admin)
     async getAllUpcomingEvents(adminId, limit = 10, offset = 0) {
+        // Ensure limit and offset are integers
+        limit = parseInt(limit) || 10;
+        offset = parseInt(offset) || 0;
         const [rows] = await promisePool.query(`
             SELECT 
                 e.id,
@@ -202,10 +205,10 @@ class AdminEventService {
             LEFT JOIN super_admins sa ON e.creator_id = sa.user_id
             WHERE e.is_deleted = 0 
             AND (
-                (e.start_date > CURDATE()) 
-                OR (e.start_date = CURDATE() AND e.start_time > CURTIME())
+                (e.end_date > CURDATE()) 
+                OR (e.end_date = CURDATE() AND e.end_time > CURTIME())
             )
-            ORDER BY e.start_date ASC, e.start_time ASC
+            ORDER BY e.last_updated DESC, e.created_date DESC
             LIMIT ? OFFSET ?
         `, [limit, offset]);
         
@@ -214,6 +217,9 @@ class AdminEventService {
 
     // Get all past events created by other users (not current admin)
     async getAllPastEvents(adminId, limit = 10, offset = 0) {
+        // Ensure limit and offset are integers
+        limit = parseInt(limit) || 10;
+        offset = parseInt(offset) || 0;
         const [rows] = await promisePool.query(`
             SELECT 
                 e.id,
@@ -252,7 +258,7 @@ class AdminEventService {
                 (e.end_date < CURDATE()) 
                 OR (e.end_date = CURDATE() AND e.end_time < CURTIME())
             )
-            ORDER BY e.start_date DESC, e.start_time DESC
+            ORDER BY e.last_updated DESC, e.created_date DESC
             LIMIT ? OFFSET ?
         `, [adminId, limit, offset]);
         
@@ -261,6 +267,9 @@ class AdminEventService {
 
     // Get admin's own upcoming events
     async getMyUpcomingEvents(adminId, limit = 10, offset = 0) {
+        // Ensure limit and offset are integers
+        limit = parseInt(limit) || 10;
+        offset = parseInt(offset) || 0;
         const [rows] = await promisePool.query(`
             SELECT 
                 e.id,
@@ -289,10 +298,10 @@ class AdminEventService {
             WHERE e.is_deleted = 0 
             AND e.creator_id = ?
             AND (
-                (e.start_date > CURDATE()) 
-                OR (e.start_date = CURDATE() AND e.start_time > CURTIME())
+                (e.end_date > CURDATE()) 
+                OR (e.end_date = CURDATE() AND e.end_time > CURTIME())
             )
-            ORDER BY e.start_date ASC, e.start_time ASC
+            ORDER BY e.last_updated DESC, e.created_date DESC
             LIMIT ? OFFSET ?
         `, [adminId, limit, offset]);
         
@@ -301,6 +310,9 @@ class AdminEventService {
 
     // Get admin's own past events
     async getMyPastEvents(adminId, limit = 10, offset = 0) {
+        // Ensure limit and offset are integers
+        limit = parseInt(limit) || 10;
+        offset = parseInt(offset) || 0;
         const [rows] = await promisePool.query(`
             SELECT 
                 e.id,
@@ -332,7 +344,7 @@ class AdminEventService {
                 (e.end_date < CURDATE()) 
                 OR (e.end_date = CURDATE() AND e.end_time < CURTIME())
             )
-            ORDER BY e.start_date DESC, e.start_time DESC
+            ORDER BY e.last_updated DESC, e.created_date DESC
             LIMIT ? OFFSET ?
         `, [adminId, limit, offset]);
         
