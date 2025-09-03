@@ -26,7 +26,8 @@ const updateEventSchema = Joi.object({
     url: Joi.alternatives().try(
         Joi.string().uri(),
         Joi.string().allow('', null)
-    ).optional()
+    ).optional(),
+    target_audience_emails: Joi.string().allow('').optional()
 });
 
 const deleteEventSchema = Joi.object({
@@ -236,7 +237,8 @@ exports.updateEvent = async (req, res, next) => {
             onlineEvent: isOnline,
             eventVenue: isOnline ? null : (req.body.eventVenue || ''),
             maxLimit: parseInt(req.body.maxLimit),
-            url: req.body.url || ''
+            url: req.body.url || '',
+            target_audience_emails: req.body.target_audience_emails || ''
         };
 
         console.log('Processed data for admin update:', processedData);
@@ -253,13 +255,6 @@ exports.updateEvent = async (req, res, next) => {
         }
 
         await adminEventService.updateEvent(processedData.eventId, processedData);
-        
-        // Handle individual target audience emails if provided and audience type is individual
-        if (processedData.eventAudienceTypeId === 1 && req.body.target_audience_emails) {
-            // Clear existing target audience attendees and add new ones
-            await adminEventService.updateTargetAudienceAttendees(processedData.eventId, req.body.target_audience_emails);
-        }
-        
         res.json({
             success: true,
             message: 'Event updated successfully',

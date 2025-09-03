@@ -51,7 +51,7 @@ class AdminEventService {
         const eventId = result.insertId;
         
         // Handle individual target audience emails if provided
-        if (data.eventAudienceTypeId === 1 && data.target_audience_emails) {
+        if (data.eventAudienceTypeId === 2 && data.target_audience_emails) {
             await this.addTargetAudienceAttendees(eventId, data.target_audience_emails);
         }
         
@@ -377,6 +377,14 @@ class AdminEventService {
             data.url || null,
             eventId
         ]);
+
+        // Handle target audience emails if provided and eventAudienceTypeId is 2
+        if (data.eventAudienceTypeId === 2 && data.target_audience_emails) {
+            await this.updateTargetAudienceAttendees(eventId, data.target_audience_emails);
+        } else if (data.eventAudienceTypeId === 1) {
+            // If switching to "All" (eventAudienceTypeId = 1), remove any manually added attendees
+            await this.updateTargetAudienceAttendees(eventId, '');
+        }
 
         return true;
     }
