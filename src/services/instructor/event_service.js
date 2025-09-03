@@ -75,16 +75,6 @@ class InstructorEventService {
                 throw new Error(`Database error: ${dbError.message}`);
             }
             
-            // Handle individual target audience emails if provided
-            if (parseInt(data.eventAudienceTypeId) === 1 && data.target_audience_emails) {
-                try {
-                    await this.addTargetAudienceAttendees(eventId, data.target_audience_emails);
-                } catch (emailError) {
-                    console.error('Error adding target audience emails:', emailError);
-                    // Don't fail the entire event creation if email processing fails
-                }
-            }
-            
             return eventId;
         } catch (error) {
             console.error('CreateEvent Service - Error:', error);

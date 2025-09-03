@@ -140,8 +140,12 @@ class InstructorCourseService {
         }
         
         // Process lessons for existing sections
-        for (const lesson of existingSectionLessons) {
+        for (let lessonIndex = 0; lessonIndex < existingSectionLessons.length; lessonIndex++) {
+          const lesson = existingSectionLessons[lessonIndex];
           console.log(`Processing lesson for existing section: ${lesson.title}, sectionId: ${lesson.sectionId}`);
+          
+          // Calculate lesson order for existing section
+          const lessonOrder = lesson.lessonOrder || (lessonIndex + 1);
           
           // Map frontend contentType to database enum values
           let dbContentType = null;
@@ -177,7 +181,7 @@ class InstructorCourseService {
           }
 
           const [lessonResult] = await connection.query(
-            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
               lesson.title,
               lesson.sectionId, // Use existing section ID
@@ -191,6 +195,7 @@ class InstructorCourseService {
               courseId,
               userId,
               userId,
+              lessonOrder,
             ]
           );
 
@@ -295,10 +300,14 @@ class InstructorCourseService {
           console.log(`Section created with ID: ${sectionId}`);
 
           // Process lessons in this new section
-          for (const lesson of sectionGroup.lessons) {
+          for (let lessonIndex = 0; lessonIndex < sectionGroup.lessons.length; lessonIndex++) {
+            const lesson = sectionGroup.lessons[lessonIndex];
             console.log(`Processing lesson: ${lesson.title}`);
             console.log(`Processing lesson contentType: ${lesson.contentType}`);
             console.log(`Processing lesson data:`, lesson);
+            
+            // Calculate lesson order - use provided order or sequential order
+            const lessonOrder = lesson.lessonOrder || (lessonIndex + 1);
 
             // Map frontend contentType to database enum values
             let dbContentType = null;
@@ -341,9 +350,10 @@ class InstructorCourseService {
             console.log(`SCORM file: ${scormFile}`);
             console.log(`MP4 file: ${mp4File}`);
             console.log(`Content URL: ${contentUrl}`);
+            console.log(`Lesson order: ${lessonOrder}`);
 
             const [lessonResult] = await connection.query(
-              "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               [
                 lesson.title,
                 sectionId,
@@ -357,6 +367,7 @@ class InstructorCourseService {
                 courseId,
                 userId,
                 userId,
+                lessonOrder,
               ]
             );
 
@@ -715,8 +726,12 @@ class InstructorCourseService {
         }
         
         // Process lessons for existing sections
-        for (const lesson of existingSectionLessons) {
+        for (let lessonIndex = 0; lessonIndex < existingSectionLessons.length; lessonIndex++) {
+          const lesson = existingSectionLessons[lessonIndex];
           console.log(`Update - Processing lesson for existing section: ${lesson.title}, sectionId: ${lesson.sectionId}`);
+          
+          // Calculate lesson order for existing section
+          const lessonOrder = lesson.lessonOrder || (lessonIndex + 1);
           
           // Map frontend contentType to database enum values
           let dbContentType = null;
@@ -752,7 +767,7 @@ class InstructorCourseService {
           }
 
           const [lessonResult] = await connection.query(
-            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
               lesson.title,
               lesson.sectionId, // Use existing section ID
@@ -766,6 +781,7 @@ class InstructorCourseService {
               courseId,
               userId,
               userId,
+              lessonOrder,
             ]
           );
 
@@ -869,10 +885,14 @@ class InstructorCourseService {
           console.log(`Update - Section created with ID: ${sectionId}`);
 
           // Process lessons in this new section
-          for (const lesson of sectionGroup.lessons) {
+          for (let lessonIndex = 0; lessonIndex < sectionGroup.lessons.length; lessonIndex++) {
+            const lesson = sectionGroup.lessons[lessonIndex];
             console.log(`Update - Processing lesson: ${lesson.title}`);
             console.log(`Update - Processing lesson contentType: ${lesson.contentType}`);
             console.log(`Update - Processing lesson data:`, lesson);
+            
+            // Calculate lesson order - use provided order or sequential order
+            const lessonOrder = lesson.lessonOrder || (lessonIndex + 1);
 
             // Map frontend contentType to database enum values
             let dbContentType = null;
@@ -909,9 +929,10 @@ class InstructorCourseService {
             console.log(`Update - SCORM file: ${scormFile}`);
             console.log(`Update - MP4 file: ${mp4File}`);
             console.log(`Update - Content URL: ${contentUrl}`);
+            console.log(`Update - Lesson order: ${lessonOrder}`);
 
             const [lessonResult] = await connection.query(
-              "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               [
                 lesson.title,
                 sectionId,
@@ -925,6 +946,7 @@ class InstructorCourseService {
                 courseId,
                 userId,
                 userId,
+                lessonOrder,
               ]
             );
 
@@ -1415,6 +1437,68 @@ class InstructorCourseService {
   //   outcomes
   // );
 
+  // Method to update lesson order within a section
+  async updateLessonOrder(courseId, lessonId, newOrder, sectionId, userId) {
+    console.log(`Updating lesson order: courseId=${courseId}, lessonId=${lessonId}, newOrder=${newOrder}, sectionId=${sectionId}`);
+    
+    const connection = await promisePool.getConnection();
+    try {
+      await connection.beginTransaction();
+      
+      // Verify the lesson belongs to the course and section
+      const [lessonCheck] = await connection.query(
+        "SELECT id FROM course_lesson WHERE id = ? AND course_id = ? AND section_id = ?",
+        [lessonId, courseId, sectionId]
+      );
+      
+      if (lessonCheck.length === 0) {
+        throw new Error("Lesson not found in the specified course and section");
+      }
+      
+      // Use the stored procedure to update lesson order
+      await connection.query(
+        "CALL update_lesson_order(?, ?, ?, ?)",
+        [lessonId, newOrder, sectionId, userId]
+      );
+      
+      await connection.commit();
+      return { success: true };
+    } catch (error) {
+      await connection.rollback();
+      console.error("Error in updateLessonOrder:", error);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  // Method to reorder multiple lessons at once
+  async reorderLessons(courseId, sectionId, lessonOrders, userId) {
+    console.log(`Reordering lessons: courseId=${courseId}, sectionId=${sectionId}`, lessonOrders);
+    
+    const connection = await promisePool.getConnection();
+    try {
+      await connection.beginTransaction();
+      
+      // Update each lesson's order
+      for (const {lessonId, order} of lessonOrders) {
+        await connection.query(
+          "UPDATE course_lesson SET lesson_order = ?, last_updated_by = ?, last_updated = NOW() WHERE id = ? AND course_id = ? AND section_id = ?",
+          [order, userId, lessonId, courseId, sectionId]
+        );
+      }
+      
+      await connection.commit();
+      return { success: true };
+    } catch (error) {
+      await connection.rollback();
+      console.error("Error in reorderLessons:", error);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
   // const result = await instructorCourseService.addCourseFAQs(courseId, faqs);
   async addCourseRequirements(courseId, requirements, creatorId) {
     console.log("addCourseRequirements called with courseId:", courseId);
@@ -1619,8 +1703,9 @@ class InstructorCourseService {
       console.log(`Single lesson - MP4 file: ${mp4File}`);
       console.log(`Single lesson - Content URL: ${contentUrl}`);
 
+      // Use the stored procedure to get automatic lesson ordering
       const [result] = await connection.query(
-        "INSERT INTO course_lesson (title, section_id, lesson_type, lesson_content_type, lesson_content_document, lesson_content_scorm, lesson_content_mp4, lesson_content_url, lesson_duration, course_id, creator_id, last_updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           lessonData.title,
           lessonData.sectionId,
@@ -1634,10 +1719,11 @@ class InstructorCourseService {
           courseId,
           creatorId,
           creatorId,
+          lessonData.lessonOrder || null, // Let stored procedure calculate if not provided
         ]
       );
 
-      const lessonId = result.insertId;
+      const lessonId = result[0][0].id;
       console.log("Lesson created with ID:", lessonId);
 
       // Handle file uploads after lesson creation
