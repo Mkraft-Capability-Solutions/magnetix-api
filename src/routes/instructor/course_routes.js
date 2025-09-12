@@ -15,19 +15,19 @@ router.get(
   instructorCourseController.getCourseDetailsById
 );
 //course update operations
-router.post(
+router.put(
   "/courses/:courseId/requirements",
   instructorCourseController.addCourseRequirements
 );
-router.post(
+router.put(
   "/courses/:courseId/outcomes",
   instructorCourseController.addCourseOutcomes
 );
-router.post(
+router.put(
   "/courses/:courseId/faqs",
   instructorCourseController.addCourseFAQs
 );
-router.post(
+router.put(
   "/courses/:courseId/meta",
   instructorCourseController.updateMetaKeywords
 );

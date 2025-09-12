@@ -13,7 +13,7 @@ const courseSchema = Joi.object({
   languageId: Joi.number().integer().min(1).required(),
   categoryId: Joi.number().integer().min(1).required(),
   subCategoryId: Joi.number().integer().min(1).required(),
-  level: Joi.string().valid("beginner", "intermediate", "advance").required(),
+  level: Joi.string().valid("beginner", "intermediate", "advanced").required(),
   courseDuration: Joi.string().allow("").optional(),
   sections: Joi.array(),
   thumbnail: Joi.alternatives()
@@ -29,7 +29,13 @@ const courseSchema = Joi.object({
       Joi.object().unknown(true) // File object
     )
     .optional(),
-  metaKeywords: Joi.string().allow("").optional().default([]),
+  metaKeywords: Joi.alternatives()
+    .try(
+      Joi.array().items(Joi.string()),
+      Joi.string().allow("")
+    )
+    .optional()
+    .default([]),
   metaDescription: Joi.string().allow("").optional(),
   outcomes: Joi.array().items(Joi.string()).optional().default([]),
   requirements: Joi.array().items(Joi.string()).optional().default([]),
@@ -421,17 +427,23 @@ exports.updateMetaKeywords = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;
     const { metaKeywords, metaDescription } = req.body;
-    // metaKeywords.creatorId = req.user.uuid; // Not needed, handled in service
-    if (!metaKeywords || typeof metaKeywords !== "string") {
+    
+    // Convert metaKeywords to string if it's an array
+    let keywordsString = metaKeywords;
+    if (Array.isArray(metaKeywords)) {
+      keywordsString = metaKeywords.join(", ");
+    } else if (!metaKeywords) {
+      keywordsString = "";
+    } else if (typeof metaKeywords !== "string") {
       return res.status(400).json({
         success: false,
-        message: "Meta keywords must be a string",
+        message: "Meta keywords must be a string or array of strings",
       });
     }
 
     const result = await instructorCourseService.updateMetaKeywords(
       courseId,
-      metaKeywords,
+      keywordsString,
       metaDescription,
       req.user.uuid
     );
