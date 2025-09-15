@@ -7,8 +7,8 @@ const { authenticate, authorize } = require('../middleware/auth_middleware');
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 500 * 1024 * 1024, // 500MB
-    fieldSize: 500 * 1024 * 1024, // 500MB for field data
+    fileSize: 1024 * 1024 * 1024, // 1GB
+    fieldSize: 1024 * 1024 * 1024, // 1GB for field data
     files: 10, // max 10 files
     fields: 20 // max 20 fields
   },
@@ -102,7 +102,7 @@ router.use((error, req, res, next) => {
     if (error.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
         success: false,
-        message: 'File too large. Maximum size is 500MB.'
+        message: 'File too large. Maximum size is 1GB.'
       });
     }
     if (error.code === 'LIMIT_UNEXPECTED_FILE') {

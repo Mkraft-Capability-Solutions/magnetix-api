@@ -18,8 +18,8 @@ app.use(cors(corsOptions));
 app.use(cookieParser());
 
 // Parse JSON and URL-encoded data with size limits
-app.use(bodyParser.json({ limit: "100mb" }));
-app.use(bodyParser.urlencoded({ extended: true, limit: "100mb" }));
+app.use(bodyParser.json({ limit: "1gb" }));
+app.use(bodyParser.urlencoded({ extended: true, limit: "1gb" }));
 
 const landingRoutes = require("./routes/landing_routes");
 const authRoutes = require("./routes/auth_routes");
