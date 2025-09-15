@@ -207,7 +207,7 @@ class NotificationService {
       const [sessionCounts] = await connection.query(
         `SELECT COUNT(*) as count FROM scheduled_sessions 
          WHERE mentor_id = ? AND status = 'pending' 
-         AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)`,
+         AND created_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)`,
         [instructorUuid]
       );
 
