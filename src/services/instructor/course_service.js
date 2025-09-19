@@ -1674,23 +1674,35 @@ class InstructorCourseService {
       let mp4File = null;
       let contentUrl = null;
 
+      // Helper function to check if a value is a valid file
+      const isValidFile = (value) => {
+        return value &&
+               value !== null &&
+               typeof value === 'string' &&
+               value.trim() !== '' &&
+               !(typeof value === 'object' && Object.keys(value).length === 0);
+      };
+
       if (lessonData.contentType) {
         switch (lessonData.contentType) {
           case 'mp4':
             dbContentType = 'mp4';
-            mp4File = lessonData.videoUpload || lessonData.file;
+            mp4File = isValidFile(lessonData.videoUpload) ? lessonData.videoUpload :
+                     isValidFile(lessonData.file) ? lessonData.file : null;
             break;
           case 'document':
             dbContentType = 'document';
-            documentFile = lessonData.lessonContentDocument || lessonData.file;
+            documentFile = isValidFile(lessonData.lessonContentDocument) ? lessonData.lessonContentDocument :
+                          isValidFile(lessonData.file) ? lessonData.file : null;
             break;
           case 'scorm':
             dbContentType = 'scorm';
-            scormFile = lessonData.scormPackage || lessonData.file;
+            scormFile = isValidFile(lessonData.scormPackage) ? lessonData.scormPackage :
+                       isValidFile(lessonData.file) ? lessonData.file : null;
             break;
           case 'url':
             dbContentType = 'url';
-            contentUrl = lessonData.contentUrl || lessonData.url;
+            contentUrl = lessonData.contentUrl || lessonData.url || null;
             break;
           default:
             dbContentType = lessonData.contentType;
@@ -1702,66 +1714,39 @@ class InstructorCourseService {
       console.log(`Single lesson - SCORM file: ${scormFile}`);
       console.log(`Single lesson - MP4 file: ${mp4File}`);
       console.log(`Single lesson - Content URL: ${contentUrl}`);
+      console.log('Full lesson data received:', JSON.stringify(lessonData, null, 2));
+
+      // Ensure all parameters are properly defined (null instead of undefined)
+      const params = [
+        lessonData.title || null,
+        lessonData.sectionId || null,
+        lessonData.lessonType || "Content-Based",
+        dbContentType || null,
+        documentFile === undefined ? null : documentFile,
+        scormFile === undefined ? null : scormFile,
+        mp4File === undefined ? null : mp4File,
+        contentUrl === undefined ? null : contentUrl,
+        lessonData.lessonDuration || lessonData.duration || null,
+        courseId,
+        creatorId,
+        creatorId,
+        lessonData.lessonOrder || null, // Let stored procedure calculate if not provided
+      ];
+
+      console.log('SQL parameters:', params);
 
       // Use the stored procedure to get automatic lesson ordering
       const [result] = await connection.query(
         "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [
-          lessonData.title,
-          lessonData.sectionId,
-          lessonData.lessonType || "Content-Based",
-          dbContentType,
-          documentFile,
-          scormFile,
-          mp4File,
-          contentUrl,
-          lessonData.lessonDuration || lessonData.duration || null,
-          courseId,
-          creatorId,
-          creatorId,
-          lessonData.lessonOrder || null, // Let stored procedure calculate if not provided
-        ]
+        params
       );
 
       const lessonId = result[0][0].id;
       console.log("Lesson created with ID:", lessonId);
 
-      // Handle file uploads after lesson creation
-      if (lessonData.file && typeof lessonData.file === 'object' && lessonData.file.name && dbContentType) {
-        console.log(`Uploading ${dbContentType} file for lesson ${lessonId}:`, lessonData.file.name);
-        
-        try {
-          let uploadedFilename = null;
-          const uploadService = require("../upload_service");
-          
-          if (dbContentType === 'mp4') {
-            uploadedFilename = await uploadService.uploadLessonMp4(lessonData.file, lessonId);
-            console.log(`Single lesson - MP4 file uploaded successfully: ${uploadedFilename}`);
-            
-          } else if (dbContentType === 'document') {
-            uploadedFilename = await uploadService.uploadLessonDocument(lessonData.file, lessonId);
-            console.log(`Single lesson - Document file uploaded successfully: ${uploadedFilename}`);
-            
-          } else if (dbContentType === 'scorm') {
-            uploadedFilename = await uploadService.uploadLessonScorm(lessonData.file, lessonId);
-            console.log(`Single lesson - SCORM file uploaded successfully: ${uploadedFilename}`);
-            
-            // Double-check that the database was updated correctly
-            const [checkResult] = await connection.query(
-              "SELECT lesson_content_scorm FROM course_lesson WHERE id = ?",
-              [lessonId]
-            );
-            console.log(`Single lesson - SCORM content in DB after upload: ${checkResult[0]?.lesson_content_scorm}`);
-          }
-          
-        } catch (uploadError) {
-          console.error(`Single lesson - Failed to upload file for lesson ${lessonId}:`, uploadError);
-          // For SCORM files, this is critical - the lesson won't work without the content
-          if (dbContentType === 'scorm') {
-            throw new Error(`SCORM upload failed: ${uploadError.message}`);
-          }
-        }
-      }
+      // Note: File uploads are handled on the frontend after lesson creation
+      // The backend doesn't receive File objects - only file paths for existing files
+      console.log(`Single lesson - Lesson created with ID ${lessonId}. File uploads will be handled by frontend.`);
 
       // Handle ILTS if lesson type is ILTS
       if (lessonData.lessonType === "ILTS") {

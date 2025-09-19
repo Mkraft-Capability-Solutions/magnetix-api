@@ -535,8 +535,8 @@ exports.addLesson = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: "Lesson(s) added successfully",
-      data: result,
+      message: "Lesson added successfully",
+      data: { id: result },
     });
   } catch (error) {
     console.error("Error in addLesson:", error);
