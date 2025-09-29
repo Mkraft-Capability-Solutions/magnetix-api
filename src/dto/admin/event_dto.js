@@ -30,8 +30,11 @@ class AdminEventAttendeeDTO {
         this.id = data.id;
         this.eventId = data.event_id;
         this.recipientId = data.recipient_id;
-        this.recipientName = data.recipient_name || `${data.attendee_first_name} ${data.attendee_last_name}`;
-        this.recipientEmail = data.recipient_email || data.attendee_email;
+        this.recipientName = data.recipient_name ||
+                             data.attendee_full_name ||
+                             `${data.attendee_first_name || ''} ${data.attendee_last_name || ''}`.trim() ||
+                             'Unknown User';
+        this.recipientEmail = data.recipient_email || data.user_email;
         this.registeredAt = data.registered_at;
     }
 }

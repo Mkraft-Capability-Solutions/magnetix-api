@@ -461,19 +461,31 @@ class AdminEventService {
     // Get event attendees (for any event)
     async getEventAttendees(eventId) {
         const [rows] = await promisePool.query(`
-            SELECT 
+            SELECT
                 ea.id,
                 ea.event_id,
                 ea.recipient_id,
                 ea.recipient_name,
                 ea.recipient_email,
-                ea.registered_at
+                ea.registered_at,
+                u.email as user_email,
+                COALESCE(
+                    CONCAT(s.first_name, ' ', s.last_name),
+                    CONCAT(i.first_name, ' ', i.last_name),
+                    u.email,
+                    'Unknown User'
+                ) as attendee_full_name,
+                COALESCE(s.first_name, i.first_name, '') as attendee_first_name,
+                COALESCE(s.last_name, i.last_name, '') as attendee_last_name
             FROM event_attendees ea
             INNER JOIN events e ON ea.event_id = e.id
+            LEFT JOIN users u ON ea.recipient_id = u.uuid
+            LEFT JOIN students s ON u.uuid = s.user_id AND u.role_id = 1
+            LEFT JOIN instructors i ON u.uuid = i.user_id AND u.role_id = 2
             WHERE ea.event_id = ? AND e.is_deleted = 0
             ORDER BY ea.registered_at DESC
         `, [eventId]);
-        
+
         return rows.map(row => new AdminEventAttendeeDTO(row));
     }
 
