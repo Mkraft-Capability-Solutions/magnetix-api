@@ -64,7 +64,7 @@ app.use("/admin/reminders", adminReminderRoutes);
 app.use("/admin/profile", require("./routes/admin/profile_route"));
 app.use("/admin/courses", require("./routes/admin/course_route"));
 // Serve uploaded files (e.g., profile pictures)
-app.use("/uploads", express.static(path.join(__dirname, "../Uploads")));
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // Global error handling middleware
 app.use((err, req, res, next) => {

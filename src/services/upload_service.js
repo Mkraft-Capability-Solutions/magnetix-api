@@ -8,6 +8,7 @@ class UploadService {
     this.uploadPaths = {
       courseThumbnail: path.join(__dirname, "../../uploads/courses/thumbnail"),
       eventThumbnail: path.join(__dirname, "../../uploads/events/thumbnail"),
+      eventAttendance: path.join(__dirname, "../../uploads/events/attendance"),
       userProfile: path.join(__dirname, "../../uploads/users/profile_picture"),
       courseOverviewUrl: path.join(
         __dirname,
@@ -238,6 +239,29 @@ class UploadService {
     }
 
     return filename;
+  }
+
+  // Event Attendance File
+  async uploadEventAttendanceFile(file, eventId) {
+    const filename = await this.uploadSingleFile(
+      file,
+      this.uploadPaths.eventAttendance,
+      [".pdf", ".docx", ".xlsx"]
+    );
+
+    if (eventId) {
+      await promisePool.query(
+        "UPDATE events SET attendance_file = ? WHERE id = ?",
+        [filename, eventId]
+      );
+    }
+
+    return filename;
+  }
+
+  // Get attendance file path for download
+  getAttendanceFilePath(filename) {
+    return path.join(this.uploadPaths.eventAttendance, filename);
   }
 }
 

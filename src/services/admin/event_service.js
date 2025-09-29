@@ -172,7 +172,7 @@ class AdminEventService {
         limit = parseInt(limit) || 10;
         offset = parseInt(offset) || 0;
         const [rows] = await promisePool.query(`
-            SELECT 
+            SELECT
                 e.id,
                 e.title,
                 e.description,
@@ -189,11 +189,12 @@ class AdminEventService {
                 e.max_limit,
                 e.attendees_count,
                 e.url,
+                e.attendance_file,
                 e.created_date,
                 e.last_updated,
                 e.creator_id,
                 e.is_deleted,
-                CASE 
+                CASE
                     WHEN i.user_id IS NOT NULL THEN CONCAT(i.first_name, ' ', i.last_name)
                     WHEN a.user_id IS NOT NULL THEN CONCAT(a.first_name, ' ', a.last_name)
                     WHEN sa.user_id IS NOT NULL THEN CONCAT(sa.first_name, ' ', sa.last_name)
@@ -203,9 +204,9 @@ class AdminEventService {
             LEFT JOIN instructors i ON e.creator_id = i.user_id
             LEFT JOIN admins a ON e.creator_id = a.user_id
             LEFT JOIN super_admins sa ON e.creator_id = sa.user_id
-            WHERE e.is_deleted = 0 
+            WHERE e.is_deleted = 0
             AND (
-                (e.end_date > CURDATE()) 
+                (e.end_date > CURDATE())
                 OR (e.end_date = CURDATE() AND e.end_time > CURTIME())
             )
             ORDER BY e.last_updated DESC, e.created_date DESC
@@ -221,7 +222,7 @@ class AdminEventService {
         limit = parseInt(limit) || 10;
         offset = parseInt(offset) || 0;
         const [rows] = await promisePool.query(`
-            SELECT 
+            SELECT
                 e.id,
                 e.title,
                 e.description,
@@ -238,11 +239,12 @@ class AdminEventService {
                 e.max_limit,
                 e.attendees_count,
                 e.url,
+                e.attendance_file,
                 e.created_date,
                 e.last_updated,
                 e.creator_id,
                 e.is_deleted,
-                CASE 
+                CASE
                     WHEN i.user_id IS NOT NULL THEN CONCAT(i.first_name, ' ', i.last_name)
                     WHEN a.user_id IS NOT NULL THEN CONCAT(a.first_name, ' ', a.last_name)
                     WHEN sa.user_id IS NOT NULL THEN CONCAT(sa.first_name, ' ', sa.last_name)
@@ -252,10 +254,10 @@ class AdminEventService {
             LEFT JOIN instructors i ON e.creator_id = i.user_id
             LEFT JOIN admins a ON e.creator_id = a.user_id
             LEFT JOIN super_admins sa ON e.creator_id = sa.user_id
-            WHERE e.is_deleted = 0 
+            WHERE e.is_deleted = 0
             AND e.creator_id != ?
             AND (
-                (e.end_date < CURDATE()) 
+                (e.end_date < CURDATE())
                 OR (e.end_date = CURDATE() AND e.end_time < CURTIME())
             )
             ORDER BY e.last_updated DESC, e.created_date DESC
@@ -271,7 +273,7 @@ class AdminEventService {
         limit = parseInt(limit) || 10;
         offset = parseInt(offset) || 0;
         const [rows] = await promisePool.query(`
-            SELECT 
+            SELECT
                 e.id,
                 e.title,
                 e.description,
@@ -288,6 +290,7 @@ class AdminEventService {
                 e.max_limit,
                 e.attendees_count,
                 e.url,
+                e.attendance_file,
                 e.created_date,
                 e.last_updated,
                 e.creator_id,
@@ -295,10 +298,10 @@ class AdminEventService {
                 CONCAT(a.first_name, ' ', a.last_name) as creator_name
             FROM events e
             INNER JOIN admins a ON e.creator_id = a.user_id
-            WHERE e.is_deleted = 0 
+            WHERE e.is_deleted = 0
             AND e.creator_id = ?
             AND (
-                (e.end_date > CURDATE()) 
+                (e.end_date > CURDATE())
                 OR (e.end_date = CURDATE() AND e.end_time > CURTIME())
             )
             ORDER BY e.last_updated DESC, e.created_date DESC
@@ -314,7 +317,7 @@ class AdminEventService {
         limit = parseInt(limit) || 10;
         offset = parseInt(offset) || 0;
         const [rows] = await promisePool.query(`
-            SELECT 
+            SELECT
                 e.id,
                 e.title,
                 e.description,
@@ -331,6 +334,7 @@ class AdminEventService {
                 e.max_limit,
                 e.attendees_count,
                 e.url,
+                e.attendance_file,
                 e.created_date,
                 e.last_updated,
                 e.creator_id,
@@ -338,10 +342,10 @@ class AdminEventService {
                 CONCAT(a.first_name, ' ', a.last_name) as creator_name
             FROM events e
             INNER JOIN admins a ON e.creator_id = a.user_id
-            WHERE e.is_deleted = 0 
+            WHERE e.is_deleted = 0
             AND e.creator_id = ?
             AND (
-                (e.end_date < CURDATE()) 
+                (e.end_date < CURDATE())
                 OR (e.end_date = CURDATE() AND e.end_time < CURTIME())
             )
             ORDER BY e.last_updated DESC, e.created_date DESC
@@ -413,7 +417,7 @@ class AdminEventService {
     // Get event by ID (for any event)
     async getEventById(eventId) {
         const [rows] = await promisePool.query(`
-            SELECT 
+            SELECT
                 e.id,
                 e.title,
                 e.description,
@@ -430,11 +434,12 @@ class AdminEventService {
                 e.max_limit,
                 e.attendees_count,
                 e.url,
+                e.attendance_file,
                 e.created_date,
                 e.last_updated,
                 e.creator_id,
                 e.is_deleted,
-                CASE 
+                CASE
                     WHEN i.user_id IS NOT NULL THEN CONCAT(i.first_name, ' ', i.last_name)
                     WHEN a.user_id IS NOT NULL THEN CONCAT(a.first_name, ' ', a.last_name)
                     WHEN sa.user_id IS NOT NULL THEN CONCAT(sa.first_name, ' ', sa.last_name)
@@ -564,6 +569,37 @@ class AdminEventService {
         }
 
         return results;
+    }
+
+    // Upload attendance file for an event
+    async uploadAttendanceFile(eventId, filename) {
+        await promisePool.query(
+            'UPDATE events SET attendance_file = ?, last_updated = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 0',
+            [filename, eventId]
+        );
+        return true;
+    }
+
+    // Remove attendance file from an event
+    async removeAttendanceFile(eventId) {
+        await promisePool.query(
+            'UPDATE events SET attendance_file = NULL, last_updated = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 0',
+            [eventId]
+        );
+        return true;
+    }
+
+    // Get attendance file info for an event
+    async getAttendanceFileInfo(eventId) {
+        const [rows] = await promisePool.query(
+            'SELECT attendance_file FROM events WHERE id = ? AND is_deleted = 0',
+            [eventId]
+        );
+
+        if (rows.length > 0) {
+            return rows[0].attendance_file;
+        }
+        return null;
     }
 }
 

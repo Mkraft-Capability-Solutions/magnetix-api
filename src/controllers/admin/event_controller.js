@@ -344,7 +344,7 @@ exports.bulkEnrollStudents = async (req, res, next) => {
         }
 
         const { emails } = req.body;
-        
+
         // Check if event exists
         const event = await adminEventService.getEventById(eventId);
         if (!event) {
@@ -353,11 +353,168 @@ exports.bulkEnrollStudents = async (req, res, next) => {
 
         // Process bulk enrollment
         const result = await adminEventService.bulkEnrollStudents(eventId, emails);
-        
+
         res.json({
             success: true,
             message: `Bulk enrollment completed. ${result.enrolled} students enrolled, ${result.skipped} skipped.`,
             data: result
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Upload attendance file for an event
+exports.uploadAttendanceFile = async (req, res, next) => {
+    try {
+        const eventId = parseInt(req.params.eventId);
+        if (!eventId) {
+            return res.status(400).json({ message: 'Invalid event ID' });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({ message: 'No file uploaded' });
+        }
+
+        // Check if event exists
+        const event = await adminEventService.getEventById(eventId);
+        if (!event) {
+            return res.status(404).json({ message: 'Event not found' });
+        }
+
+        // Check if there's an existing file and delete it
+        const existingFilename = await adminEventService.getAttendanceFileInfo(eventId);
+        if (existingFilename) {
+            const existingFilePath = uploadService.getAttendanceFilePath(existingFilename);
+            const fs = require('fs');
+
+            try {
+                if (fs.existsSync(existingFilePath)) {
+                    fs.unlinkSync(existingFilePath);
+                    console.log(`Deleted old attendance file: ${existingFilePath}`);
+                }
+            } catch (fileError) {
+                console.error('Error deleting old file:', fileError);
+                // Continue with upload even if old file deletion fails
+            }
+        }
+
+        // Upload the attendance file
+        const filename = await uploadService.uploadEventAttendanceFile(req.file, eventId);
+
+        res.json({
+            success: true,
+            message: 'Attendance file uploaded successfully',
+            data: {
+                eventId: eventId,
+                attendanceFile: filename
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Download attendance file for an event
+exports.downloadAttendanceFile = async (req, res, next) => {
+    try {
+        const eventId = parseInt(req.params.eventId);
+        if (!eventId) {
+            return res.status(400).json({ message: 'Invalid event ID' });
+        }
+
+        // Get attendance file info
+        const filename = await adminEventService.getAttendanceFileInfo(eventId);
+        if (!filename) {
+            return res.status(404).json({ message: 'No attendance file found for this event' });
+        }
+
+        // Get file path
+        const filePath = uploadService.getAttendanceFilePath(filename);
+        const fs = require('fs');
+        const path = require('path');
+
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ message: 'Attendance file not found on server' });
+        }
+
+        // Get file extension to set proper content type
+        const ext = path.extname(filename).toLowerCase();
+        let contentType = 'application/octet-stream';
+
+        switch (ext) {
+            case '.pdf':
+                contentType = 'application/pdf';
+                break;
+            case '.docx':
+                contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                break;
+            case '.xlsx':
+                contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+                break;
+        }
+
+        // Set appropriate headers for download
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+
+        // Send file
+        res.sendFile(path.resolve(filePath));
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Remove attendance file from an event
+exports.removeAttendanceFile = async (req, res, next) => {
+    try {
+        const eventId = parseInt(req.params.eventId);
+        if (!eventId) {
+            return res.status(400).json({ message: 'Invalid event ID' });
+        }
+
+        // Check if event exists
+        const event = await adminEventService.getEventById(eventId);
+        if (!event) {
+            return res.status(404).json({ message: 'Event not found' });
+        }
+
+        // Get current attendance file info before removing
+        const filename = await adminEventService.getAttendanceFileInfo(eventId);
+        console.log(`Attempting to remove attendance file for event ${eventId}, filename: ${filename}`);
+
+        if (filename) {
+            // Delete physical file from server
+            const filePath = uploadService.getAttendanceFilePath(filename);
+            console.log(`Constructed file path: ${filePath}`);
+            const fs = require('fs');
+
+            try {
+                console.log(`Checking if file exists: ${filePath}`);
+                if (fs.existsSync(filePath)) {
+                    console.log(`File exists, attempting to delete: ${filePath}`);
+                    fs.unlinkSync(filePath);
+                    console.log(`Successfully deleted attendance file: ${filePath}`);
+                } else {
+                    console.log(`File does not exist at path: ${filePath}`);
+                }
+            } catch (fileError) {
+                console.error('Error deleting physical file:', fileError);
+                console.error('File path that failed:', filePath);
+                // Continue with database removal even if file deletion fails
+            }
+        } else {
+            console.log(`No filename found for event ${eventId}, skipping file deletion`);
+        }
+
+        // Remove attendance file reference from database
+        await adminEventService.removeAttendanceFile(eventId);
+
+        res.json({
+            success: true,
+            message: 'Attendance file removed successfully'
         });
     } catch (error) {
         next(error);

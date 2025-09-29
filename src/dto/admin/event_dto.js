@@ -16,6 +16,7 @@ class AdminEventDTO {
         this.maxLimit = data.max_limit;
         this.attendeesCount = data.attendees_count || 0;
         this.url = data.url;
+        this.attendanceFile = data.attendance_file;
         this.createdDate = data.created_date;
         this.lastUpdated = data.last_updated;
         this.creatorId = data.creator_id;
