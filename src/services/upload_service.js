@@ -36,6 +36,28 @@ class UploadService {
     }
   }
 
+  async deleteOldFile(filePath) {
+    try {
+      if (fs.existsSync(filePath)) {
+        await fs.promises.unlink(filePath);
+        console.log(`Deleted old file: ${filePath}`);
+      }
+    } catch (error) {
+      console.error(`Error deleting old file ${filePath}:`, error);
+    }
+  }
+
+  async deleteOldDirectory(dirPath) {
+    try {
+      if (fs.existsSync(dirPath)) {
+        await fs.promises.rm(dirPath, { recursive: true, force: true });
+        console.log(`Deleted old directory: ${dirPath}`);
+      }
+    } catch (error) {
+      console.error(`Error deleting old directory ${dirPath}:`, error);
+    }
+  }
+
   async uploadSingleFile(file, dirPath, allowedExtensions) {
     await this.ensureDirectoryExists(dirPath);
 
@@ -100,6 +122,18 @@ class UploadService {
 
   // Course Thumbnail
   async uploadCourseThumbnail(file, courseId) {
+    // Get old thumbnail filename if updating
+    let oldFilename = null;
+    if (courseId) {
+      const [rows] = await promisePool.query(
+        "SELECT thumbnail FROM course WHERE id = ?",
+        [courseId]
+      );
+      if (rows.length > 0 && rows[0].thumbnail) {
+        oldFilename = rows[0].thumbnail;
+      }
+    }
+
     const filename = await this.uploadSingleFile(
       file,
       this.uploadPaths.courseThumbnail,
@@ -111,6 +145,12 @@ class UploadService {
         filename,
         courseId,
       ]);
+
+      // Delete old file after successful update
+      if (oldFilename) {
+        const oldFilePath = path.join(this.uploadPaths.courseThumbnail, oldFilename);
+        await this.deleteOldFile(oldFilePath);
+      }
     }
 
     return filename;
@@ -118,6 +158,18 @@ class UploadService {
 
   // Event Thumbnail
   async uploadEventThumbnail(file, eventId) {
+    // Get old thumbnail filename if updating
+    let oldFilename = null;
+    if (eventId) {
+      const [rows] = await promisePool.query(
+        "SELECT event_thumbnail FROM events WHERE id = ?",
+        [eventId]
+      );
+      if (rows.length > 0 && rows[0].event_thumbnail) {
+        oldFilename = rows[0].event_thumbnail;
+      }
+    }
+
     const filename = await this.uploadSingleFile(
       file,
       this.uploadPaths.eventThumbnail,
@@ -129,6 +181,12 @@ class UploadService {
         "UPDATE events SET event_thumbnail = ? WHERE id = ?",
         [filename, eventId]
       );
+
+      // Delete old file after successful update
+      if (oldFilename) {
+        const oldFilePath = path.join(this.uploadPaths.eventThumbnail, oldFilename);
+        await this.deleteOldFile(oldFilePath);
+      }
     }
 
     return filename;
@@ -136,6 +194,18 @@ class UploadService {
 
   // User Profile Picture
   async uploadUserProfilePicture(file, userId) {
+    // Get old profile picture filename if updating
+    let oldFilename = null;
+    if (userId) {
+      const [rows] = await promisePool.query(
+        "SELECT dp FROM users WHERE uuid = ?",
+        [userId]
+      );
+      if (rows.length > 0 && rows[0].dp) {
+        oldFilename = rows[0].dp;
+      }
+    }
+
     const filename = await this.uploadSingleFile(
       file,
       this.uploadPaths.userProfile,
@@ -147,6 +217,12 @@ class UploadService {
         filename,
         userId,
       ]);
+
+      // Delete old file after successful update
+      if (oldFilename) {
+        const oldFilePath = path.join(this.uploadPaths.userProfile, oldFilename);
+        await this.deleteOldFile(oldFilePath);
+      }
     }
 
     return filename;
@@ -189,6 +265,18 @@ class UploadService {
 
   // Lesson SCORM
   async uploadLessonScorm(file, lessonId) {
+    // Get old SCORM folder name if updating
+    let oldFolderName = null;
+    if (lessonId) {
+      const [rows] = await promisePool.query(
+        "SELECT lesson_content_scorm FROM course_lesson WHERE id = ?",
+        [lessonId]
+      );
+      if (rows.length > 0 && rows[0].lesson_content_scorm) {
+        oldFolderName = rows[0].lesson_content_scorm;
+      }
+    }
+
     const folderName = await this.uploadAndExtractZip(
       file,
       this.uploadPaths.lessonScorm,
@@ -200,6 +288,12 @@ class UploadService {
         "UPDATE course_lesson SET lesson_content_scorm = ? WHERE id = ?",
         [folderName, lessonId]
       );
+
+      // Delete old SCORM folder after successful update
+      if (oldFolderName) {
+        const oldFolderPath = path.join(this.uploadPaths.lessonScorm, oldFolderName);
+        await this.deleteOldDirectory(oldFolderPath);
+      }
     }
 
     return folderName;
@@ -207,6 +301,18 @@ class UploadService {
 
   // Lesson Document
   async uploadLessonDocument(file, lessonId) {
+    // Get old document filename if updating
+    let oldFilename = null;
+    if (lessonId) {
+      const [rows] = await promisePool.query(
+        "SELECT lesson_content_document FROM course_lesson WHERE id = ?",
+        [lessonId]
+      );
+      if (rows.length > 0 && rows[0].lesson_content_document) {
+        oldFilename = rows[0].lesson_content_document;
+      }
+    }
+
     const filename = await this.uploadSingleFile(
       file,
       this.uploadPaths.lessonDocument,
@@ -218,6 +324,12 @@ class UploadService {
         "UPDATE course_lesson SET lesson_content_document = ? WHERE id = ?",
         [filename, lessonId]
       );
+
+      // Delete old file after successful update
+      if (oldFilename) {
+        const oldFilePath = path.join(this.uploadPaths.lessonDocument, oldFilename);
+        await this.deleteOldFile(oldFilePath);
+      }
     }
 
     return filename;
@@ -225,6 +337,18 @@ class UploadService {
 
   // Lesson MP4
   async uploadLessonMp4(file, lessonId) {
+    // Get old MP4 filename if updating
+    let oldFilename = null;
+    if (lessonId) {
+      const [rows] = await promisePool.query(
+        "SELECT lesson_content_mp4 FROM course_lesson WHERE id = ?",
+        [lessonId]
+      );
+      if (rows.length > 0 && rows[0].lesson_content_mp4) {
+        oldFilename = rows[0].lesson_content_mp4;
+      }
+    }
+
     const filename = await this.uploadSingleFile(
       file,
       this.uploadPaths.lessonMp4,
@@ -236,6 +360,12 @@ class UploadService {
         "UPDATE course_lesson SET lesson_content_mp4 = ? WHERE id = ?",
         [filename, lessonId]
       );
+
+      // Delete old file after successful update
+      if (oldFilename) {
+        const oldFilePath = path.join(this.uploadPaths.lessonMp4, oldFilename);
+        await this.deleteOldFile(oldFilePath);
+      }
     }
 
     return filename;
