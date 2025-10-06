@@ -1,5 +1,7 @@
 const userService = require("../services/user_service");
 const Joi = require("joi");
+const path = require("path");
+const fs = require("fs");
 
 // Validation schemas
 const updateDetailsSchema = Joi.object({
@@ -95,9 +97,34 @@ exports.uploadUserProfilePicture = async (req, res, next) => {
         .json({ success: false, message: "No file uploaded" });
     }
 
-    // Just return the filename (not full path)
+    const { uuid } = req.params;
+
+    // Get the old profile picture before updating
+    const oldUser = await userService.getUser(uuid);
+    const oldProfilePicture = oldUser.dp;
+
+    // Update with new filename
     const filename = req.file.filename;
-    await userService.updateProfilePicture(req.params.uuid, filename);
+    await userService.updateProfilePicture(uuid, filename);
+
+    // Delete old profile picture if it exists and is different from new one
+    if (oldProfilePicture && oldProfilePicture !== filename) {
+      const oldFilePath = path.join(
+        __dirname,
+        "../../uploads/users/profile_picture",
+        oldProfilePicture
+      );
+
+      // Delete old file asynchronously (don't wait for it)
+      fs.unlink(oldFilePath, (err) => {
+        if (err) {
+          console.error(`Failed to delete old profile picture: ${oldFilePath}`, err);
+        } else {
+          console.log(`Successfully deleted old profile picture: ${oldFilePath}`);
+        }
+      });
+    }
+
     res.json({
       success: true,
       message: "Profile picture uploaded successfully",
