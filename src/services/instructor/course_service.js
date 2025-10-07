@@ -1262,6 +1262,7 @@ class InstructorCourseService {
               id: row.lesson_id,
               title: row.lesson_title,
               sectionId: row.section_id,
+              lessonOrder: row.lesson_order || 1,
               lessonType: row.lesson_type,
               contentType: row.content_type,
               duration: row.duration,
