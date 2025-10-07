@@ -127,11 +127,11 @@ exports.uploadLessonDocument = async (req, res, next) => {
     }
 
     const filename = await uploadService.uploadLessonDocument(req.file, req.body.lessonId);
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       message: 'Lesson document uploaded successfully',
-      filename 
+      data: { filename }
     });
   } catch (error) {
     next(error);
@@ -145,11 +145,11 @@ exports.uploadLessonMp4 = async (req, res, next) => {
     }
 
     const filename = await uploadService.uploadLessonMp4(req.file, req.body.lessonId);
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       message: 'Lesson video uploaded successfully',
-      filename 
+      data: { filename }
     });
   } catch (error) {
     next(error);
