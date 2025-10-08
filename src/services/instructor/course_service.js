@@ -1262,6 +1262,7 @@ class InstructorCourseService {
               id: row.lesson_id,
               title: row.lesson_title,
               sectionId: row.section_id,
+              lessonOrder: row.lesson_order || 1,
               lessonType: row.lesson_type,
               contentType: row.content_type,
               duration: row.duration,
@@ -2083,22 +2084,24 @@ class InstructorCourseService {
 
       // Update lesson with preserved/updated content
       const [result] = await connection.query(
-        `UPDATE course_lesson SET 
-         title = ?, 
-         section_id = ?, 
-         lesson_type = ?, 
-         lesson_content_type = ?, 
+        `UPDATE course_lesson SET
+         title = ?,
+         section_id = ?,
+         lesson_order = ?,
+         lesson_type = ?,
+         lesson_content_type = ?,
          lesson_content_document = ?,
          lesson_content_scorm = ?,
          lesson_content_mp4 = ?,
-         lesson_content_url = ?, 
-         lesson_duration = ?, 
-         last_updated_by = ?, 
+         lesson_content_url = ?,
+         lesson_duration = ?,
+         last_updated_by = ?,
          last_updated = NOW()
          WHERE id = ? AND course_id = ?`,
         [
           lessonData.title,
           lessonData.sectionId,
+          lessonData.lessonOrder || 1,
           lessonData.lessonType || "Content-Based",
           dbContentType,
           documentFile,
