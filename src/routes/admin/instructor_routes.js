@@ -10,4 +10,10 @@ router.get("/:instructorId", adminInstructorController.getInstructorById);
 router.post("/", adminInstructorController.createInstructor);
 router.put("/:instructorId", adminInstructorController.updateInstructor);
 router.delete("/:instructorId", adminInstructorController.deleteInstructor);
+
+// Featured Mentors Routes
+router.get("/featured/mentors", adminInstructorController.getFeaturedMentors);
+router.put("/:instructorId/featured/add", adminInstructorController.addFeaturedMentor);
+router.put("/:instructorId/featured/remove", adminInstructorController.removeFeaturedMentor);
+
 module.exports = router;
