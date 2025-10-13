@@ -24,6 +24,18 @@ exports.findAvailableMentors = async (req, res, next) => {
   }
 };
 
+exports.getFeaturedMentors = async (req, res, next) => {
+  try {
+    const response = await mentorshipService.getFeaturedMentors(req.user.uuid);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.requestMentorship = async (req, res, next) => {
   try {
     const response = await mentorshipService.requestMentorship(req.user.uuid, req.params.mentorId);

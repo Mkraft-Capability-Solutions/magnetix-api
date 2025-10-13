@@ -5,6 +5,7 @@ const mentorshipController = require('../../controllers/student/mentorship_contr
 
 router.get('/mentors', authenticate, authorize(1), mentorshipController.getAssignedMentors);
 router.get('/available-mentors', authenticate, authorize(1), mentorshipController.findAvailableMentors);
+router.get('/featured-mentors', authenticate, authorize(1), mentorshipController.getFeaturedMentors);
 router.post('/:mentorId/request', authenticate, authorize(1), mentorshipController.requestMentorship);
 router.get('/upcoming-sessions', authenticate, authorize(1), mentorshipController.getUpcomingSessions);
 router.get('/past-sessions', authenticate, authorize(1), mentorshipController.getPastSessions);

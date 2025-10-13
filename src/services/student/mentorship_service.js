@@ -23,6 +23,16 @@ class MentorshipService {
     }
   }
 
+  async getFeaturedMentors(studentId) {
+    try {
+      const [result] = await promisePool.query('CALL get_featured_mentors_for_student(?)', [studentId]);
+      const mentors = result[0].map(mentor => new MentorDTO(mentor));
+      return new ServiceResponseDTO(true, mentors);
+    } catch (error) {
+      return new ErrorResponseDTO(error);
+    }
+  }
+
   async requestMentorship(studentId, mentorUserId) {
     try {
       await promisePool.query('CALL request_mentorship(?, ?)', [studentId, mentorUserId]);
