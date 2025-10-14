@@ -68,6 +68,9 @@ class SessionDTO {
 
 class MentorDetailsDTO {
   constructor(detailsData) {
+    this.mentorUuid = detailsData.mentorUuid; // Add UUID to response
+    this.instructorUuid = detailsData.mentorUuid; // Alias for compatibility
+    this.uuid = detailsData.mentorUuid; // Alias for compatibility
     this.email = detailsData.email;
     this.instructorDetails = detailsData.instructorDetails || {};
     this.courses = detailsData.courses.map(course => ({

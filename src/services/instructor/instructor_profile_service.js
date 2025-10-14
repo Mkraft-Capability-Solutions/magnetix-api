@@ -1,4 +1,4 @@
-const promisePool = require('../../config/db');
+const { promisePool } = require('../../config/db');
 const { InstructorProfileDTO } = require('../../dto/instructor/instructor_profile_dto');
 
 /**

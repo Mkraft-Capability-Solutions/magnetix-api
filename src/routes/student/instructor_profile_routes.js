@@ -7,7 +7,7 @@ const { authenticate, authorize } = require('../../middleware/auth_middleware');
 router.use(authenticate);
 
 // Student-only routes (role_id = 3)
-router.use(authorize(3));
+router.use(authorize(1));
 
 /**
  * @route GET /student/instructor-profile/:instructorUuid
