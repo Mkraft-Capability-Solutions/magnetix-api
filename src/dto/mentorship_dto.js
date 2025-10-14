@@ -1,5 +1,6 @@
 class MentorDTO {
   constructor(mentorData) {
+    // Basic Information
     this.mentor_id = mentorData.mentor_id;
     this.mentor_user_id = mentorData.mentor_user_id;
     this.mentor_name = mentorData.mentor_name;
@@ -17,16 +18,37 @@ class MentorDTO {
     this.mentor_dp = mentorData.mentor_dp;
     this.mentor_social_links = mentorData.mentor_social_links;
     this.mentor_about = mentorData.mentor_about;
+    this.profile_visibility = mentorData.profile_visibility;
+    this.is_featured = mentorData.is_featured || 0;
+
+    // Rating Information
+    this.average_rating = mentorData.average_rating || 0;
+    this.total_reviews = mentorData.total_reviews || 0;
+
+    // Mentee Information
     this.current_mentees_count = mentorData.current_mentees_count || 0;
+
+    // Availability Information
     this.available_days = mentorData.available_days;
-    this.available_time_slots = mentorData.available_time_slots;
+    this.start_time = mentorData.start_time;
+    this.end_time = mentorData.end_time;
+    this.timezone = mentorData.timezone;
+    this.availability_is_active = mentorData.availability_is_active;
     this.availability_status = mentorData.availability_status || 'unavailable';
+
+    // Legacy fields for backward compatibility
+    this.available_time_slots = mentorData.available_time_slots;
   }
 }
 
 class MentorshipDTO {
   constructor(mentorshipData) {
+    // Mentorship Information
     this.mentorship_id = mentorshipData.mentorship_id;
+    this.mentorship_status = mentorshipData.mentorship_status;
+    this.mentorship_start_date = mentorshipData.mentorship_start_date;
+
+    // Basic Mentor Information
     this.mentor_id = mentorshipData.mentor_id;
     this.mentor_user_id = mentorshipData.mentor_user_id;
     this.mentor_name = mentorshipData.mentor_name;
@@ -44,8 +66,23 @@ class MentorshipDTO {
     this.mentor_dp = mentorshipData.mentor_dp;
     this.mentor_social_links = mentorshipData.mentor_social_links;
     this.mentor_about = mentorshipData.mentor_about;
-    this.mentorship_status = mentorshipData.mentorship_status;
-    this.mentorship_start_date = mentorshipData.mentorship_start_date;
+    this.profile_visibility = mentorshipData.profile_visibility;
+    this.is_featured = mentorshipData.is_featured || 0;
+
+    // Rating Information
+    this.average_rating = mentorshipData.average_rating || 0;
+    this.total_reviews = mentorshipData.total_reviews || 0;
+
+    // Mentee Information
+    this.current_mentees_count = mentorshipData.current_mentees_count || 0;
+
+    // Availability Information
+    this.available_days = mentorshipData.available_days;
+    this.start_time = mentorshipData.start_time;
+    this.end_time = mentorshipData.end_time;
+    this.timezone = mentorshipData.timezone;
+    this.availability_is_active = mentorshipData.availability_is_active;
+    this.availability_status = mentorshipData.availability_status || 'unavailable';
   }
 }
 
