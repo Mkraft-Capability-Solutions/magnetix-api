@@ -23,6 +23,16 @@ class MentorshipService {
     }
   }
 
+  async getFeaturedMentors(studentId) {
+    try {
+      const [result] = await promisePool.query('CALL get_featured_mentors_for_student(?)', [studentId]);
+      const mentors = result[0].map(mentor => new MentorDTO(mentor));
+      return new ServiceResponseDTO(true, mentors);
+    } catch (error) {
+      return new ErrorResponseDTO(error);
+    }
+  }
+
   async requestMentorship(studentId, mentorUserId) {
     try {
       await promisePool.query('CALL request_mentorship(?, ?)', [studentId, mentorUserId]);
@@ -83,26 +93,58 @@ async isMentorshipRequestDeleted(studentId) {
 async getMentorDetails(mentorId) {
   try {
     const [results] = await promisePool.query('CALL get_mentor_details(?)', [mentorId]);
-    
+
     if (results[0].length === 0) {
       return new ErrorResponseDTO(new Error('Mentor not found'), 404);
     }
-    
+
     const email = results[0][0].email;
     const instructorDetails = results[1][0] || {};
     const courses = results[2];
     const events = results[3];
     const activeMentees = results[4];
-    
+
     const details = {
+      mentorUuid: mentorId, // Include the mentor UUID in response
       email,
       instructorDetails,
       courses,
       events,
       activeMentees
     };
-    
+
     return new ServiceResponseDTO(true, details);
+  } catch (error) {
+    return new ErrorResponseDTO(error);
+  }
+}
+
+async getMentorshipStatus(studentId, mentorId) {
+  try {
+    const [results] = await promisePool.query(
+      'CALL get_mentorship_status(?, ?)',
+      [studentId, mentorId]
+    );
+
+    // If no mentorship exists, return null status
+    if (results[0].length === 0) {
+      return new ServiceResponseDTO(true, {
+        exists: false,
+        status: null,
+        statusText: 'not_requested'
+      });
+    }
+
+    const mentorshipData = results[0][0];
+
+    return new ServiceResponseDTO(true, {
+      exists: true,
+      mentorshipId: mentorshipData.mentorship_id,
+      status: mentorshipData.mentorship_status,
+      statusText: mentorshipData.status_text,
+      isDeleted: mentorshipData.mentorship_deleted === 1,
+      createdAt: mentorshipData.created_at
+    });
   } catch (error) {
     return new ErrorResponseDTO(error);
   }

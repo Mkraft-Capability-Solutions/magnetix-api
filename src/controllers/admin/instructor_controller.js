@@ -60,3 +60,40 @@ exports.deleteInstructor = async (req, res) => {
     res.status(400).json({ success: false, message: error.message });
   }
 };
+
+// Featured Mentors Controllers
+exports.getFeaturedMentors = async (req, res) => {
+  try {
+    const featuredMentors = await AdminInstructorService.getFeaturedMentors();
+    res.json({
+      success: true,
+      data: featuredMentors,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.addFeaturedMentor = async (req, res) => {
+  try {
+    await AdminInstructorService.addFeaturedMentor(req.params.instructorId);
+    res.json({
+      success: true,
+      message: "Instructor marked as featured successfully",
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+exports.removeFeaturedMentor = async (req, res) => {
+  try {
+    await AdminInstructorService.removeFeaturedMentor(req.params.instructorId);
+    res.json({
+      success: true,
+      message: "Instructor unmarked as featured successfully",
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};

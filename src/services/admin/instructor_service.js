@@ -85,5 +85,48 @@ class AdminInstructorService {
     );
     return true;
   }
+
+  // Featured Mentors functionality
+  async getFeaturedMentors() {
+    const [rows] = await promisePool.query(`
+      SELECT
+        instructors.*,
+        users.email,
+        users.is_deleted,
+        users.status
+      FROM instructors
+      JOIN users
+        ON instructors.user_id = users.uuid
+      WHERE instructors.is_featured = 1
+        AND users.is_deleted = 0
+    `);
+    return rows;
+  }
+
+  async addFeaturedMentor(instructorId) {
+    const [result] = await promisePool.query(
+      "UPDATE instructors SET is_featured = 1 WHERE user_id = ?",
+      [instructorId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new Error("Instructor not found");
+    }
+
+    return true;
+  }
+
+  async removeFeaturedMentor(instructorId) {
+    const [result] = await promisePool.query(
+      "UPDATE instructors SET is_featured = 0 WHERE user_id = ?",
+      [instructorId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new Error("Instructor not found");
+    }
+
+    return true;
+  }
 }
 module.exports = new AdminInstructorService();
