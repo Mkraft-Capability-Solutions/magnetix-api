@@ -125,3 +125,18 @@ exports.getMentorDetails = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.getMentorshipStatus = async (req, res, next) => {
+  try {
+    const response = await mentorshipService.getMentorshipStatus(
+      req.user.uuid,
+      req.params.mentorId
+    );
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};

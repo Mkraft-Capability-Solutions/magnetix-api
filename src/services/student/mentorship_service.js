@@ -119,6 +119,37 @@ async getMentorDetails(mentorId) {
   }
 }
 
+async getMentorshipStatus(studentId, mentorId) {
+  try {
+    const [results] = await promisePool.query(
+      'CALL get_mentorship_status(?, ?)',
+      [studentId, mentorId]
+    );
+
+    // If no mentorship exists, return null status
+    if (results[0].length === 0) {
+      return new ServiceResponseDTO(true, {
+        exists: false,
+        status: null,
+        statusText: 'not_requested'
+      });
+    }
+
+    const mentorshipData = results[0][0];
+
+    return new ServiceResponseDTO(true, {
+      exists: true,
+      mentorshipId: mentorshipData.mentorship_id,
+      status: mentorshipData.mentorship_status,
+      statusText: mentorshipData.status_text,
+      isDeleted: mentorshipData.mentorship_deleted === 1,
+      createdAt: mentorshipData.created_at
+    });
+  } catch (error) {
+    return new ErrorResponseDTO(error);
+  }
+}
+
 }
 
 module.exports = new MentorshipService();

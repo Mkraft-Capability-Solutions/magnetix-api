@@ -13,5 +13,6 @@ router.post('/schedule-session', authenticate, authorize(1), mentorshipControlle
 router.post('/schedule-session', authenticate, authorize(1), mentorshipController.requestScheduleSession);
 router.get( '/is-request-deleted',  authenticate,  authorize(1), mentorshipController.isMentorshipRequestDeleted);
 router.get('/:mentorId/details', authenticate, authorize(1), mentorshipController.getMentorDetails);
+router.get('/:mentorId/status', authenticate, authorize(1), mentorshipController.getMentorshipStatus);
 
 module.exports = router;
