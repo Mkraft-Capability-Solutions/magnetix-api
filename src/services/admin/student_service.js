@@ -5,14 +5,17 @@ const crypto = require("crypto");
 class AdminStudentService {
 async getAllStudents() {
   const [rows] = await promisePool.query(`
-    SELECT 
-      students.*, 
+    SELECT
+      students.*,
       users.email,
       users.is_deleted,
-      users.status
+      users.status,
+      batches.batch_name
     FROM students
-    JOIN users 
+    JOIN users
       ON students.user_id = users.uuid
+    LEFT JOIN batches
+      ON students.batch_id = batches.id
   `);
   return rows;
 }
@@ -29,7 +32,7 @@ async getAllStudents() {
   }
 
   async createStudent(data) {
-    const { first_name, last_name, email } = data;
+    const { first_name, last_name, email, batch_id } = data;
 
     if (!first_name || !email || !last_name) {
       throw new Error("Name and email are required");
@@ -50,11 +53,11 @@ async getAllStudents() {
 
     const userId = userResult.insertId;
 
-    // Then insert into students table
+    // Then insert into students table with batch_id
     const [studentResult] = await promisePool.query(
-      `INSERT INTO students (user_id, first_name,last_name)
-     VALUES (?, ?, ?)`,
-      [uuid, first_name, last_name]
+      `INSERT INTO students (user_id, first_name, last_name, batch_id)
+     VALUES (?, ?, ?, ?)`,
+      [uuid, first_name, last_name, batch_id || null]
     );
 
     return {
@@ -65,10 +68,10 @@ async getAllStudents() {
   }
 
   async updateStudent(studentId, data) {
-    const { first_name, last_name, email } = data;
+    const { first_name, last_name, email, batch_id } = data;
     await promisePool.query(
-      "UPDATE students SET first_name = ?,last_name=? WHERE user_id = ?",
-      [first_name, last_name, studentId]
+      "UPDATE students SET first_name = ?, last_name = ?, batch_id = ? WHERE user_id = ?",
+      [first_name, last_name, batch_id || null, studentId]
     );
     await promisePool.query("UPDATE users SET email = ? WHERE uuid = ?", [
       email,
