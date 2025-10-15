@@ -1,5 +1,6 @@
 const { promisePool } = require('../../config/db');
 const { AdminEventDTO, AdminEventAttendeeDTO } = require('../../dto/admin/event_dto');
+const batchAssignmentService = require('../batch_assignment_service');
 
 class AdminEventService {
     
@@ -49,12 +50,27 @@ class AdminEventService {
         ]);
         
         const eventId = result.insertId;
-        
+
         // Handle individual target audience emails if provided
         if (data.eventAudienceTypeId === 2 && data.target_audience_emails) {
             await this.addTargetAudienceAttendees(eventId, data.target_audience_emails);
         }
-        
+
+        // Handle batch assignments for the event
+        if (data.availableToAllBatches !== undefined || (data.batchIds && data.batchIds.length > 0)) {
+            try {
+                await batchAssignmentService.assignBatchesToEvent(
+                    eventId,
+                    data.batchIds || [],
+                    data.availableToAllBatches || false
+                );
+                console.log("Batch assignments completed for event:", eventId);
+            } catch (batchError) {
+                console.error("Error assigning batches to event:", batchError);
+                // Don't fail the entire operation, just log the error
+            }
+        }
+
         return eventId;
     }
 
@@ -400,6 +416,21 @@ class AdminEventService {
         } else if (data.eventAudienceTypeId === 1) {
             // If switching to "All" (eventAudienceTypeId = 1), remove any manually added attendees
             await this.updateTargetAudienceAttendees(eventId, '');
+        }
+
+        // Handle batch assignments for the event
+        if (data.availableToAllBatches !== undefined || (data.batchIds && data.batchIds.length > 0)) {
+            try {
+                await batchAssignmentService.assignBatchesToEvent(
+                    eventId,
+                    data.batchIds || [],
+                    data.availableToAllBatches || false
+                );
+                console.log("Batch assignments updated for event:", eventId);
+            } catch (batchError) {
+                console.error("Error updating batches for event:", batchError);
+                // Don't fail the entire operation, just log the error
+            }
         }
 
         return true;

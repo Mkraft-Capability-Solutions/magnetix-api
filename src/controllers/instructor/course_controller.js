@@ -102,6 +102,9 @@ const courseSchema = Joi.object({
     )
     .optional()
     .default([]),
+  // Batch assignment fields
+  batchIds: Joi.array().items(Joi.number().integer()).optional().default([]),
+  availableToAllBatches: Joi.boolean().optional().default(false),
 });
 
 exports.addCourse = async (req, res, next) => {
@@ -548,27 +551,29 @@ exports.addLesson = async (req, res, next) => {
 exports.updateCourseBasicInfo = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;
-    const { title, shortDescription, description, category, subcategory, level, language, courseDuration } = req.body;
+    const { title, shortDescription, description, category, subcategory, level, language, courseDuration, batchIds, availableToAllBatches } = req.body;
     const updatedBy = req.user.uuid;
 
     const result = await instructorCourseService.updateCourseBasicInfo(
       courseId,
       {
         title,
-        shortDescription,  
+        shortDescription,
         description,
         categoryId: category,
         subCategoryId: subcategory,
         level,
         languageId: language,
-        courseDuration
+        courseDuration,
+        batchIds,
+        availableToAllBatches
       },
       updatedBy
     );
 
     res.json({
       success: true,
-      message: "Course basic information updated successfully", 
+      message: "Course basic information updated successfully",
       data: result,
     });
   } catch (error) {
@@ -680,6 +685,22 @@ exports.getSectionsByCourseId = async (req, res, next) => {
     });
   } catch (error) {
     console.error("Error in getSectionsByCourseId:", error);
+    next(error);
+  }
+};
+
+exports.getCourseBatches = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const batchAssignmentService = require("../../services/batch_assignment_service");
+    const batchData = await batchAssignmentService.getCourseBatches(courseId);
+
+    res.json({
+      success: true,
+      data: batchData,
+    });
+  } catch (error) {
+    console.error("Error in getCourseBatches:", error);
     next(error);
   }
 };

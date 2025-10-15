@@ -1,5 +1,6 @@
 const { promisePool } = require("../../config/db");
 const uploadService = require("../upload_service");
+const batchAssignmentService = require("../batch_assignment_service");
 const {
   CourseDTO,
   CourseOutcomeDTO,
@@ -549,6 +550,22 @@ class InstructorCourseService {
       }
 
       await connection.commit();
+
+      // Handle batch assignments after course creation
+      const { batchIds, availableToAllBatches } = courseData;
+      if (availableToAllBatches !== undefined || (batchIds && batchIds.length > 0)) {
+        try {
+          await batchAssignmentService.assignBatchesToCourse(
+            courseId,
+            batchIds || [],
+            availableToAllBatches || false
+          );
+          console.log("Batch assignments completed for course:", courseId);
+        } catch (batchError) {
+          console.error("Error assigning batches to course:", batchError);
+          // Don't fail the entire operation, just log the error
+        }
+      }
 
       // Fetch the complete course data to return
       const courseDetails = await this.getCourseDetailsById(courseId, userId);
@@ -1903,6 +1920,20 @@ class InstructorCourseService {
       }
 
       await connection.commit();
+
+      // Handle batch assignments after basic info update
+      if (basicInfo.availableToAllBatches !== undefined || (basicInfo.batchIds && basicInfo.batchIds.length > 0)) {
+        try {
+          await batchAssignmentService.assignBatchesToCourse(
+            courseId,
+            basicInfo.batchIds || [],
+            basicInfo.availableToAllBatches || false
+          );
+        } catch (batchError) {
+          console.error("Error updating batch assignments for course:", batchError);
+        }
+      }
+
       return { success: true };
     } catch (error) {
       await connection.rollback();
