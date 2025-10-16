@@ -44,6 +44,7 @@ const adminInstructorRoutes = require("./routes/admin/instructor_routes");
 const adminStudentRoutes = require("./routes/admin/student_routes");
 const adminEventRoutes = require("./routes/admin/event_routes");
 const adminReminderRoutes = require("./routes/admin/reminder_routes");
+const adminBatchRoutes = require("./routes/admin/batch_routes");
 
 // Use routes with API prefixes
 app.use("/landing", landingRoutes);
@@ -69,6 +70,7 @@ app.use("/admin/instructors", adminInstructorRoutes);
 app.use("/admin/students", adminStudentRoutes);
 app.use("/admin/events", adminEventRoutes);
 app.use("/admin/reminders", adminReminderRoutes);
+app.use("/admin/batches", adminBatchRoutes);
 app.use("/admin/profile", require("./routes/admin/profile_route"));
 app.use("/admin/courses", require("./routes/admin/course_route"));
 // Serve uploaded files (e.g., profile pictures)
