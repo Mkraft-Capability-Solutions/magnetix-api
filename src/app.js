@@ -45,6 +45,8 @@ const adminStudentRoutes = require("./routes/admin/student_routes");
 const adminEventRoutes = require("./routes/admin/event_routes");
 const adminReminderRoutes = require("./routes/admin/reminder_routes");
 const adminBatchRoutes = require("./routes/admin/batch_routes");
+const googleMeetRoutes = require("./routes/google/meet_routes");
+const googleOAuthRoutes = require("./routes/google/oauth_routes");
 
 // Use routes with API prefixes
 app.use("/landing", landingRoutes);
@@ -73,6 +75,8 @@ app.use("/admin/reminders", adminReminderRoutes);
 app.use("/admin/batches", adminBatchRoutes);
 app.use("/admin/profile", require("./routes/admin/profile_route"));
 app.use("/admin/courses", require("./routes/admin/course_route"));
+app.use("/google/meet", googleMeetRoutes);
+app.use("/google/oauth", googleOAuthRoutes);
 // Serve uploaded files (e.g., profile pictures)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 

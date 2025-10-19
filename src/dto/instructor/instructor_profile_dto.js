@@ -50,12 +50,53 @@ class InstructorProfileDTO {
     if (!socialLinksData) return {};
 
     try {
-      if (typeof socialLinksData === 'string') {
-        return JSON.parse(socialLinksData);
+      // If already an object, return it
+      if (typeof socialLinksData === 'object' && !Array.isArray(socialLinksData)) {
+        return socialLinksData;
       }
-      return socialLinksData;
+
+      // If it's a string, try to parse it
+      if (typeof socialLinksData === 'string') {
+        // Trim whitespace
+        const trimmed = socialLinksData.trim();
+
+        // If empty string, return empty object
+        if (!trimmed) return {};
+
+        // Check if it looks like JSON (starts with { or [)
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+          return JSON.parse(trimmed);
+        }
+
+        // If it's a plain URL string, treat it as a generic link
+        // This handles legacy data where social_links might be a single URL
+        if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+          return {
+            website: trimmed
+          };
+        }
+
+        // Try to parse anyway (in case it's JSON without leading brace)
+        try {
+          return JSON.parse(trimmed);
+        } catch {
+          // If all else fails, treat it as a generic link
+          return {
+            other: trimmed
+          };
+        }
+      }
+
+      // If it's an array (shouldn't happen, but handle it)
+      if (Array.isArray(socialLinksData)) {
+        return {};
+      }
+
+      return {};
     } catch (error) {
       console.error('Error parsing social links:', error);
+      console.error('Social links data:', socialLinksData);
+      // Return empty object on error to prevent crashes
       return {};
     }
   }
