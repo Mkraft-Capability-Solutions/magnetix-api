@@ -1,0 +1,585 @@
+// admin_session_service.js
+const { promisePool } = require('../../config/db');
+
+class AdminSessionService {
+    /**
+     * Check if instructor is available at the given date and time
+     * Admin can schedule with ANY instructor during their available time
+     */
+    async checkInstructorAvailability(instructorId, sessionDate, sessionTime) {
+        try {
+            // Get instructor availability
+            const [availability] = await promisePool.query(
+                'CALL instructor_get_availability(?)',
+                [instructorId]
+            );
+
+            if (availability[0].length === 0) {
+                // No availability set, use default (9 AM to 5 PM, Monday-Friday)
+                return this.validateTimeSlot(sessionDate, sessionTime, {
+                    available_days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+                    start_time: '09:00:00',
+                    end_time: '17:00:00',
+                    is_active: true
+                });
+            }
+
+            const availData = availability[0][0];
+            return this.validateTimeSlot(sessionDate, sessionTime, availData);
+
+        } catch (error) {
+            console.error('Error checking instructor availability:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Validate if the session time falls within instructor's availability
+     */
+    validateTimeSlot(sessionDate, sessionTime, availability) {
+        if (!availability.is_active) {
+            return {
+                valid: false,
+                message: 'Instructor is currently unavailable. Please try scheduling with another instructor or contact them to update their availability.'
+            };
+        }
+
+        // Check if the day is in available days
+        const date = new Date(sessionDate);
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const dayName = dayNames[date.getDay()];
+
+        let availableDays = availability.available_days;
+        if (typeof availableDays === 'string') {
+            try {
+                availableDays = JSON.parse(availableDays);
+            } catch (e) {
+                availableDays = [];
+            }
+        }
+
+        if (!availableDays.includes(dayName)) {
+            // Format available days nicely
+            const formattedDays = availableDays.length > 0
+                ? availableDays.join(', ')
+                : 'No days set';
+
+            return {
+                valid: false,
+                message: `Instructor is not available on ${dayName}. Please try another day. Available days: ${formattedDays}.`
+            };
+        }
+
+        // Check if time falls within available time range
+        const sessionTimeStr = sessionTime.length === 5 ? `${sessionTime}:00` : sessionTime;
+        const startTime = availability.start_time;
+        const endTime = availability.end_time;
+
+        if (sessionTimeStr < startTime || sessionTimeStr > endTime) {
+            return {
+                valid: false,
+                message: `Instructor is not available at ${sessionTime}. Please try another time. Instructor is available from ${startTime.substring(0, 5)} to ${endTime.substring(0, 5)}.`
+            };
+        }
+
+        return { valid: true };
+    }
+
+    /**
+     * Get all available instructors for a specific date and time
+     * @param {string} sessionDate - Date in YYYY-MM-DD format
+     * @param {string} sessionTime - Time in HH:mm format
+     * @returns {Array} List of available instructors
+     */
+    async getAvailableInstructors(sessionDate, sessionTime) {
+        try {
+            // Get all active instructors
+            const [instructors] = await promisePool.query(
+                `SELECT i.user_id, i.first_name, i.last_name, i.expertise, i.dp,
+                        u.email, i.about
+                 FROM instructors i
+                 JOIN users u ON i.user_id = u.uuid
+                 WHERE u.role_id = 2 AND u.status = "active" AND u.is_deleted = 0
+                 ORDER BY i.first_name, i.last_name`
+            );
+
+            if (!sessionDate || !sessionTime) {
+                // If no date/time provided, return all active instructors
+                return instructors;
+            }
+
+            // Filter instructors based on availability for the given date/time
+            const availableInstructors = [];
+
+            for (const instructor of instructors) {
+                const availabilityCheck = await this.checkInstructorAvailability(
+                    instructor.user_id,
+                    sessionDate,
+                    sessionTime
+                );
+
+                if (availabilityCheck.valid) {
+                    // Get availability details to show in the response
+                    const [availability] = await promisePool.query(
+                        'CALL instructor_get_availability(?)',
+                        [instructor.user_id]
+                    );
+
+                    let availabilityInfo = {
+                        availableDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+                        startTime: '09:00',
+                        endTime: '17:00',
+                        isActive: true
+                    };
+
+                    if (availability[0].length > 0) {
+                        const avail = availability[0][0];
+                        let days = avail.available_days;
+                        if (typeof days === 'string') {
+                            try {
+                                days = JSON.parse(days);
+                            } catch (e) {
+                                days = availabilityInfo.availableDays;
+                            }
+                        }
+
+                        availabilityInfo = {
+                            availableDays: days,
+                            startTime: avail.start_time ? avail.start_time.substring(0, 5) : '09:00',
+                            endTime: avail.end_time ? avail.end_time.substring(0, 5) : '17:00',
+                            isActive: avail.is_active
+                        };
+                    }
+
+                    availableInstructors.push({
+                        ...instructor,
+                        availability: availabilityInfo
+                    });
+                }
+            }
+
+            return availableInstructors;
+
+        } catch (error) {
+            console.error('Error in getAvailableInstructors:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get all instructors (both available and unavailable)
+     */
+    async getAllInstructors() {
+        try {
+            const [instructors] = await promisePool.query(
+                `SELECT i.user_id, i.first_name, i.last_name, i.expertise, i.dp,
+                        u.email, i.about
+                 FROM instructors i
+                 JOIN users u ON i.user_id = u.uuid
+                 WHERE u.role_id = 2 AND u.status = "active" AND u.is_deleted = 0
+                 ORDER BY i.first_name, i.last_name`
+            );
+
+            // Get availability for each instructor
+            const instructorsWithAvailability = [];
+
+            for (const instructor of instructors) {
+                const [availability] = await promisePool.query(
+                    'CALL instructor_get_availability(?)',
+                    [instructor.user_id]
+                );
+
+                let availabilityInfo = {
+                    availableDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+                    startTime: '09:00',
+                    endTime: '17:00',
+                    isActive: true
+                };
+
+                if (availability[0].length > 0) {
+                    const avail = availability[0][0];
+                    let days = avail.available_days;
+                    if (typeof days === 'string') {
+                        try {
+                            days = JSON.parse(days);
+                        } catch (e) {
+                            days = availabilityInfo.availableDays;
+                        }
+                    }
+
+                    availabilityInfo = {
+                        availableDays: days,
+                        startTime: avail.start_time ? avail.start_time.substring(0, 5) : '09:00',
+                        endTime: avail.end_time ? avail.end_time.substring(0, 5) : '17:00',
+                        isActive: avail.is_active
+                    };
+                }
+
+                instructorsWithAvailability.push({
+                    ...instructor,
+                    availability: availabilityInfo
+                });
+            }
+
+            return instructorsWithAvailability;
+
+        } catch (error) {
+            console.error('Error in getAllInstructors:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Schedule a new session between instructor and student
+     */
+    async scheduleSession(sessionData) {
+        const connection = await promisePool.getConnection();
+
+        try {
+            await connection.beginTransaction();
+
+            const {
+                instructorId,
+                menteeId,
+                sessionDate,
+                sessionTime,
+                topic,
+                description,
+                url,
+                duration,
+                createdBy,
+                createdByRole
+            } = sessionData;
+
+            // Verify instructor exists and is active
+            const [instructors] = await connection.query(
+                `SELECT i.user_id as uuid, i.first_name, i.last_name, u.email
+                 FROM instructors i
+                 JOIN users u ON i.user_id = u.uuid
+                 WHERE i.user_id = ? AND u.role_id = 2 AND u.status = "active" AND u.is_deleted = 0`,
+                [instructorId]
+            );
+
+            if (instructors.length === 0) {
+                throw new Error('Instructor not found or inactive');
+            }
+
+            // Verify student exists and is active
+            const [students] = await connection.query(
+                `SELECT s.user_id as uuid, s.first_name, s.last_name, u.email
+                 FROM students s
+                 JOIN users u ON s.user_id = u.uuid
+                 WHERE s.user_id = ? AND u.role_id = 1 AND u.status = "active" AND u.is_deleted = 0`,
+                [menteeId]
+            );
+
+            if (students.length === 0) {
+                throw new Error('Student not found or inactive');
+            }
+
+            // Admin can schedule with ANY instructor, but must respect their availability
+            const availabilityCheck = await this.checkInstructorAvailability(instructorId, sessionDate, sessionTime);
+            if (!availabilityCheck.valid) {
+                throw new Error(availabilityCheck.message);
+            }
+
+            // Insert session record into scheduled_sessions table (same table used by students and instructors)
+            const [result] = await connection.query(
+                `INSERT INTO scheduled_sessions
+                (mentee_id, mentor_id, session_date, session_time, topic, description,
+                url, duration, status, creator_id, last_updated_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'booked', ?, ?)`,
+                [menteeId, instructorId, sessionDate, sessionTime, topic, description || '',
+                 url, duration, createdBy, createdBy]
+            );
+
+            const sessionId = result.insertId;
+
+            // TODO: Send notifications to instructor and student
+            // You can add notification logic here
+
+            await connection.commit();
+
+            return {
+                sessionId,
+                mentorId: instructorId,
+                instructorName: `${instructors[0].first_name} ${instructors[0].last_name}`,
+                menteeId,
+                menteeName: `${students[0].first_name} ${students[0].last_name}`,
+                sessionDate,
+                sessionTime,
+                topic,
+                status: 'booked'
+            };
+
+        } catch (error) {
+            await connection.rollback();
+            console.error('Error in scheduleSession service:', error);
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
+    /**
+     * Update an existing session
+     */
+    async updateSession(sessionId, updateData, adminId) {
+        const connection = await promisePool.getConnection();
+
+        try {
+            await connection.beginTransaction();
+
+            // Check if session exists
+            const [sessions] = await connection.query(
+                'SELECT * FROM scheduled_sessions WHERE id = ?',
+                [sessionId]
+            );
+
+            if (sessions.length === 0) {
+                throw new Error('Session not found');
+            }
+
+            const session = sessions[0];
+
+            // Build dynamic update query
+            const updateFields = [];
+            const updateValues = [];
+
+            if (updateData.instructorId) {
+                updateFields.push('mentor_id = ?');
+                updateValues.push(updateData.instructorId);
+            }
+            if (updateData.menteeId) {
+                updateFields.push('mentee_id = ?');
+                updateValues.push(updateData.menteeId);
+            }
+            if (updateData.sessionDate) {
+                updateFields.push('session_date = ?');
+                updateValues.push(updateData.sessionDate);
+            }
+            if (updateData.sessionTime) {
+                updateFields.push('session_time = ?');
+                updateValues.push(updateData.sessionTime);
+            }
+            if (updateData.topic) {
+                updateFields.push('topic = ?');
+                updateValues.push(updateData.topic);
+            }
+            if (updateData.description !== undefined) {
+                updateFields.push('description = ?');
+                updateValues.push(updateData.description);
+            }
+            if (updateData.url) {
+                updateFields.push('url = ?');
+                updateValues.push(updateData.url);
+            }
+            if (updateData.duration) {
+                updateFields.push('duration = ?');
+                updateValues.push(updateData.duration);
+            }
+
+            updateFields.push('last_updated_by = ?');
+            updateValues.push(adminId);
+            updateFields.push('last_updated = NOW()');
+            updateValues.push(sessionId);
+
+            const updateQuery = `UPDATE scheduled_sessions SET ${updateFields.join(', ')} WHERE id = ?`;
+
+            await connection.query(updateQuery, updateValues);
+
+            // Fetch updated session
+            const [updatedSessions] = await connection.query(
+                `SELECT ss.*,
+                        i.first_name as instructor_first_name, i.last_name as instructor_last_name,
+                        s.first_name as mentee_first_name, s.last_name as mentee_last_name
+                 FROM scheduled_sessions ss
+                 JOIN instructors i ON ss.mentor_id = i.user_id
+                 JOIN students s ON ss.mentee_id = s.user_id
+                 WHERE ss.id = ?`,
+                [sessionId]
+            );
+
+            await connection.commit();
+
+            return updatedSessions[0];
+
+        } catch (error) {
+            await connection.rollback();
+            console.error('Error in updateSession service:', error);
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
+    /**
+     * Cancel/Delete a session
+     */
+    async deleteSession(sessionId, adminId) {
+        try {
+            const [result] = await promisePool.query(
+                `UPDATE scheduled_sessions
+                 SET status = 'cancelled', last_updated_by = ?, last_updated = NOW()
+                 WHERE id = ?`,
+                [adminId, sessionId]
+            );
+
+            if (result.affectedRows === 0) {
+                throw new Error('Session not found');
+            }
+
+            return true;
+
+        } catch (error) {
+            console.error('Error in deleteSession service:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get all sessions with optional filters
+     */
+    async getAllSessions(limit = 50, offset = 0, filters = {}) {
+        try {
+            let query = `
+                SELECT
+                    ss.*,
+                    i.first_name as instructor_first_name,
+                    i.last_name as instructor_last_name,
+                    ui.email as instructor_email,
+                    i.dp as instructor_dp,
+                    s.first_name as mentee_first_name,
+                    s.last_name as mentee_last_name,
+                    us.email as mentee_email,
+                    s.dp as mentee_dp,
+                    uc.email as creator_email,
+                    uc.role_id as creator_role_id
+                FROM scheduled_sessions ss
+                JOIN instructors i ON ss.mentor_id = i.user_id
+                JOIN users ui ON i.user_id = ui.uuid
+                JOIN students s ON ss.mentee_id = s.user_id
+                JOIN users us ON s.user_id = us.uuid
+                LEFT JOIN users uc ON ss.creator_id = uc.uuid
+                WHERE 1=1
+            `;
+
+            const queryParams = [];
+
+            if (filters.status) {
+                query += ' AND ss.status = ?';
+                queryParams.push(filters.status);
+            }
+
+            if (filters.instructorId) {
+                query += ' AND ss.mentor_id = ?';
+                queryParams.push(filters.instructorId);
+            }
+
+            if (filters.menteeId) {
+                query += ' AND ss.mentee_id = ?';
+                queryParams.push(filters.menteeId);
+            }
+
+            query += ' ORDER BY ss.session_date DESC, ss.session_time DESC LIMIT ? OFFSET ?';
+            queryParams.push(parseInt(limit), parseInt(offset));
+
+            const [sessions] = await promisePool.query(query, queryParams);
+
+            // Get total count
+            let countQuery = 'SELECT COUNT(*) as total FROM scheduled_sessions ss WHERE 1=1';
+            const countParams = [];
+
+            if (filters.status) {
+                countQuery += ' AND ss.status = ?';
+                countParams.push(filters.status);
+            }
+            if (filters.instructorId) {
+                countQuery += ' AND ss.mentor_id = ?';
+                countParams.push(filters.instructorId);
+            }
+            if (filters.menteeId) {
+                countQuery += ' AND ss.mentee_id = ?';
+                countParams.push(filters.menteeId);
+            }
+
+            const [countResult] = await promisePool.query(countQuery, countParams);
+            const total = countResult[0].total;
+
+            return {
+                sessions,
+                pagination: {
+                    total,
+                    limit: parseInt(limit),
+                    offset: parseInt(offset),
+                    hasMore: (parseInt(offset) + sessions.length) < total
+                }
+            };
+
+        } catch (error) {
+            console.error('Error in getAllSessions service:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get a specific session by ID
+     */
+    async getSessionById(sessionId) {
+        try {
+            const [sessions] = await promisePool.query(
+                `SELECT
+                    ss.*,
+                    i.first_name as instructor_first_name,
+                    i.last_name as instructor_last_name,
+                    ui.email as instructor_email,
+                    i.dp as instructor_dp,
+                    s.first_name as mentee_first_name,
+                    s.last_name as mentee_last_name,
+                    us.email as mentee_email,
+                    s.dp as mentee_dp,
+                    uc.email as creator_email,
+                    uc.role_id as creator_role_id
+                FROM scheduled_sessions ss
+                JOIN instructors i ON ss.mentor_id = i.user_id
+                JOIN users ui ON i.user_id = ui.uuid
+                JOIN students s ON ss.mentee_id = s.user_id
+                JOIN users us ON s.user_id = us.uuid
+                LEFT JOIN users uc ON ss.creator_id = uc.uuid
+                WHERE ss.id = ?`,
+                [sessionId]
+            );
+
+            return sessions.length > 0 ? sessions[0] : null;
+
+        } catch (error) {
+            console.error('Error in getSessionById service:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get session statistics
+     */
+    async getSessionStats() {
+        try {
+            const [stats] = await promisePool.query(`
+                SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN status = 'booked' THEN 1 ELSE 0 END) as booked,
+                    SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled,
+                    SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                    SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
+                FROM scheduled_sessions
+            `);
+
+            return stats[0];
+
+        } catch (error) {
+            console.error('Error in getSessionStats service:', error);
+            throw error;
+        }
+    }
+}
+
+module.exports = new AdminSessionService();
