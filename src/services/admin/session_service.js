@@ -14,17 +14,24 @@ class AdminSessionService {
                 [instructorId]
             );
 
+            // Check if instructor has no availability record
             if (availability[0].length === 0) {
-                // No availability set, use default (9 AM to 5 PM, Monday-Friday)
-                return this.validateTimeSlot(sessionDate, sessionTime, {
-                    available_days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-                    start_time: '09:00:00',
-                    end_time: '17:00:00',
-                    is_active: true
-                });
+                return {
+                    valid: false,
+                    message: 'Mentor is not available.'
+                };
             }
 
             const availData = availability[0][0];
+
+            // Check if instructor is inactive
+            if (!availData.is_active || availData.is_active === 0) {
+                return {
+                    valid: false,
+                    message: 'Mentor is not available.'
+                };
+            }
+
             return this.validateTimeSlot(sessionDate, sessionTime, availData);
 
         } catch (error) {
@@ -37,13 +44,6 @@ class AdminSessionService {
      * Validate if the session time falls within instructor's availability
      */
     validateTimeSlot(sessionDate, sessionTime, availability) {
-        if (!availability.is_active) {
-            return {
-                valid: false,
-                message: 'Instructor is currently unavailable. Please try scheduling with another instructor or contact them to update their availability.'
-            };
-        }
-
         // Check if the day is in available days
         const date = new Date(sessionDate);
         const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -377,6 +377,23 @@ class AdminSessionService {
             if (updateData.duration) {
                 updateFields.push('duration = ?');
                 updateValues.push(updateData.duration);
+            }
+
+            // Check availability if instructor, date, or time is being updated
+            if (updateData.instructorId || updateData.sessionDate || updateData.sessionTime) {
+                const checkInstructorId = updateData.instructorId || session.mentor_id;
+                const checkDate = updateData.sessionDate || session.session_date;
+                const checkTime = updateData.sessionTime || session.session_time;
+
+                const availabilityCheck = await this.checkInstructorAvailability(
+                    checkInstructorId,
+                    checkDate,
+                    checkTime
+                );
+
+                if (!availabilityCheck.valid) {
+                    throw new Error(availabilityCheck.message);
+                }
             }
 
             updateFields.push('last_updated_by = ?');
