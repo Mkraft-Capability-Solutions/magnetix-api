@@ -45,6 +45,7 @@ const adminStudentRoutes = require("./routes/admin/student_routes");
 const adminEventRoutes = require("./routes/admin/event_routes");
 const adminReminderRoutes = require("./routes/admin/reminder_routes");
 const adminBatchRoutes = require("./routes/admin/batch_routes");
+const adminSessionRoutes = require("./routes/admin/session_routes");
 const googleMeetRoutes = require("./routes/google/meet_routes");
 const googleOAuthRoutes = require("./routes/google/oauth_routes");
 
@@ -73,6 +74,7 @@ app.use("/admin/students", adminStudentRoutes);
 app.use("/admin/events", adminEventRoutes);
 app.use("/admin/reminders", adminReminderRoutes);
 app.use("/admin/batches", adminBatchRoutes);
+app.use("/admin/mentorship/sessions", adminSessionRoutes);
 app.use("/admin/profile", require("./routes/admin/profile_route"));
 app.use("/admin/courses", require("./routes/admin/course_route"));
 app.use("/google/meet", googleMeetRoutes);
