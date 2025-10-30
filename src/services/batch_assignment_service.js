@@ -18,25 +18,18 @@ class BatchAssignmentService {
         [availableToAll ? 1 : 0, courseId]
       );
 
-      // If available to all, no need to insert specific batches
-      if (!availableToAll && batchIds && batchIds.length > 0) {
-        // Delete existing batch assignments
-        await connection.query(
-          'DELETE FROM course_batches WHERE course_id = ?',
-          [courseId]
-        );
+      // Delete existing batch assignments first
+      await connection.query(
+        'DELETE FROM course_batches WHERE course_id = ?',
+        [courseId]
+      );
 
-        // Insert new batch assignments
+      // Insert batch assignments (whether availableToAll or specific batches)
+      if (batchIds && batchIds.length > 0) {
         const values = batchIds.map(batchId => [courseId, batchId]);
         await connection.query(
           'INSERT INTO course_batches (course_id, batch_id) VALUES ?',
           [values]
-        );
-      } else if (availableToAll) {
-        // Clear all specific batch assignments if available to all
-        await connection.query(
-          'DELETE FROM course_batches WHERE course_id = ?',
-          [courseId]
         );
       }
 
@@ -67,25 +60,18 @@ class BatchAssignmentService {
         [availableToAll ? 1 : 0, eventId]
       );
 
-      // If available to all, no need to insert specific batches
-      if (!availableToAll && batchIds && batchIds.length > 0) {
-        // Delete existing batch assignments
-        await connection.query(
-          'DELETE FROM event_batches WHERE event_id = ?',
-          [eventId]
-        );
+      // Delete existing batch assignments first
+      await connection.query(
+        'DELETE FROM event_batches WHERE event_id = ?',
+        [eventId]
+      );
 
-        // Insert new batch assignments
+      // Insert batch assignments (whether availableToAll or specific batches)
+      if (batchIds && batchIds.length > 0) {
         const values = batchIds.map(batchId => [eventId, batchId]);
         await connection.query(
           'INSERT INTO event_batches (event_id, batch_id) VALUES ?',
           [values]
-        );
-      } else if (availableToAll) {
-        // Clear all specific batch assignments if available to all
-        await connection.query(
-          'DELETE FROM event_batches WHERE event_id = ?',
-          [eventId]
         );
       }
 

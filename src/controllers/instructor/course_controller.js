@@ -1,5 +1,6 @@
 const e = require("express");
 const instructorCourseService = require("../../services/instructor/course_service");
+const batchAssignmentService = require("../../services/batch_assignment_service");
 const Joi = require("joi");
 
 // Validation schemas
@@ -127,11 +128,28 @@ exports.addCourse = async (req, res, next) => {
       });
     }
 
+    // Extract batch-related fields
+    const { batchIds = [], availableToAllBatches = false } = req.body;
+
+    // Create the course
     const result = await instructorCourseService.addCourse(
       req.user.uuid,
       req.body
     );
     console.log("Course creation result:", result);
+
+    // Get the courseId from the result
+    const courseId = result.data?.courseId || result.data?.id;
+
+    if (courseId) {
+      // Assign batches to the course
+      await batchAssignmentService.assignBatchesToCourse(
+        courseId,
+        batchIds,
+        availableToAllBatches
+      );
+      console.log(`Batch assignment completed for course ${courseId}`);
+    }
 
     res.status(201).json({
       success: true,
@@ -172,6 +190,18 @@ exports.updateCourse = async (req, res, next) => {
       req.body
     );
     console.log("Course update result:", result);
+
+    // Handle batch updates if provided
+    if (req.body.hasOwnProperty('availableToAllBatches') || req.body.batchIds) {
+      const { batchIds = [], availableToAllBatches = false } = req.body;
+
+      await batchAssignmentService.assignBatchesToCourse(
+        req.params.courseId,
+        batchIds,
+        availableToAllBatches
+      );
+      console.log(`Batch assignment updated for course ${req.params.courseId}`);
+    }
 
     res.json({
       success: true,
@@ -293,6 +323,12 @@ exports.getCourseDetailsById = async (req, res, next) => {
       req.params.courseId,
       req.user.uuid
     );
+
+    // Get batch assignments for the course
+    const batchInfo = await batchAssignmentService.getCourseBatches(req.params.courseId);
+    courseDetails.availableToAllBatches = batchInfo.availableToAll;
+    courseDetails.batches = batchInfo.batches;
+    courseDetails.batchIds = batchInfo.batches.map(b => b.id);
 
     console.log(
       "Course details retrieved:",
