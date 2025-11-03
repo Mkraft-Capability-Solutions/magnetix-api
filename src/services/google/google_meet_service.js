@@ -203,9 +203,10 @@ class GoogleMeetService {
    * @param {string} options.title - Meeting title (default: 'Quick Meeting')
    * @param {string} options.startTime - Start time ISO string (default: now)
    * @param {string} options.endTime - End time ISO string (default: 30 min from now)
+   * @param {Array} options.attendees - Array of attendee objects with email (default: [])
    * @returns {Promise<string>} - Meet link URL
    */
-  async createMeetEvent({ title = 'Quick Meeting', startTime, endTime } = {}) {
+  async createMeetEvent({ title = 'Quick Meeting', startTime, endTime, attendees = [] } = {}) {
     await this.initialize();
 
     const start = startTime || new Date().toISOString();
@@ -213,15 +214,26 @@ class GoogleMeetService {
 
     const event = {
       summary: title,
-      description: 'Auto-generated Google Meet event',
+      description: 'Auto-generated Google Meet event for 1:1 session',
       start: { dateTime: start, timeZone: googleConfig.calendar.timeZone },
       end: { dateTime: end, timeZone: googleConfig.calendar.timeZone },
+      attendees: attendees, // Add attendees to the event
       conferenceData: {
         createRequest: {
           requestId: String(Date.now()),
           conferenceSolutionKey: { type: 'hangoutsMeet' },
         },
       },
+      reminders: {
+        useDefault: false,
+        overrides: [
+          { method: 'email', minutes: 24 * 60 }, // 1 day before
+          { method: 'popup', minutes: 30 },      // 30 minutes before
+        ],
+      },
+      guestsCanModify: false,
+      guestsCanInviteOthers: false,
+      guestsCanSeeOtherGuests: true,
     };
 
     try {
@@ -229,10 +241,12 @@ class GoogleMeetService {
         calendarId: googleConfig.calendar.calendarId,
         resource: event,
         conferenceDataVersion: 1,
+        sendUpdates: 'all', // Send calendar invitations to all attendees
       });
 
       const meetLink = res.data?.hangoutLink || res.data?.conferenceData?.entryPoints?.[0]?.uri;
       console.log('✅ Meet link generated:', meetLink);
+      console.log('✅ Calendar invites sent to:', attendees.map(a => a.email).join(', '));
       return meetLink;
     } catch (err) {
       console.error('❌ Failed to create Meet event:', err.message);
