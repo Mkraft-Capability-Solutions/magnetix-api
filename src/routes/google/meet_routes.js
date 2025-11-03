@@ -5,9 +5,9 @@ const { authenticate, authorize } = require('../../middleware/auth_middleware');
 
 /**
  * Google Meet Routes
- *
- * All routes require authentication.
- * Instructors and Admins can create Meet links.
+ * 
+ * All endpoints require authentication
+ * Available for Students (1), Instructors (2), and Admins (3)
  */
 
 // Apply authentication to all routes
@@ -16,39 +16,35 @@ router.use(authenticate);
 /**
  * @route   POST /google/meet/quick
  * @desc    Generate a quick Google Meet link
- * @access  Instructor, Admin
- * @body    { title?: string }
+ * @access  Student, Instructor, Admin
+ * @body    { title?: string, description?: string }
+ * @returns { meetLink, eventId, htmlLink, conferenceId, mode, note }
  */
-router.post('/quick', authorize(1, 2, 3, 4), meetController.generateQuickMeetLink);
+router.post('/quick', authorize(1, 2, 3), meetController.generateQuickMeetLink);
 
 /**
  * @route   POST /google/meet/create
- * @desc    Create a Google Meet link with full event details
- * @access  Instructor, Admin
- * @body    { title, description?, startDateTime, endDateTime, attendees?, timeZone? }
+ * @desc    Create a Google Meet link with details
+ * @access  Student, Instructor, Admin
+ * @body    { title?: string, description?: string, startTime?: string, endTime?: string, attendees?: string[] }
+ * @returns { meetLink, eventId, htmlLink, conferenceId, mode, note }
  */
-router.post('/create', authorize(1, 2, 3, 4), meetController.createMeetLink);
+router.post('/create', authorize(1, 2, 3), meetController.createMeetLink);
 
 /**
- * @route   PATCH /google/meet/:eventId
- * @desc    Update an existing Google Meet event
- * @access  Instructor, Admin
- * @body    { title?, description?, startDateTime?, endDateTime? }
+ * @route   GET /google/meet/health
+ * @desc    Health check for Meet service
+ * @access  Public
+ * @returns { status, mode, timestamp, capabilities }
  */
-router.patch('/:eventId', authorize(1, 2, 3, 4), meetController.updateMeetEvent);
+router.get('/health', meetController.healthCheck);
 
 /**
- * @route   DELETE /google/meet/:eventId
- * @desc    Delete a Google Meet event
- * @access  Instructor, Admin
+ * @route   GET /google/meet/info
+ * @desc    Get service information
+ * @access  Public
+ * @returns { service, version, description, features, endpoints }
  */
-router.delete('/:eventId', authorize(1, 2, 3, 4), meetController.deleteMeetEvent);
-
-/**
- * @route   GET /google/meet/auth-url
- * @desc    Get OAuth authorization URL (admin only)
- * @access  Admin, Super Admin
- */
-router.get('/auth-url', authorize(3, 4), meetController.getAuthUrl);
+router.get('/info', meetController.getServiceInfo);
 
 module.exports = router;

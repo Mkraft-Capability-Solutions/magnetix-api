@@ -1,36 +1,41 @@
 const express = require('express');
 const router = express.Router();
-const meetController = require('../../controllers/google/meet_controller');
+const oauthController = require('../../controllers/google/oauth_controller');
 
 /**
  * Google OAuth Routes
- *
- * These routes handle OAuth 2.0 authorization flow
- * No authentication required for initial setup and callback
+ * No authentication required for these routes
  */
-
-/**
- * @route   GET /google/oauth/setup
- * @desc    Get OAuth authorization URL for initial setup
- * @access  Public (for initial Google API configuration)
- * @note    This is a public endpoint to allow administrators to set up Google OAuth
- *          without requiring prior authentication. Use this to get the GOOGLE_REFRESH_TOKEN.
- */
-router.get('/setup', meetController.getAuthUrlPublic);
 
 /**
  * @route   GET /google/oauth/auth-url
- * @desc    Get OAuth authorization URL (alternative public endpoint)
+ * @desc    Get OAuth authorization URL
  * @access  Public
+ * @query   redirect? - Optional redirect URL after auth
  */
-router.get('/auth-url', meetController.getAuthUrlPublic);
+router.get('/auth-url', oauthController.getAuthUrl);
 
 /**
  * @route   GET /google/oauth/callback
- * @desc    OAuth 2.0 callback handler
- * @access  Public (but requires valid authorization code from Google)
+ * @desc    OAuth callback handler
+ * @access  Public
  * @query   code - Authorization code from Google
+ * @query   state - State parameter
  */
-router.get('/callback', meetController.handleOAuthCallback);
+router.get('/callback', oauthController.handleCallback);
+
+/**
+ * @route   GET /google/oauth/config
+ * @desc    Get OAuth configuration
+ * @access  Public
+ */
+router.get('/config', oauthController.getConfig);
+
+/**
+ * @route   GET /google/oauth/status
+ * @desc    Check OAuth authentication status
+ * @access  Public
+ */
+router.get('/status', oauthController.checkAuthStatus); // ADD THIS LINE
 
 module.exports = router;
