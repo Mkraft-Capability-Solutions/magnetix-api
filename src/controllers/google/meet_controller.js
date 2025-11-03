@@ -50,6 +50,7 @@ exports.generateQuickMeetLink = async (req, res, next) => {
         eventId: result.eventId,
         htmlLink: result.htmlLink,
         conferenceId: result.conferenceId,
+        mode: 'real_api',
       },
     });
   } catch (error) {
@@ -120,6 +121,7 @@ exports.createMeetLink = async (req, res, next) => {
         eventId: result.eventId,
         htmlLink: result.htmlLink,
         conferenceId: result.conferenceId,
+        mode: 'real_api',
       },
     });
   } catch (error) {

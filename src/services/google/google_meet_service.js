@@ -19,35 +19,52 @@ class GoogleMeetService {
 
   /**
    * Initialize OAuth2 client with credentials
+   * This is called only once and reuses the same credentials
    */
   async initialize() {
+    if (this.initialized) return; // ✅ Already initialized once
+
     try {
       if (!googleConfig.validate()) {
-        throw new Error('Google API configuration is incomplete. Please check .env file.');
+        throw new Error('Missing Google API credentials. Check your .env file.');
       }
 
-      // Create OAuth2 client
+      // Setup OAuth2 client
       this.oauth2Client = new google.auth.OAuth2(
         googleConfig.oauth2.clientId,
         googleConfig.oauth2.clientSecret,
         googleConfig.oauth2.redirectUri
       );
 
-      // Set refresh token if available
-      if (googleConfig.admin.refreshToken) {
-        this.oauth2Client.setCredentials({
-          refresh_token: googleConfig.admin.refreshToken,
-        });
+      // ✅ Always reuse the stored refresh token from .env
+      if (!googleConfig.admin.refreshToken) {
+        throw new Error(
+          'Google OAuth refresh token not found. Run /google/oauth/setup & callback once, then store it in .env as GOOGLE_REFRESH_TOKEN.'
+        );
       }
 
-      // Initialize Calendar API
-      this.calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
+      this.oauth2Client.setCredentials({
+        refresh_token: googleConfig.admin.refreshToken,
+      });
+
+      // Automatically refresh the access token when expired
+      this.oauth2Client.on('tokens', (tokens) => {
+        if (tokens.access_token) {
+          console.log('🔁 Google access token refreshed automatically');
+        }
+      });
+
+      // Initialize Google Calendar API
+      this.calendar = google.calendar({
+        version: 'v3',
+        auth: this.oauth2Client,
+      });
 
       this.initialized = true;
-      console.log('✅ Google Meet Service initialized successfully');
-    } catch (error) {
-      console.error('❌ Failed to initialize Google Meet Service:', error.message);
-      throw error;
+      console.log('✅ Google Meet Service initialized once and ready');
+    } catch (err) {
+      console.error('❌ Google Meet initialization failed:', err.message);
+      throw err;
     }
   }
 
@@ -176,6 +193,51 @@ class GoogleMeetService {
       endDateTime,
       attendees: [],
     });
+  }
+
+  /**
+   * Simplified helper method to create Meet event with flexible parameters
+   * ✅ This function reuses the same initialized credentials every time
+   *
+   * @param {Object} options - Event options
+   * @param {string} options.title - Meeting title (default: 'Quick Meeting')
+   * @param {string} options.startTime - Start time ISO string (default: now)
+   * @param {string} options.endTime - End time ISO string (default: 30 min from now)
+   * @returns {Promise<string>} - Meet link URL
+   */
+  async createMeetEvent({ title = 'Quick Meeting', startTime, endTime } = {}) {
+    await this.initialize();
+
+    const start = startTime || new Date().toISOString();
+    const end = endTime || new Date(Date.now() + 30 * 60 * 1000).toISOString(); // default 30min
+
+    const event = {
+      summary: title,
+      description: 'Auto-generated Google Meet event',
+      start: { dateTime: start, timeZone: googleConfig.calendar.timeZone },
+      end: { dateTime: end, timeZone: googleConfig.calendar.timeZone },
+      conferenceData: {
+        createRequest: {
+          requestId: String(Date.now()),
+          conferenceSolutionKey: { type: 'hangoutsMeet' },
+        },
+      },
+    };
+
+    try {
+      const res = await this.calendar.events.insert({
+        calendarId: googleConfig.calendar.calendarId,
+        resource: event,
+        conferenceDataVersion: 1,
+      });
+
+      const meetLink = res.data?.hangoutLink || res.data?.conferenceData?.entryPoints?.[0]?.uri;
+      console.log('✅ Meet link generated:', meetLink);
+      return meetLink;
+    } catch (err) {
+      console.error('❌ Failed to create Meet event:', err.message);
+      throw err;
+    }
   }
 
   /**

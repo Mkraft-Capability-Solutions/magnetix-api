@@ -270,6 +270,8 @@ Both options will expire in 1 hour.`;
       });
     };
 
+    
+
     const formatTime = (timeString) => {
       if (!timeString) return '';
       const [hours, minutes] = timeString.split(':');
@@ -314,6 +316,37 @@ Both options will expire in 1 hour.`;
       priority: 'normal'
     });
   }
+
+  async sendSessionScheduledEmail(email, firstName, sessionData, participantName, participantRole) {
+      const formattedDate = new Date(sessionData.sessionDate).toLocaleDateString('en-IN', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+      });
+
+      const templateData = {
+        firstName,
+        topic: sessionData.topic,
+        sessionDate: formattedDate,
+        sessionTime: sessionData.sessionTime,
+        duration: sessionData.duration,
+        meetLink: sessionData.meetLink,
+        participantName: participantName, // The other person in the session
+        participantRole: participantRole, // 'mentor' or 'mentee'
+        appName: process.env.APP_NAME || 'Learning Management System',
+        year: new Date().getFullYear()
+      };
+
+      const html = this.templates['session-scheduled'](templateData);
+      const text = `Your 1:1 session "${sessionData.topic}" has been scheduled with ${participantRole} ${participantName}.\n
+    Date: ${formattedDate} at ${sessionData.sessionTime}\nDuration: ${sessionData.duration}\nJoin: ${sessionData.meetLink}`;
+
+      return this.sendEmail({
+        to: email,
+        subject: `1:1 Session Scheduled: ${sessionData.topic}`,
+        html,
+        text
+      });
+    }
+
 }
 
 module.exports = new EmailHelper();

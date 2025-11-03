@@ -10,7 +10,7 @@ const scheduleSessionSchema = Joi.object({
     sessionTime: Joi.string().required(),
     topic: Joi.string().min(5).required(),
     description: Joi.string().allow('').optional(),
-    url: Joi.string().uri().required(),
+    url: Joi.string().uri().optional(), // Optional - will be auto-generated if not provided
     duration: Joi.string().default('30 minutes')
 });
 

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>1:1 Session Scheduled - {{appName}}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      color: #1e1b7e;
+      background: #f8f9fa;
+      margin: 0;
+      padding: 0;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+    .email-container {
+      width: 100%;
+      max-width: none;
+      margin: 0;
+      background: #ffffff;
+      box-sizing: border-box;
+      table-layout: fixed;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px 20px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .header p {
+      font-size: 16px;
+      opacity: 0.9;
+      margin: 0;
+    }
+    .content {
+      padding: 0;
+    }
+    .welcome-section {
+      padding: 30px 20px 20px;
+      text-align: center;
+    }
+    .welcome-section h2 {
+      color: #1e1b7e;
+      font-size: 24px;
+      margin-bottom: 12px;
+    }
+    .welcome-section p {
+      color: #4a5568;
+      font-size: 16px;
+      margin-bottom: 0;
+    }
+    .session-card {
+      margin: 20px;
+      background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 2px solid #e2e8f0;
+    }
+    .session-details {
+      padding: 20px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .session-title {
+      font-size: 22px;
+      font-weight: 600;
+      color: #1e1b7e;
+      margin-bottom: 15px;
+      line-height: 1.3;
+    }
+    .session-info {
+      width: 100%;
+      margin-bottom: 20px;
+    }
+    .info-item {
+      display: block;
+      width: 100%;
+      margin-bottom: 15px;
+      padding: 10px;
+      background: #f8f9fa;
+      border-radius: 6px;
+    }
+    .info-text {
+      color: #2d3748;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      display: block;
+    }
+    .info-value {
+      color: #4a5568;
+      font-size: 14px;
+      display: block;
+      word-wrap: break-word;
+    }
+    .join-button-container {
+      text-align: center;
+      margin: 25px 0;
+    }
+    .join-button {
+      display: inline-block;
+      padding: 14px 30px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #ffffff !important;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 16px;
+      box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3);
+      transition: all 0.3s ease;
+    }
+    .join-button:hover {
+      box-shadow: 0 6px 8px rgba(102, 126, 234, 0.4);
+      transform: translateY(-2px);
+    }
+    .important-note {
+      margin: 20px;
+      padding: 15px;
+      background: linear-gradient(135deg, #fff5e1 0%, #ffe4b5 100%);
+      border-radius: 8px;
+      border-left: 4px solid #f59e0b;
+    }
+    .note-text {
+      color: #92400e;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .action-section {
+      padding: 25px 20px;
+      text-align: center;
+      background: #f8fafc;
+    }
+    .footer {
+      background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+      color: #ffffff;
+      padding: 30px 20px;
+      text-align: center;
+    }
+    .footer-content {
+      margin-bottom: 20px;
+    }
+    .footer-content p {
+      margin-bottom: 10px;
+      font-size: 14px;
+      color: #ffffff;
+    }
+    .footer-bottom {
+      border-top: 1px solid #4a5568;
+      padding-top: 20px;
+      font-size: 12px;
+      color: #a0aec0;
+    }
+
+    @media (max-width: 600px) {
+      .email-container { margin: 0 10px; }
+      .header { padding: 25px 15px; }
+      .header h1 { font-size: 24px; }
+      .session-card { margin: 15px; }
+      .session-details { padding: 20px; }
+      .action-section { padding: 20px 15px; }
+      .footer { padding: 25px 15px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <!-- Header -->
+    <div class="header">
+      <h1>📅 1:1 Session Scheduled!</h1>
+      <p>Your mentorship session has been confirmed</p>
+    </div>
+
+    <!-- Welcome Section -->
+    <div class="welcome-section">
+      <h2>Hello {{firstName}}!</h2>
+      <p>Your 1:1 session has been successfully scheduled with {{participantRole}} <strong>{{participantName}}</strong>. We're excited for your upcoming session!</p>
+    </div>
+
+    <!-- Session Card -->
+    <div class="session-card">
+      <div class="session-details">
+        <h3 class="session-title">{{topic}}</h3>
+
+        <div class="session-info">
+          <div class="info-item">
+            <div class="info-text">👤 With {{participantRole}}</div>
+            <div class="info-value">{{participantName}}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-text">📅 Date</div>
+            <div class="info-value">{{sessionDate}}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-text">🕒 Time</div>
+            <div class="info-value">{{sessionTime}}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-text">⏱️ Duration</div>
+            <div class="info-value">{{duration}}</div>
+          </div>
+        </div>
+
+        <!-- Join Button -->
+        <div class="join-button-container">
+          <a href="{{meetLink}}" class="join-button" target="_blank">🎥 Join Google Meet</a>
+        </div>
+
+        <!-- Meeting Link for Copy/Paste -->
+        <div style="text-align: center; margin: 15px 0;">
+          <p style="color: #4a5568; font-size: 13px; margin-bottom: 5px;">Or copy this link:</p>
+          <p style="color: #3b82f6; font-size: 13px; word-break: break-all;">{{meetLink}}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Important Note -->
+    <div class="important-note">
+      <p class="note-text">
+        <strong>📌 Important:</strong> Please join the session on time. This event has also been added to your Google Calendar.
+        Check your email for the calendar invitation.
+      </p>
+    </div>
+
+    <!-- Action Section -->
+    <div class="action-section">
+      <p style="color: #4a5568; margin-bottom: 10px;">We look forward to a productive session!</p>
+      <p style="color: #718096; font-size: 14px;">
+        Make sure you have a stable internet connection and your camera/microphone ready.
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <div class="footer-content">
+        <p><strong>{{appName}}</strong> - Empowering Learning Through Mentorship</p>
+        <p>Need help or have questions about your session?</p>
+        <p>Contact us at support@multiplierskraft.com</p>
+      </div>
+
+      <div class="footer-bottom">
+        <p>&copy; {{year}} {{appName}}. All rights reserved.</p>
+        <p>You're receiving this email because a 1:1 session was scheduled for you.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
