@@ -1,5 +1,8 @@
 // admin_session_service.js
 const { promisePool } = require('../../config/db');
+const googleMeetService = require('../../services/google/google_meet_service');
+const emailHelper = require('../../utils/email_helper');
+
 
 class AdminSessionService {
     /**
@@ -233,93 +236,96 @@ class AdminSessionService {
      * Schedule a new session between instructor and student
      */
     async scheduleSession(sessionData) {
-        const connection = await promisePool.getConnection();
+        const { instructorId, menteeId, sessionDate, sessionTime, topic, description, duration, createdBy } = sessionData;
 
         try {
-            await connection.beginTransaction();
-
-            const {
+            // 1️⃣ Check instructor availability
+            const availabilityCheck = await this.checkInstructorAvailability(
                 instructorId,
-                menteeId,
                 sessionDate,
-                sessionTime,
-                topic,
-                description,
-                url,
-                duration,
-                createdBy,
-                createdByRole
-            } = sessionData;
-
-            // Verify instructor exists and is active
-            const [instructors] = await connection.query(
-                `SELECT i.user_id as uuid, i.first_name, i.last_name, u.email
-                 FROM instructors i
-                 JOIN users u ON i.user_id = u.uuid
-                 WHERE i.user_id = ? AND u.role_id = 2 AND u.status = "active" AND u.is_deleted = 0`,
-                [instructorId]
+                sessionTime
             );
 
-            if (instructors.length === 0) {
-                throw new Error('Instructor not found or inactive');
-            }
-
-            // Verify student exists and is active
-            const [students] = await connection.query(
-                `SELECT s.user_id as uuid, s.first_name, s.last_name, u.email
-                 FROM students s
-                 JOIN users u ON s.user_id = u.uuid
-                 WHERE s.user_id = ? AND u.role_id = 1 AND u.status = "active" AND u.is_deleted = 0`,
-                [menteeId]
-            );
-
-            if (students.length === 0) {
-                throw new Error('Student not found or inactive');
-            }
-
-            // Admin can schedule with ANY instructor, but must respect their availability
-            const availabilityCheck = await this.checkInstructorAvailability(instructorId, sessionDate, sessionTime);
             if (!availabilityCheck.valid) {
                 throw new Error(availabilityCheck.message);
             }
 
-            // Insert session record into scheduled_sessions table (same table used by students and instructors)
-            const [result] = await connection.query(
+            // 2️⃣ Fetch mentor & mentee details
+            const mentor = await this.getUserDetails(instructorId, 'instructor');
+            const mentee = await this.getUserDetails(menteeId, 'student');
+
+            if (!mentor) {
+                throw new Error('Mentor not found');
+            }
+            if (!mentee) {
+                throw new Error('Mentee not found');
+            }
+
+            // 3️⃣ Create Google Meet + Calendar Event
+            const startTime = new Date(`${sessionDate}T${sessionTime}:00`);
+            const durationMinutes = parseInt(duration) || 30;
+            const endTime = new Date(startTime.getTime() + durationMinutes * 60000);
+
+            const meetLink = await googleMeetService.createMeetEvent({
+                title: topic,
+                startTime: startTime.toISOString(),
+                endTime: endTime.toISOString(),
+                attendees: [
+                    { email: mentor.email },
+                    { email: mentee.email }
+                ]
+            });
+
+            if (!meetLink) {
+                throw new Error('Failed to generate Google Meet link');
+            }
+
+            // 4️⃣ Save session in DB
+            const [result] = await promisePool.query(
                 `INSERT INTO scheduled_sessions
-                (mentee_id, mentor_id, session_date, session_time, topic, description,
-                url, duration, status, creator_id, last_updated_by)
+                (mentor_id, mentee_id, session_date, session_time, topic, description, url, duration, status, creator_id, last_updated_by)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'booked', ?, ?)`,
-                [menteeId, instructorId, sessionDate, sessionTime, topic, description || '',
-                 url, duration, createdBy, createdBy]
+                [instructorId, menteeId, sessionDate, sessionTime, topic, description || '', meetLink, duration, createdBy, createdBy]
             );
 
-            const sessionId = result.insertId;
-
-            // TODO: Send notifications to instructor and student
-            // You can add notification logic here
-
-            await connection.commit();
-
-            return {
-                sessionId,
-                mentorId: instructorId,
-                instructorName: `${instructors[0].first_name} ${instructors[0].last_name}`,
-                menteeId,
-                menteeName: `${students[0].first_name} ${students[0].last_name}`,
+            const newSession = {
+                sessionId: result.insertId,
+                topic,
+                description,
                 sessionDate,
                 sessionTime,
-                topic,
-                status: 'booked'
+                duration,
+                meetLink,
+                mentorName: `${mentor.first_name} ${mentor.last_name}`,
+                menteeName: `${mentee.first_name} ${mentee.last_name}`
             };
 
+            // 5️⃣ Send confirmation emails
+            // Send email to mentor (showing mentee's name)
+            await emailHelper.sendSessionScheduledEmail(
+                mentor.email,
+                mentor.first_name,
+                newSession,
+                `${mentee.first_name} ${mentee.last_name}`,
+                'mentee'
+            );
+
+            // Send email to mentee (showing mentor's name)
+            await emailHelper.sendSessionScheduledEmail(
+                mentee.email,
+                mentee.first_name,
+                newSession,
+                `${mentor.first_name} ${mentor.last_name}`,
+                'mentor'
+            );
+
+            return newSession;
         } catch (error) {
-            await connection.rollback();
-            console.error('Error in scheduleSession service:', error);
+            console.error('Error scheduling session:', error);
             throw error;
-        } finally {
-            connection.release();
         }
     }
+
 
     /**
      * Update an existing session
@@ -419,6 +425,9 @@ class AdminSessionService {
 
             await connection.commit();
 
+              await emailHelper.sendSessionScheduledEmail(mentor.email, mentor.first_name, newSession);
+              await emailHelper.sendSessionScheduledEmail(mentee.email, mentee.first_name, newSession);
+
             return updatedSessions[0];
 
         } catch (error) {
@@ -429,6 +438,24 @@ class AdminSessionService {
             connection.release();
         }
     }
+
+    async getUserDetails(userId, role) {
+        try {
+            const table = role === 'instructor' ? 'instructors' : 'students';
+            const [rows] = await promisePool.query(
+                `SELECT u.email, i.first_name, i.last_name
+                 FROM ${table} i
+                 JOIN users u ON i.user_id = u.uuid
+                 WHERE i.user_id = ?`,
+                [userId]
+            );
+            return rows[0] || null;
+        } catch (error) {
+            console.error(`Error fetching ${role} details:`, error);
+            throw new Error(`Failed to fetch ${role} details`);
+        }
+    }
+
 
     /**
      * Cancel/Delete a session
