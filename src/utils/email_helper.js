@@ -347,6 +347,60 @@ Both options will expire in 1 hour.`;
       });
     }
 
+  async sendMentorshipApprovedEmail(email, firstName, mentorData) {
+    const templateData = {
+      firstName,
+      mentorName: mentorData.mentorName,
+      mentorEmail: mentorData.mentorEmail,
+      mentorExpertise: mentorData.mentorExpertise || '',
+      loginUrl: `${process.env.FRONTEND_URL}/student/mentorship`,
+      supportEmail: process.env.SUPPORT_EMAIL || 'support@multiplierskraft.com',
+      appName: process.env.APP_NAME || 'Learning Management System',
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['mentorship-approved'](templateData);
+    const text = `Great news! Your mentorship request has been approved by ${mentorData.mentorName}.\n\nYou can now connect with your mentor and schedule 1:1 sessions. Login to your dashboard to get started.`;
+
+    return this.sendEmail({
+      to: email,
+      subject: `Mentorship Request Approved - Welcome to your mentorship journey!`,
+      html,
+      text,
+      priority: 'high'
+    });
+  }
+
+  async sendSessionRejectedEmail(email, firstName, sessionData, mentorName) {
+    const formattedDate = new Date(sessionData.sessionDate).toLocaleDateString('en-IN', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+
+    const templateData = {
+      firstName,
+      topic: sessionData.topic,
+      sessionDate: formattedDate,
+      sessionTime: sessionData.sessionTime,
+      duration: sessionData.duration,
+      mentorName: mentorName,
+      loginUrl: `${process.env.FRONTEND_URL}/student/mentorship`,
+      supportEmail: process.env.SUPPORT_EMAIL || 'support@multiplierskraft.com',
+      appName: process.env.APP_NAME || 'Learning Management System',
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['session-rejected'](templateData);
+    const text = `Your session request "${sessionData.topic}" has been declined by ${mentorName}.\n
+    Requested Date: ${formattedDate} at ${sessionData.sessionTime}\n\nYou can schedule another session at a different time. Login to your dashboard to try again.`;
+
+    return this.sendEmail({
+      to: email,
+      subject: `Session Request Update: ${sessionData.topic}`,
+      html,
+      text
+    });
+  }
+
 }
 
 module.exports = new EmailHelper();

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mentorship Request Approved - {{appName}}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      color: #1e1b7e;
+      background: #f8f9fa;
+      margin: 0;
+      padding: 0;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+    .email-container {
+      width: 100%;
+      max-width: none;
+      margin: 0;
+      background: #ffffff;
+      box-sizing: border-box;
+      table-layout: fixed;
+    }
+    .header {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+      padding: 30px 20px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .header p {
+      font-size: 16px;
+      opacity: 0.9;
+      margin: 0;
+    }
+    .content {
+      padding: 0;
+    }
+    .welcome-section {
+      padding: 30px 20px 20px;
+      text-align: center;
+    }
+    .welcome-section h2 {
+      color: #1e1b7e;
+      font-size: 24px;
+      margin-bottom: 12px;
+    }
+    .welcome-section p {
+      color: #4a5568;
+      font-size: 16px;
+      margin-bottom: 0;
+    }
+    .mentor-card {
+      margin: 20px;
+      background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 2px solid #10b981;
+    }
+    .mentor-details {
+      padding: 20px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .mentor-name {
+      font-size: 22px;
+      font-weight: 600;
+      color: #1e1b7e;
+      margin-bottom: 15px;
+      line-height: 1.3;
+      text-align: center;
+    }
+    .info-item {
+      display: block;
+      width: 100%;
+      margin-bottom: 15px;
+      padding: 10px;
+      background: #ffffff;
+      border-radius: 6px;
+    }
+    .info-text {
+      color: #2d3748;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      display: block;
+    }
+    .info-value {
+      color: #4a5568;
+      font-size: 14px;
+      display: block;
+      word-wrap: break-word;
+    }
+    .success-badge {
+      display: inline-block;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      margin: 15px 0;
+    }
+    .action-section {
+      padding: 25px 20px;
+      text-align: center;
+      background: #f8fafc;
+    }
+    .action-button {
+      display: inline-block;
+      padding: 14px 30px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #ffffff !important;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 16px;
+      box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3);
+      transition: all 0.3s ease;
+      margin: 10px 0;
+    }
+    .action-button:hover {
+      box-shadow: 0 6px 8px rgba(102, 126, 234, 0.4);
+      transform: translateY(-2px);
+    }
+    .footer {
+      background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+      color: #ffffff;
+      padding: 30px 20px;
+      text-align: center;
+    }
+    .footer-content {
+      margin-bottom: 20px;
+    }
+    .footer-content p {
+      margin-bottom: 10px;
+      font-size: 14px;
+      color: #ffffff;
+    }
+    .footer-bottom {
+      border-top: 1px solid #4a5568;
+      padding-top: 20px;
+      font-size: 12px;
+      color: #a0aec0;
+    }
+
+    @media (max-width: 600px) {
+      .email-container { margin: 0 10px; }
+      .header { padding: 25px 15px; }
+      .header h1 { font-size: 24px; }
+      .mentor-card { margin: 15px; }
+      .mentor-details { padding: 20px; }
+      .action-section { padding: 20px 15px; }
+      .footer { padding: 25px 15px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <!-- Header -->
+    <div class="header">
+      <h1>✅ Mentorship Request Approved!</h1>
+      <p>Your mentorship journey begins now</p>
+    </div>
+
+    <!-- Welcome Section -->
+    <div class="welcome-section">
+      <h2>Hello {{firstName}}!</h2>
+      <p>Great news! Your mentorship request has been approved by <strong>{{mentorName}}</strong>.</p>
+      <div class="success-badge">🎉 You're now connected!</div>
+    </div>
+
+    <!-- Mentor Card -->
+    <div class="mentor-card">
+      <div class="mentor-details">
+        <h3 class="mentor-name">👨‍🏫 Your Mentor: {{mentorName}}</h3>
+
+        <div class="info-item">
+          <div class="info-text">📧 Contact Email</div>
+          <div class="info-value">{{mentorEmail}}</div>
+        </div>
+
+        {{#if mentorExpertise}}
+        <div class="info-item">
+          <div class="info-text">💼 Expertise</div>
+          <div class="info-value">{{mentorExpertise}}</div>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+
+    <!-- Action Section -->
+    <div class="action-section">
+      <p style="color: #4a5568; margin-bottom: 20px; font-size: 16px;">
+        <strong>Next Steps:</strong>
+      </p>
+      <p style="color: #4a5568; margin-bottom: 10px;">
+        📅 Your mentor can now schedule 1:1 sessions with you
+      </p>
+      <p style="color: #4a5568; margin-bottom: 10px;">
+        💬 You can connect with your mentor directly
+      </p>
+      <p style="color: #4a5568; margin-bottom: 20px;">
+        📚 Start your learning journey together!
+      </p>
+
+      {{#if loginUrl}}
+      <a href="{{loginUrl}}" class="action-button">Access Your Dashboard</a>
+      {{/if}}
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <div class="footer-content">
+        <p><strong>{{appName}}</strong> - Empowering Learning Through Mentorship</p>
+        <p>Need help or have questions?</p>
+        <p>Contact us at {{supportEmail}}</p>
+      </div>
+
+      <div class="footer-bottom">
+        <p>&copy; {{year}} {{appName}}. All rights reserved.</p>
+        <p>You're receiving this email because your mentorship request was approved.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
