@@ -624,6 +624,287 @@ class AdminSessionService {
             throw error;
         }
     }
+
+    /**
+     * Get all sessions with optional status filter
+     */
+    async getAllSessions({ status = null, limit = 10, offset = 0 }) {
+        try {
+            let query = `
+                SELECT ss.*,
+                       i.first_name as instructor_first_name, i.last_name as instructor_last_name,
+                       s.first_name as mentee_first_name, s.last_name as mentee_last_name,
+                       u1.email as instructor_email, u2.email as mentee_email
+                FROM scheduled_sessions ss
+                JOIN instructors i ON ss.mentor_id = i.user_id
+                JOIN students s ON ss.mentee_id = s.user_id
+                JOIN users u1 ON i.user_id = u1.uuid
+                JOIN users u2 ON s.user_id = u2.uuid
+                WHERE 1=1
+            `;
+
+            const params = [];
+
+            if (status) {
+                query += ' AND ss.status = ?';
+                params.push(status);
+            }
+
+            // Exclude past sessions from regular queries
+            query += ` AND NOT (
+                CONCAT(ss.session_date, ' ', ss.session_time) < NOW() - INTERVAL
+                CAST(SUBSTRING_INDEX(ss.duration, ' ', 1) AS UNSIGNED) MINUTE
+            )`;
+
+            query += ' ORDER BY ss.session_date DESC, ss.session_time DESC LIMIT ? OFFSET ?';
+            params.push(parseInt(limit), parseInt(offset));
+
+            const [sessions] = await promisePool.query(query, params);
+
+            // Get total count
+            let countQuery = 'SELECT COUNT(*) as total FROM scheduled_sessions ss WHERE 1=1';
+            const countParams = [];
+
+            if (status) {
+                countQuery += ' AND ss.status = ?';
+                countParams.push(status);
+            }
+
+            countQuery += ` AND NOT (
+                CONCAT(ss.session_date, ' ', ss.session_time) < NOW() - INTERVAL
+                CAST(SUBSTRING_INDEX(ss.duration, ' ', 1) AS UNSIGNED) MINUTE
+            )`;
+
+            const [countResult] = await promisePool.query(countQuery, countParams);
+
+            return {
+                sessions,
+                total: countResult[0].total,
+                limit: parseInt(limit),
+                offset: parseInt(offset)
+            };
+
+        } catch (error) {
+            console.error('Error in getAllSessions service:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get sessions by specific status
+     */
+    async getSessionsByStatus(status, limit = 10, offset = 0) {
+        try {
+            const query = `
+                SELECT ss.*,
+                       i.first_name as instructor_first_name, i.last_name as instructor_last_name,
+                       s.first_name as mentee_first_name, s.last_name as mentee_last_name,
+                       u1.email as instructor_email, u2.email as mentee_email
+                FROM scheduled_sessions ss
+                JOIN instructors i ON ss.mentor_id = i.user_id
+                JOIN students s ON ss.mentee_id = s.user_id
+                JOIN users u1 ON i.user_id = u1.uuid
+                JOIN users u2 ON s.user_id = u2.uuid
+                WHERE ss.status = ?
+                AND NOT (
+                    CONCAT(ss.session_date, ' ', ss.session_time) < NOW() - INTERVAL
+                    CAST(SUBSTRING_INDEX(ss.duration, ' ', 1) AS UNSIGNED) MINUTE
+                )
+                ORDER BY ss.session_date DESC, ss.session_time DESC
+                LIMIT ? OFFSET ?
+            `;
+
+            const [sessions] = await promisePool.query(query, [status, parseInt(limit), parseInt(offset)]);
+
+            // Get total count
+            const countQuery = `
+                SELECT COUNT(*) as total
+                FROM scheduled_sessions ss
+                WHERE ss.status = ?
+                AND NOT (
+                    CONCAT(ss.session_date, ' ', ss.session_time) < NOW() - INTERVAL
+                    CAST(SUBSTRING_INDEX(ss.duration, ' ', 1) AS UNSIGNED) MINUTE
+                )
+            `;
+            const [countResult] = await promisePool.query(countQuery, [status]);
+
+            return {
+                sessions,
+                total: countResult[0].total,
+                limit: parseInt(limit),
+                offset: parseInt(offset)
+            };
+
+        } catch (error) {
+            console.error('Error in getSessionsByStatus service:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get past sessions (session date + duration has passed)
+     */
+    async getPastSessions(limit = 10, offset = 0) {
+        try {
+            const query = `
+                SELECT ss.*,
+                       i.first_name as instructor_first_name, i.last_name as instructor_last_name,
+                       s.first_name as mentee_first_name, s.last_name as mentee_last_name,
+                       u1.email as instructor_email, u2.email as mentee_email
+                FROM scheduled_sessions ss
+                JOIN instructors i ON ss.mentor_id = i.user_id
+                JOIN students s ON ss.mentee_id = s.user_id
+                JOIN users u1 ON i.user_id = u1.uuid
+                JOIN users u2 ON s.user_id = u2.uuid
+                WHERE CONCAT(ss.session_date, ' ', ss.session_time) < NOW() - INTERVAL
+                      CAST(SUBSTRING_INDEX(ss.duration, ' ', 1) AS UNSIGNED) MINUTE
+                ORDER BY ss.session_date DESC, ss.session_time DESC
+                LIMIT ? OFFSET ?
+            `;
+
+            const [sessions] = await promisePool.query(query, [parseInt(limit), parseInt(offset)]);
+
+            // Get total count
+            const countQuery = `
+                SELECT COUNT(*) as total
+                FROM scheduled_sessions ss
+                WHERE CONCAT(ss.session_date, ' ', ss.session_time) < NOW() - INTERVAL
+                      CAST(SUBSTRING_INDEX(ss.duration, ' ', 1) AS UNSIGNED) MINUTE
+            `;
+            const [countResult] = await promisePool.query(countQuery);
+
+            return {
+                sessions,
+                total: countResult[0].total,
+                limit: parseInt(limit),
+                offset: parseInt(offset)
+            };
+
+        } catch (error) {
+            console.error('Error in getPastSessions service:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Check if a session is in the past
+     */
+    async isSessionPast(session) {
+        try {
+            // Parse duration (e.g., "30 minutes" -> 30)
+            const durationMatch = session.duration.match(/\d+/);
+            const durationMinutes = durationMatch ? parseInt(durationMatch[0]) : 30;
+
+            // Create session end time
+            const sessionDateTime = new Date(`${session.session_date}T${session.session_time}`);
+            const sessionEndTime = new Date(sessionDateTime.getTime() + durationMinutes * 60000);
+
+            // Compare with current time
+            return sessionEndTime < new Date();
+
+        } catch (error) {
+            console.error('Error in isSessionPast service:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Cancel a session
+     */
+    async cancelSession(sessionId, adminId) {
+        try {
+            await promisePool.query(
+                `UPDATE scheduled_sessions
+                 SET status = 'cancelled', last_updated_by = ?, last_updated = NOW()
+                 WHERE id = ?`,
+                [adminId, sessionId]
+            );
+
+            return true;
+
+        } catch (error) {
+            console.error('Error in cancelSession service:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Delete a session (soft delete)
+     */
+    async deleteSession(sessionId) {
+        try {
+            await promisePool.query(
+                'DELETE FROM scheduled_sessions WHERE id = ?',
+                [sessionId]
+            );
+
+            return true;
+
+        } catch (error) {
+            console.error('Error in deleteSession service:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get available instructors for a specific date/time
+     */
+    async getAvailableInstructors(date, time) {
+        try {
+            // Get day of week from date
+            const dayOfWeek = new Date(date).toLocaleDateString('en-US', { weekday: 'long' });
+
+            const query = `
+                SELECT i.user_id, i.first_name, i.last_name, u.email,
+                       ia.available_days, ia.start_time, ia.end_time
+                FROM instructors i
+                JOIN users u ON i.user_id = u.uuid
+                LEFT JOIN instructor_availability ia ON i.user_id = ia.instructor_id
+                WHERE i.status = 'active'
+                AND i.is_deleted = 0
+                AND (ia.is_active = 1 OR ia.is_active IS NULL)
+                AND (ia.available_days LIKE ? OR ia.available_days IS NULL)
+                AND (? >= ia.start_time AND ? < ia.end_time OR ia.start_time IS NULL)
+            `;
+
+            const [instructors] = await promisePool.query(query, [
+                `%${dayOfWeek}%`,
+                time,
+                time
+            ]);
+
+            return instructors;
+
+        } catch (error) {
+            console.error('Error in getAvailableInstructors service:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get all instructors with availability info
+     */
+    async getAllInstructors() {
+        try {
+            const query = `
+                SELECT i.user_id, i.first_name, i.last_name, u.email,
+                       ia.available_days, ia.start_time, ia.end_time, ia.is_active
+                FROM instructors i
+                JOIN users u ON i.user_id = u.uuid
+                LEFT JOIN instructor_availability ia ON i.user_id = ia.instructor_id
+                WHERE i.status = 'active' AND i.is_deleted = 0
+                ORDER BY i.first_name, i.last_name
+            `;
+
+            const [instructors] = await promisePool.query(query);
+
+            return instructors;
+
+        } catch (error) {
+            console.error('Error in getAllInstructors service:', error);
+            throw error;
+        }
+    }
 }
 
 module.exports = new AdminSessionService();

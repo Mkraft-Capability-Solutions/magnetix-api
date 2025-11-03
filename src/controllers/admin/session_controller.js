@@ -1,8 +1,13 @@
-// admin_session_controller.js
 const adminSessionService = require('../../services/admin/session_service');
 const Joi = require('joi');
 
 // Validation schemas
+const getPaginatedSessionsSchema = Joi.object({
+    status: Joi.string().valid('pending', 'booked', 'cancelled', 'rejected').optional(),
+    limit: Joi.number().integer().min(1).max(100).default(10),
+    offset: Joi.number().integer().min(0).default(0)
+});
+
 const scheduleSessionSchema = Joi.object({
     instructorId: Joi.string().required(),
     menteeId: Joi.string().required(),
@@ -23,22 +28,202 @@ const updateSessionSchema = Joi.object({
     topic: Joi.string().min(5).optional(),
     description: Joi.string().allow('').optional(),
     url: Joi.string().uri().optional(),
-    duration: Joi.string().optional()
+    duration: Joi.string().optional(),
+    status: Joi.string().valid('pending', 'booked', 'cancelled', 'rejected').optional()
 });
 
-const deleteSessionSchema = Joi.object({
+const sessionIdSchema = Joi.object({
     sessionId: Joi.number().integer().required()
 });
 
-const getAllSessionsSchema = Joi.object({
-    limit: Joi.number().integer().min(1).max(100).default(50),
-    offset: Joi.number().integer().min(0).default(0),
-    status: Joi.string().valid('pending', 'booked', 'cancelled', 'rejected').optional(),
-    instructorId: Joi.string().optional(),
-    menteeId: Joi.string().optional()
-});
+// Get all sessions with optional status filter and pagination
+exports.getAllSessions = async (req, res, next) => {
+    try {
+        const { error } = getPaginatedSessionsSchema.validate(req.query);
+        if (error) {
+            return res.status(400).json({
+                success: false,
+                message: error.details[0].message
+            });
+        }
 
-// Schedule a new session between instructor and student
+        const { status, limit, offset } = req.query;
+        const result = await adminSessionService.getAllSessions({ status, limit, offset });
+
+        res.json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Get pending sessions
+exports.getPendingSessions = async (req, res, next) => {
+    try {
+        const { error } = Joi.object({
+            limit: Joi.number().integer().min(1).max(100).default(10),
+            offset: Joi.number().integer().min(0).default(0)
+        }).validate(req.query);
+
+        if (error) {
+            return res.status(400).json({
+                success: false,
+                message: error.details[0].message
+            });
+        }
+
+        const { limit, offset } = req.query;
+        const result = await adminSessionService.getSessionsByStatus('pending', limit, offset);
+
+        res.json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Get booked sessions
+exports.getBookedSessions = async (req, res, next) => {
+    try {
+        const { error } = Joi.object({
+            limit: Joi.number().integer().min(1).max(100).default(10),
+            offset: Joi.number().integer().min(0).default(0)
+        }).validate(req.query);
+
+        if (error) {
+            return res.status(400).json({
+                success: false,
+                message: error.details[0].message
+            });
+        }
+
+        const { limit, offset } = req.query;
+        const result = await adminSessionService.getSessionsByStatus('booked', limit, offset);
+
+        res.json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Get rejected sessions
+exports.getRejectedSessions = async (req, res, next) => {
+    try {
+        const { error } = Joi.object({
+            limit: Joi.number().integer().min(1).max(100).default(10),
+            offset: Joi.number().integer().min(0).default(0)
+        }).validate(req.query);
+
+        if (error) {
+            return res.status(400).json({
+                success: false,
+                message: error.details[0].message
+            });
+        }
+
+        const { limit, offset } = req.query;
+        const result = await adminSessionService.getSessionsByStatus('rejected', limit, offset);
+
+        res.json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Get cancelled sessions
+exports.getCancelledSessions = async (req, res, next) => {
+    try {
+        const { error } = Joi.object({
+            limit: Joi.number().integer().min(1).max(100).default(10),
+            offset: Joi.number().integer().min(0).default(0)
+        }).validate(req.query);
+
+        if (error) {
+            return res.status(400).json({
+                success: false,
+                message: error.details[0].message
+            });
+        }
+
+        const { limit, offset } = req.query;
+        const result = await adminSessionService.getSessionsByStatus('cancelled', limit, offset);
+
+        res.json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Get past sessions (completed sessions based on date + duration)
+exports.getPastSessions = async (req, res, next) => {
+    try {
+        const { error } = Joi.object({
+            limit: Joi.number().integer().min(1).max(100).default(10),
+            offset: Joi.number().integer().min(0).default(0)
+        }).validate(req.query);
+
+        if (error) {
+            return res.status(400).json({
+                success: false,
+                message: error.details[0].message
+            });
+        }
+
+        const { limit, offset } = req.query;
+        const result = await adminSessionService.getPastSessions(limit, offset);
+
+        res.json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Get session by ID
+exports.getSessionById = async (req, res, next) => {
+    try {
+        const { error } = sessionIdSchema.validate({ sessionId: req.params.sessionId });
+        if (error) {
+            return res.status(400).json({
+                success: false,
+                message: error.details[0].message
+            });
+        }
+
+        const session = await adminSessionService.getSessionById(req.params.sessionId);
+
+        if (!session) {
+            return res.status(404).json({
+                success: false,
+                message: 'Session not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: session
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Schedule a new session
 exports.scheduleSession = async (req, res, next) => {
     try {
         const { error } = scheduleSessionSchema.validate(req.body);
@@ -51,8 +236,7 @@ exports.scheduleSession = async (req, res, next) => {
 
         const sessionData = {
             ...req.body,
-            createdBy: req.user.uuid, // Admin who created the session
-            createdByRole: 'admin'
+            createdBy: req.user.uuid // Admin who created the session
         };
 
         const result = await adminSessionService.scheduleSession(sessionData);
@@ -63,13 +247,7 @@ exports.scheduleSession = async (req, res, next) => {
             data: result
         });
     } catch (error) {
-        console.error('Error in scheduleSession controller:', error);
-
-        // Return detailed error message to frontend
-        return res.status(400).json({
-            success: false,
-            message: error.message || 'Failed to schedule session'
-        });
+        next(error);
     }
 };
 
@@ -85,87 +263,9 @@ exports.updateSession = async (req, res, next) => {
         }
 
         const { sessionId, ...updateData } = req.body;
-        const result = await adminSessionService.updateSession(sessionId, updateData, req.user.uuid);
 
-        res.json({
-            success: true,
-            message: 'Session updated successfully',
-            data: result
-        });
-    } catch (error) {
-        console.error('Error in updateSession controller:', error);
-        next(error);
-    }
-};
-
-// Delete/Cancel a session
-exports.deleteSession = async (req, res, next) => {
-    try {
-        const { error } = deleteSessionSchema.validate(req.body);
-        if (error) {
-            return res.status(400).json({
-                success: false,
-                message: error.details[0].message
-            });
-        }
-
-        const { sessionId } = req.body;
-        await adminSessionService.deleteSession(sessionId, req.user.uuid);
-
-        res.json({
-            success: true,
-            message: 'Session cancelled successfully'
-        });
-    } catch (error) {
-        console.error('Error in deleteSession controller:', error);
-        next(error);
-    }
-};
-
-// Get all scheduled sessions with filters
-exports.getAllSessions = async (req, res, next) => {
-    try {
-        const { error } = getAllSessionsSchema.validate(req.query);
-        if (error) {
-            return res.status(400).json({
-                success: false,
-                message: error.details[0].message
-            });
-        }
-
-        const { limit, offset, status, instructorId, menteeId } = req.query;
-        const filters = {};
-
-        if (status) filters.status = status;
-        if (instructorId) filters.instructorId = instructorId;
-        if (menteeId) filters.menteeId = menteeId;
-
-        const sessions = await adminSessionService.getAllSessions(limit, offset, filters);
-
-        res.json({
-            success: true,
-            data: sessions
-        });
-    } catch (error) {
-        console.error('Error in getAllSessions controller:', error);
-        next(error);
-    }
-};
-
-// Get a specific session by ID
-exports.getSessionById = async (req, res, next) => {
-    try {
-        const sessionId = parseInt(req.params.id);
-
-        if (isNaN(sessionId)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid session ID'
-            });
-        }
-
+        // Check if session is in the past
         const session = await adminSessionService.getSessionById(sessionId);
-
         if (!session) {
             return res.status(404).json({
                 success: false,
@@ -173,12 +273,86 @@ exports.getSessionById = async (req, res, next) => {
             });
         }
 
+        // Check if session is past
+        const isPast = await adminSessionService.isSessionPast(session);
+        if (isPast) {
+            return res.status(400).json({
+                success: false,
+                message: 'Cannot update past sessions'
+            });
+        }
+
+        updateData.updatedBy = req.user.uuid; // Admin who updated the session
+
+        const result = await adminSessionService.updateSession(sessionId, updateData);
+
         res.json({
             success: true,
-            data: session
+            message: 'Session updated successfully',
+            data: result
         });
     } catch (error) {
-        console.error('Error in getSessionById controller:', error);
+        next(error);
+    }
+};
+
+// Cancel a session
+exports.cancelSession = async (req, res, next) => {
+    try {
+        const { error } = sessionIdSchema.validate({ sessionId: req.params.sessionId });
+        if (error) {
+            return res.status(400).json({
+                success: false,
+                message: error.details[0].message
+            });
+        }
+
+        // Check if session is in the past
+        const session = await adminSessionService.getSessionById(req.params.sessionId);
+        if (!session) {
+            return res.status(404).json({
+                success: false,
+                message: 'Session not found'
+            });
+        }
+
+        const isPast = await adminSessionService.isSessionPast(session);
+        if (isPast) {
+            return res.status(400).json({
+                success: false,
+                message: 'Cannot cancel past sessions'
+            });
+        }
+
+        await adminSessionService.cancelSession(req.params.sessionId, req.user.uuid);
+
+        res.json({
+            success: true,
+            message: 'Session cancelled successfully'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Delete a session (soft delete)
+exports.deleteSession = async (req, res, next) => {
+    try {
+        const { error } = sessionIdSchema.validate({ sessionId: req.params.sessionId });
+        if (error) {
+            return res.status(400).json({
+                success: false,
+                message: error.details[0].message
+            });
+        }
+
+        await adminSessionService.deleteSession(req.params.sessionId);
+
+        res.json({
+            success: true,
+            message: 'Session deleted successfully'
+        });
+    } catch (error) {
         next(error);
     }
 };
@@ -193,50 +367,34 @@ exports.getSessionStats = async (req, res, next) => {
             data: stats
         });
     } catch (error) {
-        console.error('Error in getSessionStats controller:', error);
         next(error);
     }
 };
 
-// Get available instructors for a specific date and time
+// Get available instructors for a specific date/time
 exports.getAvailableInstructors = async (req, res, next) => {
     try {
-        const { sessionDate, sessionTime } = req.query;
+        const { date, time } = req.query;
 
-        // Validate date and time format if provided
-        if (sessionDate && !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) {
+        if (!date || !time) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid date format. Use YYYY-MM-DD'
+                message: 'Date and time are required'
             });
         }
 
-        if (sessionTime && !/^\d{2}:\d{2}$/.test(sessionTime)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid time format. Use HH:mm'
-            });
-        }
-
-        const instructors = await adminSessionService.getAvailableInstructors(
-            sessionDate,
-            sessionTime
-        );
+        const instructors = await adminSessionService.getAvailableInstructors(date, time);
 
         res.json({
             success: true,
-            message: sessionDate && sessionTime
-                ? `Found ${instructors.length} available instructor(s) for ${sessionDate} at ${sessionTime}`
-                : `Found ${instructors.length} active instructor(s)`,
             data: instructors
         });
     } catch (error) {
-        console.error('Error in getAvailableInstructors controller:', error);
         next(error);
     }
 };
 
-// Get all instructors with their availability info
+// Get all instructors with availability info
 exports.getAllInstructors = async (req, res, next) => {
     try {
         const instructors = await adminSessionService.getAllInstructors();
@@ -246,7 +404,6 @@ exports.getAllInstructors = async (req, res, next) => {
             data: instructors
         });
     } catch (error) {
-        console.error('Error in getAllInstructors controller:', error);
         next(error);
     }
 };
