@@ -11,6 +11,13 @@ router.use(authorize(3)); // Role ID 3 = Admin
 // Get all sessions with optional filters
 router.get("/", adminSessionController.getAllSessions);
 
+// Get sessions by status (must come before /:id route)
+router.get("/pending", adminSessionController.getPendingSessions);
+router.get("/booked", adminSessionController.getBookedSessions);
+router.get("/rejected", adminSessionController.getRejectedSessions);
+router.get("/cancelled", adminSessionController.getCancelledSessions);
+router.get("/past", adminSessionController.getPastSessions);
+
 // Get session statistics
 router.get("/stats", adminSessionController.getSessionStats);
 
@@ -29,7 +36,10 @@ router.post("/schedule", adminSessionController.scheduleSession);
 // Update an existing session
 router.put("/update", adminSessionController.updateSession);
 
-// Cancel/Delete a session
-router.delete("/cancel", adminSessionController.deleteSession);
+// Cancel a session
+router.put("/:sessionId/cancel", adminSessionController.cancelSession);
+
+// Delete a session
+router.delete("/:sessionId", adminSessionController.deleteSession);
 
 module.exports = router;
