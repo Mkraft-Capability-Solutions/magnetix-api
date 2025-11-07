@@ -1,5 +1,6 @@
 const { promisePool } = require('../../config/db');
 const { EventDTO, EventAttendeeDTO } = require('../../dto/instructor/event_dto');
+const batchAssignmentService = require('../batch_assignment_service');
 
 class InstructorEventService {
     async createEvent(creatorId, data) {
@@ -69,12 +70,27 @@ class InstructorEventService {
                 
                 eventId = result[0][0].event_id;
                 console.log('CreateEvent Service - Event ID:', eventId);
-                
+
             } catch (dbError) {
                 console.error('Database error in createEvent:', dbError);
                 throw new Error(`Database error: ${dbError.message}`);
             }
-            
+
+            // Assign batches to event
+            if (data.batchIds !== undefined || data.availableToAllBatches !== undefined) {
+                const batchIdsToAssign = Array.isArray(data.batchIds) ? data.batchIds : [];
+                const isAvailableToAll = data.availableToAllBatches === true ||
+                                        data.availableToAllBatches === 'true' ||
+                                        data.availableToAllBatches === 1;
+
+                await batchAssignmentService.assignBatchesToEvent(
+                    eventId,
+                    batchIdsToAssign,
+                    isAvailableToAll
+                );
+                console.log('CreateEvent Service - Batches assigned:', { batchIdsToAssign, isAvailableToAll });
+            }
+
             return eventId;
         } catch (error) {
             console.error('CreateEvent Service - Error:', error);
@@ -189,22 +205,24 @@ class InstructorEventService {
     }
 
     async getEventById(creatorId, eventId) {
+        let eventData = null;
+
         try {
             // Try using the stored procedure first
             const [rows] = await promisePool.query(
                 'CALL instructor_get_event_by_id(?, ?)',
                 [creatorId, eventId]
             );
-            
+
             if (rows[0] && rows[0].length > 0) {
-                return new EventDTO(rows[0][0]);
+                eventData = new EventDTO(rows[0][0]);
             }
         } catch (error) {
             console.log('Stored procedure failed, falling back to direct query:', error.message);
-            
+
             // Fallback to direct SQL query
             const [rows] = await promisePool.query(
-                `SELECT 
+                `SELECT
                     e.id,
                     e.start_date,
                     e.start_time,
@@ -222,20 +240,38 @@ class InstructorEventService {
                     e.max_limit,
                     e.attendees_count,
                     e.created_date,
-                    e.last_updated
+                    e.last_updated,
+                    e.available_to_all_batches
                 FROM events e
-                WHERE e.id = ? 
-                AND e.creator_id = ? 
+                WHERE e.id = ?
+                AND e.creator_id = ?
                 AND e.is_deleted = 0`,
                 [eventId, creatorId]
             );
-            
+
             if (rows && rows.length > 0) {
-                return new EventDTO(rows[0]);
+                eventData = new EventDTO(rows[0]);
             }
         }
-        
-        return null;
+
+        // Fetch batch assignments if event was found
+        if (eventData) {
+            try {
+                const batchAssignmentService = require('../batch_assignment_service');
+                const { availableToAll, batches } = await batchAssignmentService.getEventBatches(eventId);
+
+                eventData.availableToAllBatches = availableToAll;
+                eventData.batchIds = batches.map(batch => batch.id);
+
+                console.log(`Event ${eventId} batch data:`, { availableToAll, batchIds: eventData.batchIds });
+            } catch (batchError) {
+                console.error(`Error fetching batch data for event ${eventId}:`, batchError);
+                eventData.availableToAllBatches = false;
+                eventData.batchIds = [];
+            }
+        }
+
+        return eventData;
     }
 
     async updateEvent(creatorId, eventId, data) {
@@ -361,6 +397,21 @@ class InstructorEventService {
             if (result.affectedRows === 0) {
                 throw new Error('Event not found or unauthorized');
             }
+        }
+
+        // Assign batches to event
+        if (data.batchIds !== undefined || data.availableToAllBatches !== undefined) {
+            const batchIdsToAssign = Array.isArray(data.batchIds) ? data.batchIds : [];
+            const isAvailableToAll = data.availableToAllBatches === true ||
+                                    data.availableToAllBatches === 'true' ||
+                                    data.availableToAllBatches === 1;
+
+            await batchAssignmentService.assignBatchesToEvent(
+                eventId,
+                batchIdsToAssign,
+                isAvailableToAll
+            );
+            console.log('UpdateEvent Service - Batches updated:', { batchIdsToAssign, isAvailableToAll });
         }
 
         return true;

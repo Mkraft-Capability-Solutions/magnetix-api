@@ -470,6 +470,7 @@ class AdminEventService {
                 e.last_updated,
                 e.creator_id,
                 e.is_deleted,
+                e.available_to_all_batches,
                 CASE
                     WHEN i.user_id IS NOT NULL THEN CONCAT(i.first_name, ' ', i.last_name)
                     WHEN a.user_id IS NOT NULL THEN CONCAT(a.first_name, ' ', a.last_name)
@@ -482,9 +483,26 @@ class AdminEventService {
             LEFT JOIN super_admins sa ON e.creator_id = sa.user_id
             WHERE e.id = ? AND e.is_deleted = 0
         `, [eventId]);
-        
+
         if (rows.length > 0) {
-            return new AdminEventDTO(rows[0]);
+            const eventData = new AdminEventDTO(rows[0]);
+
+            // Fetch batch assignments
+            try {
+                const batchAssignmentService = require('../batch_assignment_service');
+                const { availableToAll, batches } = await batchAssignmentService.getEventBatches(eventId);
+
+                eventData.availableToAllBatches = availableToAll;
+                eventData.batchIds = batches.map(batch => batch.id);
+
+                console.log(`Event ${eventId} batch data:`, { availableToAll, batchIds: eventData.batchIds });
+            } catch (batchError) {
+                console.error(`Error fetching batch data for event ${eventId}:`, batchError);
+                eventData.availableToAllBatches = rows[0].available_to_all_batches === 1;
+                eventData.batchIds = [];
+            }
+
+            return eventData;
         }
         return null;
     }

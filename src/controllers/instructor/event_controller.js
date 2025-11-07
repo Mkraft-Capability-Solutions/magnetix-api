@@ -28,7 +28,9 @@ const createEventSchema = Joi.object({
         Joi.string().uri(),
         Joi.string().allow('', null)
     ).optional(),
-    target_audience_emails: Joi.string().allow('').optional()
+    target_audience_emails: Joi.string().allow('').optional(),
+    batchIds: Joi.array().items(Joi.number().integer()).optional(),
+    availableToAllBatches: Joi.boolean().optional()
 });
 
 const updateEventSchema = Joi.object({
@@ -50,7 +52,9 @@ const updateEventSchema = Joi.object({
         Joi.string().uri(),
         Joi.string().allow('', null)
     ).optional(),
-    target_audience_emails: Joi.string().allow('').optional()
+    target_audience_emails: Joi.string().allow('').optional(),
+    batchIds: Joi.array().items(Joi.number().integer()).optional(),
+    availableToAllBatches: Joi.boolean().optional()
 });
 
 const deleteEventSchema = Joi.object({
@@ -78,6 +82,24 @@ exports.createEvent = async (req, res, next) => {
         // Safely parse onlineEvent with fallback
         const isOnline = req.body.onlineEvent === 'true' || req.body.onlineEvent === '1' || req.body.onlineEvent === 1;
         
+        // Parse batch data from FormData
+        let batchIds = [];
+        let availableToAllBatches = false;
+
+        if (req.body.batchIds) {
+            try {
+                batchIds = JSON.parse(req.body.batchIds);
+            } catch (e) {
+                console.error('Error parsing batchIds:', e);
+                batchIds = [];
+            }
+        }
+
+        availableToAllBatches = req.body.availableToAllBatches === 'true' ||
+                                req.body.availableToAllBatches === '1' ||
+                                req.body.availableToAllBatches === 1 ||
+                                req.body.availableToAllBatches === true;
+
         const processedData = {
             title: req.body.title || '',
             description: req.body.description || '',
@@ -93,7 +115,9 @@ exports.createEvent = async (req, res, next) => {
             eventVenue: isOnline ? null : (req.body.eventVenue || ''),
             maxLimit: req.body.maxLimit ? parseInt(req.body.maxLimit) : null,
             url: req.body.url || '',
-            target_audience_emails: req.body.target_audience_emails || ''
+            target_audience_emails: req.body.target_audience_emails || '',
+            batchIds: batchIds,
+            availableToAllBatches: availableToAllBatches
         };
 
         console.log('Processed eventThumbnail:', processedData.eventThumbnail);
@@ -192,7 +216,25 @@ exports.updateEvent = async (req, res, next) => {
 
         // Safely parse onlineEvent with fallback
         const isOnline = req.body.onlineEvent === 'true' || req.body.onlineEvent === '1' || req.body.onlineEvent === 1;
-        
+
+        // Parse batch data from FormData
+        let batchIds = [];
+        let availableToAllBatches = false;
+
+        if (req.body.batchIds) {
+            try {
+                batchIds = JSON.parse(req.body.batchIds);
+            } catch (e) {
+                console.error('Error parsing batchIds:', e);
+                batchIds = [];
+            }
+        }
+
+        availableToAllBatches = req.body.availableToAllBatches === 'true' ||
+                                req.body.availableToAllBatches === '1' ||
+                                req.body.availableToAllBatches === 1 ||
+                                req.body.availableToAllBatches === true;
+
         const processedData = {
             eventId: req.body.eventId ? parseInt(req.body.eventId) : null,
             title: req.body.title || '',
@@ -209,7 +251,9 @@ exports.updateEvent = async (req, res, next) => {
             eventVenue: isOnline ? null : (req.body.eventVenue || ''),
             maxLimit: req.body.maxLimit ? parseInt(req.body.maxLimit) : null,
             url: req.body.url || '',
-            target_audience_emails: req.body.target_audience_emails || ''
+            target_audience_emails: req.body.target_audience_emails || '',
+            batchIds: batchIds,
+            availableToAllBatches: availableToAllBatches
         };
 
         console.log('Processed eventThumbnail for update:', processedData.eventThumbnail);

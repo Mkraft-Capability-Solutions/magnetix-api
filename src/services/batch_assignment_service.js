@@ -24,9 +24,17 @@ class BatchAssignmentService {
         [courseId]
       );
 
-      // Insert batch assignments (whether availableToAll or specific batches)
-      if (batchIds && batchIds.length > 0) {
-        const values = batchIds.map(batchId => [courseId, batchId]);
+      // If availableToAll is true, fetch all batches and assign them
+      let batchIdsToInsert = batchIds;
+      if (availableToAll) {
+        const [allBatches] = await connection.query('SELECT id FROM batches');
+        batchIdsToInsert = allBatches.map(batch => batch.id);
+        console.log(`Available to all batches: Assigning ${batchIdsToInsert.length} batches to course ${courseId}`);
+      }
+
+      // Insert batch assignments
+      if (batchIdsToInsert && batchIdsToInsert.length > 0) {
+        const values = batchIdsToInsert.map(batchId => [courseId, batchId]);
         await connection.query(
           'INSERT INTO course_batches (course_id, batch_id) VALUES ?',
           [values]
@@ -66,9 +74,17 @@ class BatchAssignmentService {
         [eventId]
       );
 
-      // Insert batch assignments (whether availableToAll or specific batches)
-      if (batchIds && batchIds.length > 0) {
-        const values = batchIds.map(batchId => [eventId, batchId]);
+      // If availableToAll is true, fetch all batches and assign them
+      let batchIdsToInsert = batchIds;
+      if (availableToAll) {
+        const [allBatches] = await connection.query('SELECT id FROM batches');
+        batchIdsToInsert = allBatches.map(batch => batch.id);
+        console.log(`Available to all batches: Assigning ${batchIdsToInsert.length} batches to event ${eventId}`);
+      }
+
+      // Insert batch assignments
+      if (batchIdsToInsert && batchIdsToInsert.length > 0) {
+        const values = batchIdsToInsert.map(batchId => [eventId, batchId]);
         await connection.query(
           'INSERT INTO event_batches (event_id, batch_id) VALUES ?',
           [values]
