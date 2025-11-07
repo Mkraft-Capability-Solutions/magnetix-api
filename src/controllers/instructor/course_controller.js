@@ -590,6 +590,15 @@ exports.updateCourseBasicInfo = async (req, res, next) => {
     const { title, shortDescription, description, category, subcategory, level, language, courseDuration, batchIds, availableToAllBatches } = req.body;
     const updatedBy = req.user.uuid;
 
+    console.log('updateCourseBasicInfo called with batch data:', {
+      courseId,
+      batchIds,
+      availableToAllBatches,
+      batchIdsType: typeof batchIds,
+      batchIdsIsArray: Array.isArray(batchIds)
+    });
+
+    // Update course basic information
     const result = await instructorCourseService.updateCourseBasicInfo(
       courseId,
       {
@@ -601,11 +610,26 @@ exports.updateCourseBasicInfo = async (req, res, next) => {
         level,
         languageId: language,
         courseDuration,
-        batchIds,
-        availableToAllBatches
       },
       updatedBy
     );
+
+    // Update batch assignments
+    if (batchIds !== undefined || availableToAllBatches !== undefined) {
+      const batchIdsToAssign = Array.isArray(batchIds) ? batchIds : [];
+      const isAvailableToAll = availableToAllBatches === true || availableToAllBatches === 'true' || availableToAllBatches === 1;
+
+      console.log('Updating batch assignments:', {
+        batchIdsToAssign,
+        isAvailableToAll
+      });
+
+      await batchAssignmentService.assignBatchesToCourse(
+        courseId,
+        batchIdsToAssign,
+        isAvailableToAll
+      );
+    }
 
     res.json({
       success: true,
