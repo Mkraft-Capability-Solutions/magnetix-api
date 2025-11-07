@@ -1,5 +1,6 @@
 const e = require("express");
 const AdminCourseService = require("../../services/admin/course_service");
+const batchAssignmentService = require("../../services/batch_assignment_service");
 
 exports.getAllCourses = async (req, res) => {
   try {
@@ -15,6 +16,12 @@ exports.getAllCourses = async (req, res) => {
 exports.getCourse = async (req, res) => {
   try {
     const course = await AdminCourseService.getCourseById(req.params.courseId);
+
+    // Get batch assignments for the course
+    const batchInfo = await batchAssignmentService.getCourseBatches(req.params.courseId);
+    course.availableToAllBatches = batchInfo.availableToAll;
+    course.batches = batchInfo.batches;
+
     res.json({
       success: true,
       data: course,
@@ -25,24 +32,61 @@ exports.getCourse = async (req, res) => {
 };
 exports.createCourse = async (req, res) => {
   try {
+    // Extract batch-related fields from request
+    let batchIds = [];
+    let availableToAllBatches = false;
+
+    if (req.body.availableToAllBatches === true || req.body.availableToAllBatches === 'true') {
+      availableToAllBatches = true;
+    } else if (req.body.batchIds) {
+      // Parse batchIds if it's a string (from FormData)
+      batchIds = typeof req.body.batchIds === 'string'
+        ? JSON.parse(req.body.batchIds)
+        : req.body.batchIds;
+    }
+
+    // Create the course
     const courseId = await AdminCourseService.createCourse(req.body);
+
+    // Assign batches to the course
+    await batchAssignmentService.assignBatchesToCourse(courseId, batchIds, availableToAllBatches);
+
     res.status(201).json({
       success: true,
       message: "Course created successfully",
       data: { courseId },
     });
   } catch (error) {
+    console.error('Error in createCourse controller:', error);
     res.status(400).json({ success: false, message: error.message });
   }
 };
 exports.updateCourse = async (req, res) => {
   try {
     await AdminCourseService.updateCourse(req.params.id, req.body);
+
+    // Handle batch updates if provided
+    if (req.body.hasOwnProperty('availableToAllBatches') || req.body.batchIds) {
+      let batchIds = [];
+      let availableToAllBatches = false;
+
+      if (req.body.availableToAllBatches === true || req.body.availableToAllBatches === 'true') {
+        availableToAllBatches = true;
+      } else if (req.body.batchIds) {
+        batchIds = typeof req.body.batchIds === 'string'
+          ? JSON.parse(req.body.batchIds)
+          : req.body.batchIds;
+      }
+
+      await batchAssignmentService.assignBatchesToCourse(req.params.id, batchIds, availableToAllBatches);
+    }
+
     res.json({
       success: true,
       message: "Course updated successfully",
     });
   } catch (error) {
+    console.error('Error in updateCourse controller:', error);
     res.status(400).json({ success: false, message: error.message });
   }
 };

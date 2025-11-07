@@ -96,4 +96,10 @@ router.get(
   instructorCourseController.getCourseAnalytics
 );
 
+// Get batch assignments for a course
+router.get(
+  "/courses/:courseId/batches",
+  instructorCourseController.getCourseBatches
+);
+
 module.exports = router;

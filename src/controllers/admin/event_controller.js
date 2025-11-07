@@ -27,7 +27,9 @@ const updateEventSchema = Joi.object({
         Joi.string().uri(),
         Joi.string().allow('', null)
     ).optional(),
-    target_audience_emails: Joi.string().allow('').optional()
+    target_audience_emails: Joi.string().allow('').optional(),
+    batchIds: Joi.array().items(Joi.number().integer()).optional().default([]),
+    availableToAllBatches: Joi.boolean().optional().default(false)
 });
 
 const deleteEventSchema = Joi.object({
@@ -52,7 +54,9 @@ const createEventSchema = Joi.object({
         Joi.string().uri(),
         Joi.string().allow('', null)
     ).optional(),
-    target_audience_emails: Joi.string().allow('').optional()
+    target_audience_emails: Joi.string().allow('').optional(),
+    batchIds: Joi.array().items(Joi.number().integer()).optional().default([]),
+    availableToAllBatches: Joi.boolean().optional().default(false)
 });
 
 const eventAttendeesSchema = Joi.object({
@@ -80,6 +84,22 @@ exports.createEvent = async (req, res, next) => {
         // Process FormData and convert string values to appropriate types
         console.log('Admin raw request body:', req.body);
         const isOnline = req.body.onlineEvent === 'true';
+
+        // Parse batch data from FormData
+        let batchIds = [];
+        let availableToAllBatches = false;
+
+        if (req.body.availableToAllBatches === 'true') {
+            availableToAllBatches = true;
+        } else if (req.body.batchIds) {
+            try {
+                batchIds = JSON.parse(req.body.batchIds);
+            } catch (e) {
+                console.error('Error parsing batchIds:', e);
+                batchIds = [];
+            }
+        }
+
         const processedData = {
             title: req.body.title,
             description: req.body.description || '',
@@ -95,7 +115,9 @@ exports.createEvent = async (req, res, next) => {
             eventVenue: isOnline ? null : (req.body.eventVenue || ''),
             maxLimit: parseInt(req.body.maxLimit),
             url: req.body.url || '',
-            target_audience_emails: req.body.target_audience_emails || ''
+            target_audience_emails: req.body.target_audience_emails || '',
+            batchIds: batchIds,
+            availableToAllBatches: availableToAllBatches
         };
 
         console.log('Admin processed eventThumbnail:', processedData.eventThumbnail);
@@ -222,6 +244,22 @@ exports.updateEvent = async (req, res, next) => {
         // Process FormData and convert string values to appropriate types
         console.log('Raw request body for admin update:', req.body);
         const isOnline = req.body.onlineEvent === 'true';
+
+        // Parse batch data from FormData
+        let batchIds = [];
+        let availableToAllBatches = false;
+
+        if (req.body.availableToAllBatches === 'true') {
+            availableToAllBatches = true;
+        } else if (req.body.batchIds) {
+            try {
+                batchIds = JSON.parse(req.body.batchIds);
+            } catch (e) {
+                console.error('Error parsing batchIds:', e);
+                batchIds = [];
+            }
+        }
+
         const processedData = {
             eventId: parseInt(req.body.eventId),
             title: req.body.title,
@@ -238,7 +276,9 @@ exports.updateEvent = async (req, res, next) => {
             eventVenue: isOnline ? null : (req.body.eventVenue || ''),
             maxLimit: parseInt(req.body.maxLimit),
             url: req.body.url || '',
-            target_audience_emails: req.body.target_audience_emails || ''
+            target_audience_emails: req.body.target_audience_emails || '',
+            batchIds: batchIds,
+            availableToAllBatches: availableToAllBatches
         };
 
         console.log('Processed data for admin update:', processedData);

@@ -1,5 +1,6 @@
 const e = require("express");
 const instructorCourseService = require("../../services/instructor/course_service");
+const batchAssignmentService = require("../../services/batch_assignment_service");
 const Joi = require("joi");
 
 // Validation schemas
@@ -102,6 +103,9 @@ const courseSchema = Joi.object({
     )
     .optional()
     .default([]),
+  // Batch assignment fields
+  batchIds: Joi.array().items(Joi.number().integer()).optional().default([]),
+  availableToAllBatches: Joi.boolean().optional().default(false),
 });
 
 exports.addCourse = async (req, res, next) => {
@@ -124,11 +128,28 @@ exports.addCourse = async (req, res, next) => {
       });
     }
 
+    // Extract batch-related fields
+    const { batchIds = [], availableToAllBatches = false } = req.body;
+
+    // Create the course
     const result = await instructorCourseService.addCourse(
       req.user.uuid,
       req.body
     );
     console.log("Course creation result:", result);
+
+    // Get the courseId from the result
+    const courseId = result.data?.courseId || result.data?.id;
+
+    if (courseId) {
+      // Assign batches to the course
+      await batchAssignmentService.assignBatchesToCourse(
+        courseId,
+        batchIds,
+        availableToAllBatches
+      );
+      console.log(`Batch assignment completed for course ${courseId}`);
+    }
 
     res.status(201).json({
       success: true,
@@ -169,6 +190,18 @@ exports.updateCourse = async (req, res, next) => {
       req.body
     );
     console.log("Course update result:", result);
+
+    // Handle batch updates if provided
+    if (req.body.hasOwnProperty('availableToAllBatches') || req.body.batchIds) {
+      const { batchIds = [], availableToAllBatches = false } = req.body;
+
+      await batchAssignmentService.assignBatchesToCourse(
+        req.params.courseId,
+        batchIds,
+        availableToAllBatches
+      );
+      console.log(`Batch assignment updated for course ${req.params.courseId}`);
+    }
 
     res.json({
       success: true,
@@ -290,6 +323,12 @@ exports.getCourseDetailsById = async (req, res, next) => {
       req.params.courseId,
       req.user.uuid
     );
+
+    // Get batch assignments for the course
+    const batchInfo = await batchAssignmentService.getCourseBatches(req.params.courseId);
+    courseDetails.availableToAllBatches = batchInfo.availableToAll;
+    courseDetails.batches = batchInfo.batches;
+    courseDetails.batchIds = batchInfo.batches.map(b => b.id);
 
     console.log(
       "Course details retrieved:",
@@ -548,27 +587,53 @@ exports.addLesson = async (req, res, next) => {
 exports.updateCourseBasicInfo = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;
-    const { title, shortDescription, description, category, subcategory, level, language, courseDuration } = req.body;
+    const { title, shortDescription, description, category, subcategory, level, language, courseDuration, batchIds, availableToAllBatches } = req.body;
     const updatedBy = req.user.uuid;
 
+    console.log('updateCourseBasicInfo called with batch data:', {
+      courseId,
+      batchIds,
+      availableToAllBatches,
+      batchIdsType: typeof batchIds,
+      batchIdsIsArray: Array.isArray(batchIds)
+    });
+
+    // Update course basic information
     const result = await instructorCourseService.updateCourseBasicInfo(
       courseId,
       {
         title,
-        shortDescription,  
+        shortDescription,
         description,
         categoryId: category,
         subCategoryId: subcategory,
         level,
         languageId: language,
-        courseDuration
+        courseDuration,
       },
       updatedBy
     );
 
+    // Update batch assignments
+    if (batchIds !== undefined || availableToAllBatches !== undefined) {
+      const batchIdsToAssign = Array.isArray(batchIds) ? batchIds : [];
+      const isAvailableToAll = availableToAllBatches === true || availableToAllBatches === 'true' || availableToAllBatches === 1;
+
+      console.log('Updating batch assignments:', {
+        batchIdsToAssign,
+        isAvailableToAll
+      });
+
+      await batchAssignmentService.assignBatchesToCourse(
+        courseId,
+        batchIdsToAssign,
+        isAvailableToAll
+      );
+    }
+
     res.json({
       success: true,
-      message: "Course basic information updated successfully", 
+      message: "Course basic information updated successfully",
       data: result,
     });
   } catch (error) {
@@ -680,6 +745,22 @@ exports.getSectionsByCourseId = async (req, res, next) => {
     });
   } catch (error) {
     console.error("Error in getSectionsByCourseId:", error);
+    next(error);
+  }
+};
+
+exports.getCourseBatches = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const batchAssignmentService = require("../../services/batch_assignment_service");
+    const batchData = await batchAssignmentService.getCourseBatches(courseId);
+
+    res.json({
+      success: true,
+      data: batchData,
+    });
+  } catch (error) {
+    console.error("Error in getCourseBatches:", error);
     next(error);
   }
 };

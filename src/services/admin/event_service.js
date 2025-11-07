@@ -1,5 +1,6 @@
 const { promisePool } = require('../../config/db');
 const { AdminEventDTO, AdminEventAttendeeDTO } = require('../../dto/admin/event_dto');
+const batchAssignmentService = require('../batch_assignment_service');
 
 class AdminEventService {
     
@@ -49,12 +50,27 @@ class AdminEventService {
         ]);
         
         const eventId = result.insertId;
-        
+
         // Handle individual target audience emails if provided
         if (data.eventAudienceTypeId === 2 && data.target_audience_emails) {
             await this.addTargetAudienceAttendees(eventId, data.target_audience_emails);
         }
-        
+
+        // Handle batch assignments for the event
+        if (data.availableToAllBatches !== undefined || (data.batchIds && data.batchIds.length > 0)) {
+            try {
+                await batchAssignmentService.assignBatchesToEvent(
+                    eventId,
+                    data.batchIds || [],
+                    data.availableToAllBatches || false
+                );
+                console.log("Batch assignments completed for event:", eventId);
+            } catch (batchError) {
+                console.error("Error assigning batches to event:", batchError);
+                // Don't fail the entire operation, just log the error
+            }
+        }
+
         return eventId;
     }
 
@@ -402,6 +418,21 @@ class AdminEventService {
             await this.updateTargetAudienceAttendees(eventId, '');
         }
 
+        // Handle batch assignments for the event
+        if (data.availableToAllBatches !== undefined || (data.batchIds && data.batchIds.length > 0)) {
+            try {
+                await batchAssignmentService.assignBatchesToEvent(
+                    eventId,
+                    data.batchIds || [],
+                    data.availableToAllBatches || false
+                );
+                console.log("Batch assignments updated for event:", eventId);
+            } catch (batchError) {
+                console.error("Error updating batches for event:", batchError);
+                // Don't fail the entire operation, just log the error
+            }
+        }
+
         return true;
     }
 
@@ -439,6 +470,7 @@ class AdminEventService {
                 e.last_updated,
                 e.creator_id,
                 e.is_deleted,
+                e.available_to_all_batches,
                 CASE
                     WHEN i.user_id IS NOT NULL THEN CONCAT(i.first_name, ' ', i.last_name)
                     WHEN a.user_id IS NOT NULL THEN CONCAT(a.first_name, ' ', a.last_name)
@@ -451,9 +483,26 @@ class AdminEventService {
             LEFT JOIN super_admins sa ON e.creator_id = sa.user_id
             WHERE e.id = ? AND e.is_deleted = 0
         `, [eventId]);
-        
+
         if (rows.length > 0) {
-            return new AdminEventDTO(rows[0]);
+            const eventData = new AdminEventDTO(rows[0]);
+
+            // Fetch batch assignments
+            try {
+                const batchAssignmentService = require('../batch_assignment_service');
+                const { availableToAll, batches } = await batchAssignmentService.getEventBatches(eventId);
+
+                eventData.availableToAllBatches = availableToAll;
+                eventData.batchIds = batches.map(batch => batch.id);
+
+                console.log(`Event ${eventId} batch data:`, { availableToAll, batchIds: eventData.batchIds });
+            } catch (batchError) {
+                console.error(`Error fetching batch data for event ${eventId}:`, batchError);
+                eventData.availableToAllBatches = rows[0].available_to_all_batches === 1;
+                eventData.batchIds = [];
+            }
+
+            return eventData;
         }
         return null;
     }
