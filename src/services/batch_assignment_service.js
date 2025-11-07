@@ -102,13 +102,8 @@ class BatchAssignmentService {
 
     const availableToAll = courseRows[0].available_to_all_batches === 1;
 
-    if (availableToAll) {
-      // Return all batches
-      const [batches] = await promisePool.query('SELECT * FROM batches ORDER BY batch_name');
-      return { availableToAll: true, batches };
-    }
-
-    // Return only assigned batches
+    // ALWAYS query course_batches table to get the actual assigned batches
+    // This ensures we return the data from course_batches as requested
     const [batches] = await promisePool.query(
       `SELECT b.* FROM batches b
        INNER JOIN course_batches cb ON b.id = cb.batch_id
@@ -117,7 +112,9 @@ class BatchAssignmentService {
       [courseId]
     );
 
-    return { availableToAll: false, batches };
+    console.log(`Fetched ${batches.length} batches for course ${courseId} (availableToAll: ${availableToAll})`);
+
+    return { availableToAll, batches };
   }
 
   /**
@@ -137,13 +134,8 @@ class BatchAssignmentService {
 
     const availableToAll = eventRows[0].available_to_all_batches === 1;
 
-    if (availableToAll) {
-      // Return all batches
-      const [batches] = await promisePool.query('SELECT * FROM batches ORDER BY batch_name');
-      return { availableToAll: true, batches };
-    }
-
-    // Return only assigned batches
+    // ALWAYS query event_batches table to get the actual assigned batches
+    // This ensures we return the data from event_batches as requested
     const [batches] = await promisePool.query(
       `SELECT b.* FROM batches b
        INNER JOIN event_batches eb ON b.id = eb.batch_id
@@ -152,7 +144,9 @@ class BatchAssignmentService {
       [eventId]
     );
 
-    return { availableToAll: false, batches };
+    console.log(`Fetched ${batches.length} batches for event ${eventId} (availableToAll: ${availableToAll})`);
+
+    return { availableToAll, batches };
   }
 }
 
