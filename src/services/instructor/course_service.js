@@ -1186,6 +1186,63 @@ class InstructorCourseService {
     return rows[0];
   }
 
+  // Add new category
+  async addCategory(categoryName, creatorId) {
+    try {
+      // Check if category already exists
+      const [existing] = await promisePool.query(
+        "SELECT id FROM category WHERE LOWER(category_name) = LOWER(?)",
+        [categoryName]
+      );
+
+      if (existing.length > 0) {
+        throw new Error("Category already exists");
+      }
+
+      const [result] = await promisePool.query(
+        "INSERT INTO category (category_name, creator_id, last_updated_by) VALUES (?, ?, ?)",
+        [categoryName, creatorId, creatorId]
+      );
+
+      return {
+        id: result.insertId,
+        category_name: categoryName,
+        creator_id: creatorId,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Add new subcategory
+  async addSubCategory(categoryId, subcategoryName, creatorId) {
+    try {
+      // Check if subcategory already exists for this category
+      const [existing] = await promisePool.query(
+        "SELECT id FROM sub_category WHERE category_id = ? AND LOWER(subcategory_name) = LOWER(?)",
+        [categoryId, subcategoryName]
+      );
+
+      if (existing.length > 0) {
+        throw new Error("Subcategory already exists for this category");
+      }
+
+      const [result] = await promisePool.query(
+        "INSERT INTO sub_category (category_id, subcategory_name, creator_id, last_updated_by) VALUES (?, ?, ?, ?)",
+        [categoryId, subcategoryName, creatorId, creatorId]
+      );
+
+      return {
+        id: result.insertId,
+        category_id: categoryId,
+        subcategory_name: subcategoryName,
+        creator_id: creatorId,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
   async getEnrolledStudents(courseId, userId) {
     const [rows] = await promisePool.query(
       "CALL get_enrolled_students_with_progress(?, ?)",

@@ -80,6 +80,10 @@ router.get(
 );
 router.get("/metadata/languages", instructorCourseController.getLanguages);
 
+// Add new category and subcategory
+router.post("/metadata/categories", instructorCourseController.addCategory);
+router.post("/metadata/subcategories", instructorCourseController.addSubCategory);
+
 // Get enrolled students
 router.get(
   "/courses/:courseId/students",
