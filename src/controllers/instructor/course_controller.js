@@ -299,6 +299,80 @@ exports.getLanguages = async (req, res, next) => {
   }
 };
 
+// Add new category
+exports.addCategory = async (req, res, next) => {
+  try {
+    const { categoryName } = req.body;
+
+    if (!categoryName || !categoryName.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Category name is required",
+      });
+    }
+
+    const newCategory = await instructorCourseService.addCategory(
+      categoryName.trim(),
+      req.user.uuid
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Category added successfully",
+      data: newCategory,
+    });
+  } catch (error) {
+    if (error.message === "Category already exists") {
+      return res.status(409).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    next(error);
+  }
+};
+
+// Add new subcategory
+exports.addSubCategory = async (req, res, next) => {
+  try {
+    const { categoryId, subcategoryName } = req.body;
+
+    if (!categoryId) {
+      return res.status(400).json({
+        success: false,
+        message: "Category ID is required",
+      });
+    }
+
+    if (!subcategoryName || !subcategoryName.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Subcategory name is required",
+      });
+    }
+
+    const newSubCategory = await instructorCourseService.addSubCategory(
+      categoryId,
+      subcategoryName.trim(),
+      req.user.uuid
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Subcategory added successfully",
+      data: newSubCategory,
+    });
+  } catch (error) {
+    if (error.message === "Subcategory already exists for this category") {
+      return res.status(409).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    next(error);
+  }
+};
+
 exports.getEnrolledStudents = async (req, res, next) => {
   try {
     const students = await instructorCourseService.getEnrolledStudents(
