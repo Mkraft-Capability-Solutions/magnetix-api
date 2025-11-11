@@ -42,11 +42,11 @@ class EventReminderService {
         }
     }
 
-    // Get all attendees for a specific event
+    // Get all attendees for a specific event who have opted in for notifications
     async getEventAttendees(eventId) {
         try {
             const [rows] = await promisePool.query(`
-                SELECT 
+                SELECT
                     ea.recipient_id,
                     ea.recipient_name,
                     ea.recipient_email,
@@ -55,12 +55,13 @@ class EventReminderService {
                 INNER JOIN users u ON ea.recipient_id = u.uuid
                 WHERE ea.event_id = ?
                 AND u.is_deleted = 0
+                AND ea.send_notification = 1
                 ORDER BY ea.registered_at ASC
             `, [eventId]);
-            
-            console.log(`Found ${rows.length} attendees for event ${eventId}`);
+
+            console.log(`Found ${rows.length} attendees for event ${eventId} who opted in for notifications`);
             return rows;
-            
+
         } catch (error) {
             console.error(`Error getting attendees for event ${eventId}:`, error);
             throw error;
