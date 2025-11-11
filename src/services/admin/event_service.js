@@ -539,7 +539,7 @@ class AdminEventService {
     }
 
     // Bulk enroll students in an event
-    async bulkEnrollStudents(eventId, emails) {
+    async bulkEnrollStudents(eventId, emails, sendNotification = true) {
         const results = {
             enrolled: 0,
             skipped: 0,
@@ -595,25 +595,27 @@ class AdminEventService {
                 );
                 
                 if (existingRows.length === 0) {
-                    // Insert into event_attendees
+                    // Insert into event_attendees with send_notification preference
                     await promisePool.query(
-                        'INSERT INTO event_attendees (event_id, recipient_id, recipient_name, recipient_email, registered_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)',
-                        [eventId, user.uuid, recipientName, email]
+                        'INSERT INTO event_attendees (event_id, recipient_id, recipient_name, recipient_email, send_notification, registered_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
+                        [eventId, user.uuid, recipientName, email, sendNotification ? 1 : 0]
                     );
-                    
+
                     // Update attendees count
                     await promisePool.query(
                         'UPDATE events SET attendees_count = attendees_count + 1 WHERE id = ?',
                         [eventId]
                     );
 
-                    // Send registration confirmation email
-                    try {
-                        const firstName = studentRows[0]?.first_name || 'Student';
-                        await emailHelper.sendBulkEventRegistrationEmail(email, firstName, event);
-                    } catch (emailError) {
-                        console.error(`Failed to send email to ${email}:`, emailError);
-                        // Don't fail the enrollment if email fails
+                    // Send registration confirmation email only if sendNotification is true
+                    if (sendNotification) {
+                        try {
+                            const firstName = studentRows[0]?.first_name || 'Student';
+                            await emailHelper.sendBulkEventRegistrationEmail(email, firstName, event);
+                        } catch (emailError) {
+                            console.error(`Failed to send email to ${email}:`, emailError);
+                            // Don't fail the enrollment if email fails
+                        }
                     }
 
                     results.enrolled++;

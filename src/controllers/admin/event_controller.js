@@ -65,7 +65,8 @@ const eventAttendeesSchema = Joi.object({
 
 const bulkEnrollSchema = Joi.object({
     eventId: Joi.number().integer().required(),
-    emails: Joi.array().items(Joi.string().email()).min(1).required()
+    emails: Joi.array().items(Joi.string().email()).min(1).required(),
+    sendNotification: Joi.boolean().optional().default(true)
 });
 
 // Create new event (admin can create events)
@@ -383,7 +384,7 @@ exports.bulkEnrollStudents = async (req, res, next) => {
             return res.status(400).json({ message: error.details[0].message });
         }
 
-        const { emails } = req.body;
+        const { emails, sendNotification = true } = req.body;
 
         // Check if event exists
         const event = await adminEventService.getEventById(eventId);
@@ -392,7 +393,7 @@ exports.bulkEnrollStudents = async (req, res, next) => {
         }
 
         // Process bulk enrollment
-        const result = await adminEventService.bulkEnrollStudents(eventId, emails);
+        const result = await adminEventService.bulkEnrollStudents(eventId, emails, sendNotification);
 
         res.json({
             success: true,

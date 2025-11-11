@@ -24,6 +24,21 @@ exports.getInstructorById = async (req, res) => {
     res.status(404).json({ success: false, message: error.message });
   }
 };
+
+// Get instructor with statistics
+exports.getInstructorWithStats = async (req, res) => {
+  try {
+    const instructorData = await AdminInstructorService.getInstructorWithStats(
+      req.params.instructorId
+    );
+    res.json({
+      success: true,
+      data: instructorData,
+    });
+  } catch (error) {
+    res.status(404).json({ success: false, message: error.message });
+  }
+};
 exports.createInstructor = async (req, res) => {
   try {
     const instructor = await AdminInstructorService.createInstructor(req.body);
