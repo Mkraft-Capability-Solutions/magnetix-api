@@ -31,6 +31,74 @@ async getAllStudents() {
     return rows[0];
   }
 
+  // Get student details with statistics
+  async getStudentWithStats(studentId) {
+    // Get basic student info with email and batch
+    const [studentRows] = await promisePool.query(`
+      SELECT
+        s.*,
+        u.email,
+        u.is_deleted,
+        u.status,
+        b.batch_name
+      FROM students s
+      JOIN users u ON s.user_id = u.uuid
+      LEFT JOIN batches b ON s.batch_id = b.id
+      WHERE s.user_id = ?
+    `, [studentId]);
+
+    if (studentRows.length === 0) {
+      throw new Error("Student not found");
+    }
+
+    const student = studentRows[0];
+
+    // Get total courses enrolled
+    const [courseStats] = await promisePool.query(`
+      SELECT COUNT(*) as total_courses
+      FROM enrol
+      WHERE user_id = ?
+    `, [studentId]);
+
+    // Get total events registered
+    const [eventStats] = await promisePool.query(`
+      SELECT COUNT(*) as total_events
+      FROM event_attendees
+      WHERE recipient_id = ?
+    `, [studentId]);
+
+    // Get total 1:1 sessions with mentors
+    const [sessionStats] = await promisePool.query(`
+      SELECT COUNT(*) as total_sessions
+      FROM scheduled_sessions
+      WHERE mentee_id = ?
+    `, [studentId]);
+
+    // Get assigned mentors with their details
+    const [mentorStats] = await promisePool.query(`
+      SELECT DISTINCT
+        i.user_id as mentor_id,
+        i.first_name,
+        i.last_name,
+        i.expertise,
+        u.email
+      FROM scheduled_sessions ss
+      JOIN instructors i ON ss.mentor_id = i.user_id
+      JOIN users u ON i.user_id = u.uuid
+      WHERE ss.mentee_id = ? AND u.is_deleted = 0
+    `, [studentId]);
+
+    return {
+      ...student,
+      statistics: {
+        total_courses_enrolled: courseStats[0]?.total_courses || 0,
+        total_events_registered: eventStats[0]?.total_events || 0,
+        total_sessions: sessionStats[0]?.total_sessions || 0,
+        assigned_mentors: mentorStats || []
+      }
+    };
+  }
+
   async createStudent(data) {
     const { first_name, last_name, email, batch_id } = data;
 

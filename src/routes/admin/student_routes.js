@@ -7,6 +7,10 @@ router.use(authenticate);
 router.use(authorize(3));
 
 router.get("/", adminStudentController.getAllStudents);
+
+// Stats route (must come before /:studentId)
+router.get("/:studentId/stats", adminStudentController.getStudentWithStats);
+
 router.get("/:studentId", adminStudentController.getStudentById);
 router.post("/", adminStudentController.createStudent);
 router.put("/:studentId", adminStudentController.updateStudent);

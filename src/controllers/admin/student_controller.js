@@ -24,6 +24,21 @@ exports.getStudentById = async (req, res) => {
     res.status(404).json({ success: false, message: error.message });
   }
 };
+
+// Get student with statistics
+exports.getStudentWithStats = async (req, res) => {
+  try {
+    const studentData = await AdminStudentService.getStudentWithStats(
+      req.params.studentId
+    );
+    res.json({
+      success: true,
+      data: studentData,
+    });
+  } catch (error) {
+    res.status(404).json({ success: false, message: error.message });
+  }
+};
 exports.createStudent = async (req, res) => {
   try {
     const student = await AdminStudentService.createStudent(req.body);
