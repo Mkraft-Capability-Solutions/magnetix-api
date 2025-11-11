@@ -49,52 +49,103 @@ class AdminInstructorService {
 
     const instructor = instructorRows[0];
 
-    // Get total approved courses created by instructor
-    const [courseStats] = await promisePool.query(`
-      SELECT COUNT(*) as total_courses
-      FROM course
-      WHERE creator_id = ? AND is_deleted = 0 AND status = 'active'
-    `, [instructorId]);
-
-    // Get total events created by instructor
-    const [eventStats] = await promisePool.query(`
-      SELECT COUNT(*) as total_events
-      FROM events
-      WHERE creator_id = ? AND is_deleted = 0
-    `, [instructorId]);
-
-    // Get total 1:1 sessions conducted
-    const [sessionStats] = await promisePool.query(`
-      SELECT COUNT(*) as total_sessions
-      FROM scheduled_sessions
-      WHERE mentor_id = ? AND status = 'booked'
-    `, [instructorId]);
-
-    // Get total unique mentees
-    const [menteeStats] = await promisePool.query(`
-      SELECT COUNT(DISTINCT mentee_id) as total_mentees
-      FROM scheduled_sessions
-      WHERE mentor_id = ?
-    `, [instructorId]);
-
-    // Get batch information the instructor teaches (if applicable)
-    const [batchInfo] = await promisePool.query(`
-      SELECT GROUP_CONCAT(DISTINCT b.batch_name SEPARATOR ', ') as batches
+    // Get approved courses list with details
+    const [coursesList] = await promisePool.query(`
+      SELECT
+        c.id,
+        c.title,
+        c.level,
+        c.status,
+        c.created_at,
+        c.thumbnail,
+        COUNT(DISTINCT e.id) as enrolled_count
       FROM course c
-      LEFT JOIN course_batches cb ON c.id = cb.course_id
-      LEFT JOIN batches b ON cb.batch_id = b.id
-      WHERE c.creator_id = ? AND c.is_deleted = 0
+      LEFT JOIN enrol e ON c.id = e.course_id
+      WHERE c.creator_id = ? AND c.is_deleted = 0 AND c.status = 'active'
+      GROUP BY c.id
+      ORDER BY c.created_at DESC
+    `, [instructorId]);
+
+    // Get events list with details
+    const [eventsList] = await promisePool.query(`
+      SELECT
+        ev.id,
+        ev.title,
+        ev.start_date,
+        ev.end_date,
+        ev.online_event,
+        COUNT(DISTINCT ea.id) as attendees_count
+      FROM events ev
+      LEFT JOIN event_attendees ea ON ev.id = ea.event_id
+      WHERE ev.creator_id = ? AND ev.is_deleted = 0
+      GROUP BY ev.id
+      ORDER BY ev.start_date DESC
+    `, [instructorId]);
+
+    // Get 1:1 sessions list with mentee details
+    const [sessionsList] = await promisePool.query(`
+      SELECT
+        ss.id,
+        ss.topic,
+        ss.session_date,
+        ss.session_time,
+        ss.duration,
+        ss.status,
+        ss.url,
+        s.first_name as mentee_first_name,
+        s.last_name as mentee_last_name,
+        u.email as mentee_email
+      FROM scheduled_sessions ss
+      JOIN students s ON ss.mentee_id = s.user_id
+      JOIN users u ON s.user_id = u.uuid
+      WHERE ss.mentor_id = ?
+      ORDER BY ss.session_date DESC, ss.session_time DESC
+    `, [instructorId]);
+
+    // Get unique mentees list with details
+    const [menteesList] = await promisePool.query(`
+      SELECT DISTINCT
+        s.user_id,
+        s.first_name,
+        s.last_name,
+        s.specialization,
+        u.email,
+        b.batch_name,
+        COUNT(DISTINCT ss.id) as total_sessions
+      FROM scheduled_sessions ss
+      JOIN students s ON ss.mentee_id = s.user_id
+      JOIN users u ON s.user_id = u.uuid
+      LEFT JOIN batches b ON s.batch_id = b.id
+      WHERE ss.mentor_id = ?
+      GROUP BY s.user_id
+      ORDER BY total_sessions DESC
+    `, [instructorId]);
+
+    // Get instructor availability
+    const [availability] = await promisePool.query(`
+      SELECT
+        available_days,
+        start_time,
+        end_time,
+        timezone,
+        is_active
+      FROM instructor_availability
+      WHERE instructor_uuid = ?
     `, [instructorId]);
 
     return {
       ...instructor,
       statistics: {
-        total_approved_courses: courseStats[0]?.total_courses || 0,
-        total_events_created: eventStats[0]?.total_events || 0,
-        total_sessions_conducted: sessionStats[0]?.total_sessions || 0,
-        total_mentees: menteeStats[0]?.total_mentees || 0,
-        batches: batchInfo[0]?.batches || 'N/A'
-      }
+        total_approved_courses: coursesList.length,
+        total_events_created: eventsList.length,
+        total_sessions_conducted: sessionsList.length,
+        total_mentees: menteesList.length,
+        courses: coursesList,
+        events: eventsList,
+        sessions: sessionsList,
+        mentees: menteesList
+      },
+      availability: availability[0] || null
     };
   }
 

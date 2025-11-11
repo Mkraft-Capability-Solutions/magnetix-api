@@ -53,48 +53,91 @@ async getAllStudents() {
 
     const student = studentRows[0];
 
-    // Get total courses enrolled
-    const [courseStats] = await promisePool.query(`
-      SELECT COUNT(*) as total_courses
-      FROM enrol
-      WHERE user_id = ?
+    // Get enrolled courses list with details
+    const [coursesList] = await promisePool.query(`
+      SELECT
+        c.id,
+        c.title,
+        c.level,
+        c.status,
+        c.thumbnail,
+        e.enrolled_date,
+        i.first_name as instructor_first_name,
+        i.last_name as instructor_last_name
+      FROM enrol e
+      JOIN course c ON e.course_id = c.id
+      LEFT JOIN instructors i ON c.creator_id = i.user_id
+      WHERE e.user_id = ? AND c.is_deleted = 0
+      ORDER BY e.enrolled_date DESC
     `, [studentId]);
 
-    // Get total events registered
-    const [eventStats] = await promisePool.query(`
-      SELECT COUNT(*) as total_events
-      FROM event_attendees
-      WHERE recipient_id = ?
+    // Get registered events list with details
+    const [eventsList] = await promisePool.query(`
+      SELECT
+        ev.id,
+        ev.title,
+        ev.start_date,
+        ev.end_date,
+        ev.online_event,
+        ea.registered_at,
+        i.first_name as creator_first_name,
+        i.last_name as creator_last_name
+      FROM event_attendees ea
+      JOIN events ev ON ea.event_id = ev.id
+      LEFT JOIN instructors i ON ev.creator_id = i.user_id
+      WHERE ea.recipient_id = ? AND ev.is_deleted = 0
+      ORDER BY ea.registered_at DESC
     `, [studentId]);
 
-    // Get total 1:1 sessions with mentors
-    const [sessionStats] = await promisePool.query(`
-      SELECT COUNT(*) as total_sessions
-      FROM scheduled_sessions
-      WHERE mentee_id = ?
+    // Get 1:1 sessions list with mentor details
+    const [sessionsList] = await promisePool.query(`
+      SELECT
+        ss.id,
+        ss.topic,
+        ss.session_date,
+        ss.session_time,
+        ss.duration,
+        ss.status,
+        ss.url,
+        i.first_name as mentor_first_name,
+        i.last_name as mentor_last_name,
+        i.expertise,
+        u.email as mentor_email
+      FROM scheduled_sessions ss
+      JOIN instructors i ON ss.mentor_id = i.user_id
+      JOIN users u ON i.user_id = u.uuid
+      WHERE ss.mentee_id = ?
+      ORDER BY ss.session_date DESC, ss.session_time DESC
     `, [studentId]);
 
-    // Get assigned mentors with their details
-    const [mentorStats] = await promisePool.query(`
+    // Get assigned mentors with their details and session counts
+    const [mentorsList] = await promisePool.query(`
       SELECT DISTINCT
         i.user_id as mentor_id,
         i.first_name,
         i.last_name,
         i.expertise,
-        u.email
+        i.dp,
+        u.email,
+        COUNT(DISTINCT ss.id) as total_sessions
       FROM scheduled_sessions ss
       JOIN instructors i ON ss.mentor_id = i.user_id
       JOIN users u ON i.user_id = u.uuid
       WHERE ss.mentee_id = ? AND u.is_deleted = 0
+      GROUP BY i.user_id
+      ORDER BY total_sessions DESC
     `, [studentId]);
 
     return {
       ...student,
       statistics: {
-        total_courses_enrolled: courseStats[0]?.total_courses || 0,
-        total_events_registered: eventStats[0]?.total_events || 0,
-        total_sessions: sessionStats[0]?.total_sessions || 0,
-        assigned_mentors: mentorStats || []
+        total_courses_enrolled: coursesList.length,
+        total_events_registered: eventsList.length,
+        total_sessions: sessionsList.length,
+        assigned_mentors: mentorsList,
+        courses: coursesList,
+        events: eventsList,
+        sessions: sessionsList
       }
     };
   }
