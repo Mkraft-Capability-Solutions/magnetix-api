@@ -39,6 +39,7 @@ const studentInstructorProfileRoutes = require("./routes/student/instructor_prof
 const studentCertificatesRoutes = require("./routes/student/certificates_routes");
 const studentAchievementsRoutes = require("./routes/student/achievements_routes");
 const studentCorporateInfoRoutes = require("./routes/student/corporate_info_routes");
+const studentAILearningPathRoutes = require("./routes/student/ai_learning_path_routes");
 const notificationPermissionRoutes = require("./routes/notification_permission_routes");
 const instructorMentorshipRoutes = require("./routes/instructor/mentorship_routes");
 const instructorEventRoutes = require("./routes/instructor/event_routes");
@@ -75,6 +76,7 @@ app.use("/api/student/instructor-profile", studentInstructorProfileRoutes);
 app.use("/api/student/certificates", studentCertificatesRoutes);
 app.use("/api/student/achievements", studentAchievementsRoutes);
 app.use("/api/student/corporate-info", studentCorporateInfoRoutes);
+app.use("/api/student/ai-learning-path", studentAILearningPathRoutes);
 app.use("/api/notification-permissions", notificationPermissionRoutes);
 app.use("/api/instructor/mentorship", instructorMentorshipRoutes);
 app.use("/api/instructor/events", instructorEventRoutes);
