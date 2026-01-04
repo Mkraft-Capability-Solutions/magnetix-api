@@ -87,11 +87,19 @@ router.post('/lesson/document',
   uploadController.uploadLessonDocument
 );
 
-router.post('/lesson/mp4', 
+router.post('/lesson/mp4',
   authenticate,
   authorize(2,3),
   upload.single('video'),
   uploadController.uploadLessonMp4
+);
+
+// Certificate uploads (Student)
+router.post('/certificate',
+  authenticate,
+  authorize(1), // Student only
+  upload.single('file'),
+  uploadController.uploadCertificate
 );
 
 // Error handling middleware for multer errors

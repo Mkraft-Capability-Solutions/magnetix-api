@@ -27,6 +27,7 @@ class UploadService {
         "../../uploads/courses/lessons/scorm_packages"
       ),
       lessonMp4: path.join(__dirname, "../../uploads/courses/lessons/mp4"),
+      certificates: path.join(__dirname, "../../uploads/certificates"),
     };
   }
 
@@ -392,6 +393,29 @@ class UploadService {
   // Get attendance file path for download
   getAttendanceFilePath(filename) {
     return path.join(this.uploadPaths.eventAttendance, filename);
+  }
+
+  // Certificate Upload
+  async uploadCertificate(file, userId) {
+    // Create user-specific certificate directory
+    const userCertificateDir = path.join(this.uploadPaths.certificates, userId);
+    await this.ensureDirectoryExists(userCertificateDir);
+
+    const ext = path.extname(file.originalname).toLowerCase();
+    const allowedExtensions = [".pdf", ".png", ".jpg", ".jpeg"];
+
+    if (!allowedExtensions.includes(ext)) {
+      throw new Error(
+        `Invalid file type. Allowed types: ${allowedExtensions.join(", ")}`
+      );
+    }
+
+    const filename = `certificate_${Date.now()}${ext}`;
+    const filePath = path.join(userCertificateDir, filename);
+    await fs.promises.writeFile(filePath, file.buffer);
+
+    // Return relative path for database storage
+    return `certificates/${userId}/${filename}`;
   }
 }
 

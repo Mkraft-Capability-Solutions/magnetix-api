@@ -155,3 +155,21 @@ exports.uploadLessonMp4 = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.uploadCertificate = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+
+    const filePath = await uploadService.uploadCertificate(req.file, req.user.uuid);
+
+    res.json({
+      success: true,
+      message: 'Certificate uploaded successfully',
+      data: { filePath }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
