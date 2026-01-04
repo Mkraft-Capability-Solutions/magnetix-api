@@ -1,7 +1,9 @@
 require('dotenv').config();
+const http = require('http');
 const app = require('./src/app');
 const { promisePool } = require('./src/config/db');
 const eventReminderScheduler = require('./src/schedulers/event_reminder_scheduler');
+const { initializeSocketIO } = require('./src/socket/socketServer');
 const PORT = process.env.PORT || 3000;
 
 // Database connection test
@@ -24,11 +26,16 @@ function setupShutdownHandlers() {
     try {
       // Stop event reminder scheduler
       eventReminderScheduler.stop();
-      
+
+      // Close Socket.io connections
+      io.close(() => {
+        console.log('Socket.IO closed');
+      });
+
       // Close database pool
       await promisePool.end();
       console.log('Database pool closed');
-      
+
       // Close server
       server.close(() => {
         console.log('Server closed');
@@ -53,21 +60,26 @@ function setupShutdownHandlers() {
   process.on('SIGQUIT', () => shutdown('SIGQUIT'));
 }
 
+// Create HTTP server and initialize Socket.io
+const server = http.createServer(app);
+const io = initializeSocketIO(server);
+
 // Start the server
-const server = app.listen(PORT, async () => {
+server.listen(PORT, async () => {
   console.log(`\n🚀 Server is running on port ${PORT}`);
   console.log(`🔗 http://localhost:${PORT}`);
-  
+  console.log(`🔌 Socket.IO initialized for real-time support`);
+
   // Test database connection on startup
   await testDatabaseConnection();
-  
+
   // Start event reminder scheduler
   try {
     await eventReminderScheduler.start();
   } catch (error) {
     console.error('⚠️  Failed to start event reminder scheduler:', error);
   }
-  
+
   // Setup shutdown handlers
   setupShutdownHandlers();
 });

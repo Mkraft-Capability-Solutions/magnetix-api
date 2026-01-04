@@ -1,5 +1,5 @@
 const { promisePool } = require('../../config/db');
-const {  
+const {
   CourseDTO,
   CourseReviewDTO,
   CourseProgressDTO,
@@ -14,6 +14,7 @@ const {
   RatingStatsDTO
 } = require('../../dto/course_dto');
 const { ServiceResponseDTO, ErrorResponseDTO } = require('../../dto/response_dto');
+const achievementsService = require('./achievements_service');
 
 class CourseService {
   async getSubscribedCourses(studentId) {
@@ -131,16 +132,27 @@ class CourseService {
         }
 
         const [result] = await promisePool.query(
-            'CALL enroll_student_in_course(?, ?)', 
+            'CALL enroll_student_in_course(?, ?)',
             [normalizedStudentId, courseId]
         );
-        
+
         // The result array contains all SELECT outputs from the procedure
         const debugInfo = result.filter(row => row[0] && (row[0].debug || row[0].warning));
         const message = result.find(row => row[0] && row[0].message)[0].message;
-        
+
+        // Award points for course enrollment
+        await achievementsService.awardPoints(
+            normalizedStudentId,
+            5,
+            0,
+            'course_enroll',
+            'enrollment',
+            courseId,
+            `Enrolled in course ID: ${courseId}`
+        );
+
         return new ServiceResponseDTO(
-            true, 
+            true,
             {
                 message: message,
                 firstLessonUnlocked: debugInfo.some(info => info[0].debug && info[0].debug.includes('Inserted progress')),
@@ -213,7 +225,18 @@ class CourseService {
         'CALL save_course(?, ?)',
         [userId, courseId]
       );
-      
+
+      // Award points for saving a course
+      await achievementsService.awardPoints(
+        userId,
+        2,
+        0,
+        'course_save',
+        'saved_course',
+        courseId,
+        `Saved course ID: ${courseId}`
+      );
+
       return new ServiceResponseDTO(true, null, result[0][0].message);
     } catch (error) {
       if (error.code === 'ER_NO_REFERENCED_ROW_2') {
@@ -473,7 +496,33 @@ async markLessonCompleted(userId, lessonId, courseId) {
             'CALL mark_lesson_completed(?, ?, ?)',
             [userId, lessonId, courseId]
         );
-        
+
+        // Award points for lesson completion
+        await achievementsService.awardPoints(
+            userId,
+            10,
+            0,
+            'lesson_complete',
+            'lesson',
+            lessonId,
+            `Completed lesson ID: ${lessonId}`
+        );
+
+        // Check if course is now complete
+        const progressCheck = await this.getCourseProgress(userId, courseId);
+        if (progressCheck.success && progressCheck.data.completion_percentage === 100) {
+            // Award course completion points and XP
+            await achievementsService.awardPoints(
+                userId,
+                100,
+                50,
+                'course_complete',
+                'enrollment',
+                courseId,
+                `Completed course ID: ${courseId}`
+            );
+        }
+
         return new ServiceResponseDTO(true, {
             message: result[0][0].message,
             nextLessonUnlocked: result[1] ? result[1][0] : null

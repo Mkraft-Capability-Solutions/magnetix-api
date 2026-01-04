@@ -1,5 +1,6 @@
 const { promisePool } = require('../../config/db');
 const { ServiceResponseDTO, ErrorResponseDTO } = require('../../dto/response_dto');
+const achievementsService = require('./achievements_service');
 const fs = require('fs').promises;
 const path = require('path');
 
@@ -123,6 +124,19 @@ class CertificatesService {
       );
 
       const certificate = result[0][0];
+
+      // Award points if certificate was approved
+      if (status === 'approved' && certificate.user_id) {
+        await achievementsService.awardPoints(
+          certificate.user_id,
+          150,
+          75,
+          'certificate_approved',
+          'certificate',
+          certificateId,
+          `Certificate approved: ${certificate.certificate_name || 'External Certificate'}`
+        );
+      }
 
       return new ServiceResponseDTO(
         true,

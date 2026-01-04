@@ -37,6 +37,7 @@ const studentTranscriptRoutes = require("./routes/student/transcript_routes");
 const studentInstructorAvailabilityRoutes = require("./routes/student/instructor_availability_routes");
 const studentInstructorProfileRoutes = require("./routes/student/instructor_profile_routes");
 const studentCertificatesRoutes = require("./routes/student/certificates_routes");
+const studentAchievementsRoutes = require("./routes/student/achievements_routes");
 const notificationPermissionRoutes = require("./routes/notification_permission_routes");
 const instructorMentorshipRoutes = require("./routes/instructor/mentorship_routes");
 const instructorEventRoutes = require("./routes/instructor/event_routes");
@@ -52,6 +53,7 @@ const adminBatchRoutes = require("./routes/admin/batch_routes");
 const adminSessionRoutes = require("./routes/admin/session_routes");
 const googleMeetRoutes = require("./routes/google/meet_routes");
 const googleOAuthRoutes = require("./routes/google/oauth_routes");
+const supportRoutes = require("./routes/support_routes");
 
 // Use routes with API prefixes
 app.use("/landing", landingRoutes);
@@ -70,6 +72,7 @@ app.use("/student/transcript", studentTranscriptRoutes);
 app.use("/student/instructor-availability", studentInstructorAvailabilityRoutes);
 app.use("/student/instructor-profile", studentInstructorProfileRoutes);
 app.use("/student/certificates", studentCertificatesRoutes);
+app.use("/student/achievements", studentAchievementsRoutes);
 app.use("/notification-permissions", notificationPermissionRoutes);
 app.use("/instructor/mentorship", instructorMentorshipRoutes);
 app.use("/instructor/events", instructorEventRoutes);
@@ -87,6 +90,7 @@ app.use("/admin/profile", require("./routes/admin/profile_route"));
 app.use("/admin/courses", require("./routes/admin/course_route"));
 app.use("/google/meet", googleMeetRoutes);
 app.use("/google/oauth", googleOAuthRoutes);
+app.use("/support", supportRoutes);
 // Serve uploaded files (e.g., profile pictures)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
