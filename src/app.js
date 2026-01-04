@@ -57,6 +57,8 @@ const googleMeetRoutes = require("./routes/google/meet_routes");
 const googleOAuthRoutes = require("./routes/google/oauth_routes");
 const supportRoutes = require("./routes/support_routes");
 const adminDashboardRoutes = require("./routes/admin/dashboard_routes");
+const adminSettingsRoutes = require("./routes/admin/settings_routes");
+const adminUserManagementRoutes = require("./routes/admin/user_management_routes");
 
 // Use routes with API prefixes
 app.use("/api/landing", landingRoutes);
@@ -94,6 +96,8 @@ app.use("/api/admin/mentorship/sessions", adminSessionRoutes);
 app.use("/api/admin/profile", require("./routes/admin/profile_route"));
 app.use("/api/admin/courses", require("./routes/admin/course_route"));
 app.use("/api/admin/dashboard", adminDashboardRoutes);
+app.use("/api/admin/settings", adminSettingsRoutes);
+app.use("/api/admin/users", adminUserManagementRoutes);
 app.use("/api/google/meet", googleMeetRoutes);
 app.use("/api/google/oauth", googleOAuthRoutes);
 app.use("/api/support", supportRoutes);
