@@ -1,4 +1,4 @@
-const pool = require('../../config/db');
+const { promisePool: pool } = require('../../config/db');
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
 const { parseCSV } = require('../../utils/csv_parser');
@@ -150,23 +150,22 @@ exports.uploadUsers = async (fileBuffer) => {
 
         // Insert into students table
         await connection.query(
-          `INSERT INTO students (user_id, first_name, last_name, contact, created_at)
-           VALUES (?, ?, ?, ?, NOW())`,
+          `INSERT INTO students (user_id, first_name, last_name, contact)
+           VALUES (?, ?, ?, ?)`,
           [userId, row.first_name, row.last_name, row.phone || null]
         );
 
         // Insert into student_corporate_info table
         await connection.query(
           `INSERT INTO student_corporate_info
-           (user_id, designation, department, location, manager_name, hire_date)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+           (user_id, designation, department, location, manager_email)
+           VALUES (?, ?, ?, ?, ?)`,
           [
             userId,
             row.job_title,
             row.department,
             row.location || null,
-            row.manager_email || null,
-            row.hire_date || null
+            row.manager_email || null
           ]
         );
 

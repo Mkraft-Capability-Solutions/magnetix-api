@@ -102,6 +102,25 @@ router.put('/rooms/:id', authorize(3, 4), iltController.updateRoom);
 router.delete('/rooms/:id', authorize(3, 4), iltController.deleteRoom);
 
 // ==============================================
+// INSTRUCTOR/TRAINER MANAGEMENT ROUTES
+// ==============================================
+
+/**
+ * GET /api/admin/ilt/available-instructors
+ * Get all users with role_id=2 (instructors/trainers) available for trainer profile creation
+ * Access: Admin, SuperAdmin
+ */
+router.get('/available-instructors', authorize(3, 4), iltController.getAvailableInstructors);
+
+/**
+ * POST /api/admin/ilt/trainers/from-user
+ * Create a trainer profile from an existing instructor user
+ * Body: { userId, bio?, expertise?, certifications?, rate? }
+ * Access: Admin, SuperAdmin
+ */
+router.post('/trainers/from-user', authorize(3, 4), iltController.addTrainerFromUser);
+
+// ==============================================
 // TRAINERS ROUTES
 // ==============================================
 

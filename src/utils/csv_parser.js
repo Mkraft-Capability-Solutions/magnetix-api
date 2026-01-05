@@ -46,7 +46,7 @@ const validateCSVHeaders = (actualHeaders, requiredHeaders) => {
  */
 const generateCSVTemplate = (type) => {
   const templates = {
-    users: 'first_name,last_name,email,department,job_title,manager_email,phone,location,hire_date\n',
+    users: 'first_name,last_name,email,department,job_title,manager_email,phone,location\n',
     content: 'content_id,field,new_value\n',
     assignments: 'user_email,course_id,course_name,due_date,send_notification\n'
   };
@@ -76,7 +76,7 @@ const getRequiredHeaders = (type) => {
  */
 const getAllHeaders = (type) => {
   const headers = {
-    users: ['first_name', 'last_name', 'email', 'department', 'job_title', 'manager_email', 'phone', 'location', 'hire_date'],
+    users: ['first_name', 'last_name', 'email', 'department', 'job_title', 'manager_email', 'phone', 'location'],
     content: ['content_id', 'field', 'new_value'],
     assignments: ['user_email', 'course_id', 'course_name', 'due_date', 'send_notification']
   };
@@ -84,10 +84,43 @@ const getAllHeaders = (type) => {
   return headers[type] || [];
 };
 
+/**
+ * Generate CSV sample with example data for a given upload type
+ * @param {string} type - Upload type ('users', 'content', 'assignments')
+ * @returns {string} - CSV sample string with example data
+ */
+const generateSampleCSV = (type) => {
+  const samples = {
+    users:
+`first_name,last_name,email,department,job_title,manager_email,phone,location
+John,Doe,john.doe@company.com,Engineering,Software Engineer,jane.smith@company.com,9876543210,New York
+Jane,Smith,jane.smith@company.com,Engineering,Senior Developer,,9123456789,San Francisco
+Bob,Johnson,bob.johnson@company.com,Marketing,Marketing Manager,,8765432109,Chicago
+Alice,Williams,alice.williams@company.com,Sales,Sales Representative,bob.johnson@company.com,7654321098,Boston
+`,
+    content:
+`content_id,field,new_value
+1,title,Introduction to Programming - Updated
+1,description,This comprehensive course covers programming fundamentals
+2,status,active
+3,category,Technical Training
+`,
+    assignments:
+`user_email,course_id,course_name,due_date,send_notification
+john.doe@company.com,1,,2025-02-15,Yes
+jane.smith@company.com,2,,2025-03-01,No
+bob.johnson@company.com,,Security Fundamentals,2025-04-20,Yes
+`
+  };
+
+  return samples[type] || '';
+};
+
 module.exports = {
   parseCSV,
   validateCSVHeaders,
   generateCSVTemplate,
+  generateSampleCSV,
   getRequiredHeaders,
   getAllHeaders
 };

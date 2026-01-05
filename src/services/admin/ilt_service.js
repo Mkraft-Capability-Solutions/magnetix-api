@@ -1,4 +1,4 @@
-const pool = require('../../config/db');
+const { promisePool: pool } = require('../../config/db');
 
 // ==============================================
 // HELPER FUNCTIONS
@@ -398,6 +398,76 @@ exports.getILTStats = async () => {
     return results[0][0];
   } catch (error) {
     console.error('ILT Service - getILTStats error:', error);
+    throw error;
+  }
+};
+
+// ==============================================
+// INSTRUCTOR MANAGEMENT
+// ==============================================
+
+exports.getAvailableInstructors = async () => {
+  try {
+    const [results] = await pool.query(`
+      SELECT
+        u.uuid,
+        s.first_name as firstName,
+        s.last_name as lastName,
+        u.email,
+        s.contact as phone
+      FROM users u
+      INNER JOIN students s ON u.uuid = s.user_id
+      WHERE u.role_id = 2
+        AND u.is_deleted = 0
+      ORDER BY s.first_name, s.last_name
+    `);
+
+    return results;
+  } catch (error) {
+    console.error('ILT Service - getAvailableInstructors error:', error);
+    throw error;
+  }
+};
+
+exports.addTrainerFromUser = async (userId, trainerData = {}) => {
+  try {
+    // Verify user is an instructor (role_id=2)
+    const [users] = await pool.query(
+      'SELECT role_id FROM users WHERE uuid = ? AND is_deleted = 0',
+      [userId]
+    );
+
+    if (users.length === 0 || users[0].role_id !== 2) {
+      throw new Error('User is not an instructor');
+    }
+
+    // Check if trainer already exists
+    const [existing] = await pool.query(
+      'SELECT id FROM trainers WHERE user_id = ? AND is_deleted = 0',
+      [userId]
+    );
+
+    if (existing.length > 0) {
+      throw new Error('Trainer already exists for this user');
+    }
+
+    // Create trainer record with additional info
+    const [result] = await pool.query(
+      `INSERT INTO trainers
+       (user_id, bio, expertise, certifications, rate, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'Active', NOW(), NOW())`,
+      [
+        userId,
+        trainerData.bio || null,
+        trainerData.expertise ? JSON.stringify(trainerData.expertise) : null,
+        trainerData.certifications ? JSON.stringify(trainerData.certifications) : null,
+        trainerData.rate || null
+      ]
+    );
+
+    return result.insertId;
+  } catch (error) {
+    console.error('ILT Service - addTrainerFromUser error:', error);
     throw error;
   }
 };

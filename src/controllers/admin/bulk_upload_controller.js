@@ -1,5 +1,5 @@
 const bulkUploadService = require('../../services/admin/bulk_upload_service');
-const { generateCSVTemplate } = require('../../utils/csv_parser');
+const { generateCSVTemplate, generateSampleCSV } = require('../../utils/csv_parser');
 
 // ==============================================
 // UPLOAD USERS CONTROLLER
@@ -183,6 +183,49 @@ exports.downloadTemplate = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to download template',
+      error: error.message
+    });
+  }
+};
+
+// ==============================================
+// DOWNLOAD SAMPLE CONTROLLER
+// ==============================================
+
+exports.downloadSample = async (req, res) => {
+  try {
+    const { type } = req.params;
+
+    // Validate type
+    const validTypes = ['users', 'content', 'assignments'];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid sample type. Allowed: ${validTypes.join(', ')}`
+      });
+    }
+
+    // Generate sample
+    const sample = generateSampleCSV(type);
+
+    if (!sample) {
+      return res.status(404).json({
+        success: false,
+        message: 'Sample not found'
+      });
+    }
+
+    // Set headers for file download
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${type}_sample.csv"`);
+
+    // Send sample
+    res.send(sample);
+  } catch (error) {
+    console.error('Download sample controller error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to download sample',
       error: error.message
     });
   }

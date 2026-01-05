@@ -454,6 +454,73 @@ exports.getStats = async (req, res) => {
 };
 
 // ==============================================
+// INSTRUCTOR/TRAINER MANAGEMENT
+// ==============================================
+
+exports.getAvailableInstructors = async (req, res) => {
+  try {
+    const instructors = await iltService.getAvailableInstructors();
+
+    res.json({
+      success: true,
+      data: instructors
+    });
+  } catch (error) {
+    console.error('ILT Controller - getAvailableInstructors error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch available instructors',
+      error: error.message
+    });
+  }
+};
+
+exports.addTrainerFromUser = async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    // Validation
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+
+    const trainerId = await iltService.addTrainerFromUser(userId, req.body);
+
+    res.status(201).json({
+      success: true,
+      data: { id: trainerId },
+      message: 'Trainer created from instructor successfully'
+    });
+  } catch (error) {
+    console.error('ILT Controller - addTrainerFromUser error:', error);
+
+    // Check for specific errors
+    if (error.message.includes('not an instructor')) {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not an instructor (role_id must be 2)'
+      });
+    }
+
+    if (error.message.includes('already exists')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Trainer already exists for this user'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create trainer from user',
+      error: error.message
+    });
+  }
+};
+
+// ==============================================
 // CUSTOM MIDDLEWARE
 // ==============================================
 

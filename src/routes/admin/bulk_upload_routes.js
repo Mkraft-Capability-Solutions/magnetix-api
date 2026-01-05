@@ -63,4 +63,13 @@ router.get('/template/:type',
   bulkUploadController.downloadTemplate
 );
 
+/**
+ * GET /api/admin/bulk-upload/sample/:type
+ * Download sample CSV file with example data
+ * Params: type = 'users' | 'content' | 'assignments'
+ */
+router.get('/sample/:type',
+  bulkUploadController.downloadSample
+);
+
 module.exports = router;
