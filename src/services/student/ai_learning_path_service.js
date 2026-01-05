@@ -124,6 +124,131 @@ class AILearningPathService {
       });
     }
   }
+
+  /**
+   * Add a new skill for the user to track
+   * @param {string} userId - User UUID
+   * @param {object} skillData - Skill data (name, level, category, color)
+   * @returns {ServiceResponseDTO} Newly created skill
+   */
+  async addSkill(userId, skillData) {
+    try {
+      const { name, level, category, color } = skillData;
+
+      // Validate required fields
+      if (!name || !name.trim()) {
+        return new ErrorResponseDTO({
+          message: 'Skill name is required',
+          code: 'VALIDATION_ERROR',
+          status: 400
+        });
+      }
+
+      const [result] = await promisePool.query(
+        'CALL add_user_skill(?, ?, ?, ?, ?)',
+        [userId, name.trim(), level.toLowerCase(), category, color]
+      );
+
+      const newSkill = result[0][0];
+
+      return new ServiceResponseDTO(true, newSkill, 'Skill added successfully');
+    } catch (error) {
+      // Handle duplicate skill error
+      if (error.code === 'ER_DUP_ENTRY') {
+        return new ErrorResponseDTO({
+          message: 'You are already tracking this skill',
+          code: 'DUPLICATE_SKILL',
+          status: 409
+        });
+      }
+      return new ErrorResponseDTO({
+        message: error.message || 'Failed to add skill',
+        code: 'ADD_SKILL_ERROR'
+      });
+    }
+  }
+
+  /**
+   * Update an existing skill
+   * @param {string} userId - User UUID
+   * @param {number} skillId - Skill ID
+   * @param {object} skillData - Updated skill data
+   * @returns {ServiceResponseDTO} Updated skill
+   */
+  async updateSkill(userId, skillId, skillData) {
+    try {
+      const { name, level, category, color } = skillData;
+
+      if (!name || !name.trim()) {
+        return new ErrorResponseDTO({
+          message: 'Skill name is required',
+          code: 'VALIDATION_ERROR',
+          status: 400
+        });
+      }
+
+      const [result] = await promisePool.query(
+        'CALL update_user_skill(?, ?, ?, ?, ?, ?)',
+        [skillId, userId, name.trim(), level.toLowerCase(), category, color]
+      );
+
+      const updatedSkill = result[0][0];
+
+      if (!updatedSkill) {
+        return new ErrorResponseDTO({
+          message: 'Skill not found or you do not have permission to edit it',
+          code: 'SKILL_NOT_FOUND',
+          status: 404
+        });
+      }
+
+      return new ServiceResponseDTO(true, updatedSkill, 'Skill updated successfully');
+    } catch (error) {
+      if (error.code === 'ER_DUP_ENTRY') {
+        return new ErrorResponseDTO({
+          message: 'A skill with this name already exists',
+          code: 'DUPLICATE_SKILL',
+          status: 409
+        });
+      }
+      return new ErrorResponseDTO({
+        message: error.message || 'Failed to update skill',
+        code: 'UPDATE_SKILL_ERROR'
+      });
+    }
+  }
+
+  /**
+   * Delete a skill
+   * @param {string} userId - User UUID
+   * @param {number} skillId - Skill ID
+   * @returns {ServiceResponseDTO} Deletion result
+   */
+  async deleteSkill(userId, skillId) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL delete_user_skill(?, ?)',
+        [skillId, userId]
+      );
+
+      const { deleted } = result[0][0];
+
+      if (deleted === 0) {
+        return new ErrorResponseDTO({
+          message: 'Skill not found or you do not have permission to delete it',
+          code: 'SKILL_NOT_FOUND',
+          status: 404
+        });
+      }
+
+      return new ServiceResponseDTO(true, { deleted: true }, 'Skill deleted successfully');
+    } catch (error) {
+      return new ErrorResponseDTO({
+        message: error.message || 'Failed to delete skill',
+        code: 'DELETE_SKILL_ERROR'
+      });
+    }
+  }
 }
 
 module.exports = new AILearningPathService();

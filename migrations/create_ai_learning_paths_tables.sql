@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS `ai_learning_path_skills` (
   `skill_level` ENUM('beginner', 'intermediate', 'advanced', 'expert') DEFAULT 'beginner',
   `mastery_percentage` DECIMAL(5,2) DEFAULT 0.00,
   `color` VARCHAR(7) DEFAULT '#2563eb',
+  `category` VARCHAR(50) DEFAULT 'Technology Skill',
   `learning_path_id` INT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

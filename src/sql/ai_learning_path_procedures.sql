@@ -184,10 +184,10 @@ BEGIN
     lp.id,
     lp.title,
     lp.type as provider,
-    DATE_FORMAT(lp.completed_at, '%b %Y') as date,
+    DATE_FORMAT(lp.updated_at, '%b %Y') as date,
     CONCAT('LP-', LPAD(lp.id, 6, '0')) as credentialId,
     CONCAT(lp.estimated_duration_weeks, ' weeks') as duration,
-    CAST(avg_score as CHAR) as grade,
+    CAST(scores.avg_score as CHAR) as grade,
     CASE
       WHEN lp.type = 'ai_generated' THEN 'ai'
       WHEN lp.type = 'custom' THEN 'custom'
@@ -211,10 +211,121 @@ BEGIN
     skill_name as name,
     skill_level as level,
     mastery_percentage as mastery,
-    color
+    color,
+    category
   FROM ai_learning_path_skills
   WHERE user_id = p_user_id
   ORDER BY mastery_percentage DESC;
+END$$
+
+-- ========================================
+-- PROCEDURE 5: Add User Skill
+-- ========================================
+-- Adds a new skill for a user to track
+-- ========================================
+DROP PROCEDURE IF EXISTS `add_user_skill`$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `add_user_skill` (
+  IN `p_user_id` VARCHAR(36),
+  IN `p_skill_name` VARCHAR(100),
+  IN `p_skill_level` VARCHAR(20),
+  IN `p_category` VARCHAR(50),
+  IN `p_color` VARCHAR(7)
+)
+BEGIN
+  DECLARE new_skill_id INT;
+
+  -- Insert the new skill
+  INSERT INTO ai_learning_path_skills (
+    user_id,
+    skill_name,
+    skill_level,
+    category,
+    color,
+    mastery_percentage
+  ) VALUES (
+    p_user_id,
+    p_skill_name,
+    p_skill_level,
+    p_category,
+    p_color,
+    0.00
+  );
+
+  SET new_skill_id = LAST_INSERT_ID();
+
+  -- Return the newly created skill
+  SELECT
+    id,
+    skill_name as name,
+    skill_level as level,
+    mastery_percentage as mastery,
+    color,
+    category
+  FROM ai_learning_path_skills
+  WHERE id = new_skill_id;
+END$$
+
+-- ========================================
+-- PROCEDURE 6: Update User Skill
+-- ========================================
+-- Updates an existing skill for a user
+-- ========================================
+DROP PROCEDURE IF EXISTS `update_user_skill`$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `update_user_skill` (
+  IN `p_skill_id` INT,
+  IN `p_user_id` VARCHAR(36),
+  IN `p_skill_name` VARCHAR(100),
+  IN `p_skill_level` VARCHAR(20),
+  IN `p_category` VARCHAR(50),
+  IN `p_color` VARCHAR(7)
+)
+BEGIN
+  -- Update the skill (only if it belongs to the user)
+  UPDATE ai_learning_path_skills
+  SET
+    skill_name = p_skill_name,
+    skill_level = p_skill_level,
+    category = p_category,
+    color = p_color,
+    updated_at = CURRENT_TIMESTAMP
+  WHERE id = p_skill_id AND user_id = p_user_id;
+
+  -- Return the updated skill
+  SELECT
+    id,
+    skill_name as name,
+    skill_level as level,
+    mastery_percentage as mastery,
+    color,
+    category
+  FROM ai_learning_path_skills
+  WHERE id = p_skill_id AND user_id = p_user_id;
+END$$
+
+-- ========================================
+-- PROCEDURE 7: Delete User Skill
+-- ========================================
+-- Deletes a skill for a user
+-- ========================================
+DROP PROCEDURE IF EXISTS `delete_user_skill`$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `delete_user_skill` (
+  IN `p_skill_id` INT,
+  IN `p_user_id` VARCHAR(36)
+)
+BEGIN
+  DECLARE affected_rows INT;
+
+  -- Delete the skill (only if it belongs to the user)
+  DELETE FROM ai_learning_path_skills
+  WHERE id = p_skill_id AND user_id = p_user_id;
+
+  SET affected_rows = ROW_COUNT();
+
+  -- Return result
+  SELECT affected_rows as deleted;
 END$$
 
 DELIMITER ;

@@ -27,4 +27,22 @@ router.get('/progress', authenticate, authorize(1), aiLearningPathController.get
  */
 router.get('/statistics', authenticate, authorize(1), aiLearningPathController.getStatisticsData);
 
+/**
+ * Add a new skill to track
+ * POST /api/student/ai-learning-path/skills
+ */
+router.post('/skills', authenticate, authorize(1), aiLearningPathController.addSkill);
+
+/**
+ * Update an existing skill
+ * PUT /api/student/ai-learning-path/skills/:skillId
+ */
+router.put('/skills/:skillId', authenticate, authorize(1), aiLearningPathController.updateSkill);
+
+/**
+ * Delete a skill
+ * DELETE /api/student/ai-learning-path/skills/:skillId
+ */
+router.delete('/skills/:skillId', authenticate, authorize(1), aiLearningPathController.deleteSkill);
+
 module.exports = router;

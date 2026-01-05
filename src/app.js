@@ -109,6 +109,11 @@ app.use("/api/admin/bulk-upload", adminBulkUploadRoutes);
 app.use("/api/google/meet", googleMeetRoutes);
 app.use("/api/google/oauth", googleOAuthRoutes);
 app.use("/api/support", supportRoutes);
+app.use("/api/admin/marketing", require("./routes/admin/marketing_routes"));
+app.use("/api/notifications", require("./routes/notification_routes"));
+app.use("/api/admin/feedback", require("./routes/admin/feedback_routes"));
+app.use("/api/public/feedback", require("./routes/public/feedback_routes"));
+
 // Serve uploaded files (e.g., profile pictures)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
