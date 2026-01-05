@@ -61,6 +61,8 @@ const adminSettingsRoutes = require("./routes/admin/settings_routes");
 const adminUserManagementRoutes = require("./routes/admin/user_management_routes");
 const adminReportRoutes = require("./routes/admin/report_routes");
 const adminTeamRoutes = require("./routes/admin/team_routes");
+const adminILTRoutes = require("./routes/admin/ilt_routes");
+const adminBulkUploadRoutes = require("./routes/admin/bulk_upload_routes");
 
 // Use routes with API prefixes
 app.use("/api/landing", landingRoutes);
@@ -102,6 +104,8 @@ app.use("/api/admin/settings", adminSettingsRoutes);
 app.use("/api/admin/users", adminUserManagementRoutes);
 app.use("/api/admin/reports", adminReportRoutes);
 app.use("/api/admin/teams", adminTeamRoutes);
+app.use("/api/admin/ilt", adminILTRoutes);
+app.use("/api/admin/bulk-upload", adminBulkUploadRoutes);
 app.use("/api/google/meet", googleMeetRoutes);
 app.use("/api/google/oauth", googleOAuthRoutes);
 app.use("/api/support", supportRoutes);
