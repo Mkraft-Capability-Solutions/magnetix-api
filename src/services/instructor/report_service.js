@@ -2,147 +2,157 @@ const { promisePool: pool } = require('../../config/db');
 const reportGenerator = require('../../utils/report_generator');
 
 /**
- * Admin Report Service
- * Handles all business logic for report generation and data retrieval
+ * Instructor Report Service
+ * Handles all business logic for instructor report generation and data retrieval
+ * Uses stored procedures to filter data by instructor's courses only
  */
 
 /**
- * Get leaderboard data - top performers
+ * Get leaderboard data - top performers in instructor's courses
+ * @param {string} instructorId - Instructor UUID
  * @param {number} limit - Number of top performers to return
  * @returns {Promise<Array>} Array of leaderboard entries
  */
-const getLeaderboard = async (limit = 50) => {
+const getLeaderboard = async (instructorId, limit = 50) => {
   try {
-    const [rows] = await pool.query('CALL sp_get_report_leaderboard(?, ?)', [null, limit]);
+    const [rows] = await pool.query('CALL sp_get_report_leaderboard(?, ?)', [instructorId, limit]);
     return rows[0] || [];
   } catch (error) {
-    console.error('Report Service - getLeaderboard error:', error);
+    console.error('Instructor Report Service - getLeaderboard error:', error);
     throw error;
   }
 };
 
 /**
- * Get department performance data
+ * Get department performance data for instructor's students
+ * @param {string} instructorId - Instructor UUID
  * @returns {Promise<Array>} Array of department performance objects
  */
-const getDepartmentPerformance = async () => {
+const getDepartmentPerformance = async (instructorId) => {
   try {
-    const [rows] = await pool.query('CALL sp_get_department_performance(?)', [null]);
+    const [rows] = await pool.query('CALL sp_get_department_performance(?)', [instructorId]);
     return rows[0] || [];
   } catch (error) {
-    console.error('Report Service - getDepartmentPerformance error:', error);
+    console.error('Instructor Report Service - getDepartmentPerformance error:', error);
     throw error;
   }
 };
 
 /**
- * Get completion trends data (last 6 months)
+ * Get completion trends data for instructor's courses (last 6 months)
+ * @param {string} instructorId - Instructor UUID
  * @returns {Promise<Array>} Array of monthly trend data
  */
-const getCompletionTrends = async () => {
+const getCompletionTrends = async (instructorId) => {
   try {
-    const [rows] = await pool.query('CALL sp_get_completion_trends(?)', [null]);
+    const [rows] = await pool.query('CALL sp_get_completion_trends(?)', [instructorId]);
     return rows[0] || [];
   } catch (error) {
-    console.error('Report Service - getCompletionTrends error:', error);
+    console.error('Instructor Report Service - getCompletionTrends error:', error);
     throw error;
   }
 };
 
 /**
- * Get certification distribution data
+ * Get certification distribution data for instructor's courses
+ * @param {string} instructorId - Instructor UUID
  * @returns {Promise<Array>} Array of certification type distributions
  */
-const getCertificationDistribution = async () => {
+const getCertificationDistribution = async (instructorId) => {
   try {
-    const [rows] = await pool.query('CALL sp_get_certification_distribution(?)', [null]);
+    const [rows] = await pool.query('CALL sp_get_certification_distribution(?)', [instructorId]);
     return rows[0] || [];
   } catch (error) {
-    console.error('Report Service - getCertificationDistribution error:', error);
+    console.error('Instructor Report Service - getCertificationDistribution error:', error);
     throw error;
   }
 };
 
 /**
- * Get user report data for export
+ * Get user report data for export (instructor's students)
+ * @param {string} instructorId - Instructor UUID
  * @param {Date} fromDate - Start date filter
  * @param {Date} toDate - End date filter
  * @param {string} department - Department filter
  * @returns {Promise<Array>} Array of user data
  */
-const getUserReportData = async (fromDate = null, toDate = null, department = null) => {
+const getUserReportData = async (instructorId, fromDate = null, toDate = null, department = null) => {
   try {
     const [rows] = await pool.query(
       'CALL sp_get_user_report_data(?, ?, ?, ?)',
-      [null, fromDate, toDate, department]
+      [instructorId, fromDate, toDate, department]
     );
     return rows[0] || [];
   } catch (error) {
-    console.error('Report Service - getUserReportData error:', error);
+    console.error('Instructor Report Service - getUserReportData error:', error);
     throw error;
   }
 };
 
 /**
- * Get course completion report data
+ * Get course completion report data for instructor's courses
+ * @param {string} instructorId - Instructor UUID
  * @param {Date} fromDate - Start date filter
  * @param {Date} toDate - End date filter
  * @returns {Promise<Array>} Array of course completion data
  */
-const getCourseCompletionData = async (fromDate = null, toDate = null) => {
+const getCourseCompletionData = async (instructorId, fromDate = null, toDate = null) => {
   try {
     const [rows] = await pool.query(
       'CALL sp_get_course_completion_report(?, ?, ?)',
-      [null, fromDate, toDate]
+      [instructorId, fromDate, toDate]
     );
     return rows[0] || [];
   } catch (error) {
-    console.error('Report Service - getCourseCompletionData error:', error);
+    console.error('Instructor Report Service - getCourseCompletionData error:', error);
     throw error;
   }
 };
 
 /**
- * Get learning engagement report data
+ * Get learning engagement report data for instructor's students
+ * @param {string} instructorId - Instructor UUID
  * @param {Date} fromDate - Start date filter
  * @param {Date} toDate - End date filter
  * @returns {Promise<Object>} Engagement summary object
  */
-const getLearningEngagementData = async (fromDate = null, toDate = null) => {
+const getLearningEngagementData = async (instructorId, fromDate = null, toDate = null) => {
   try {
     const [rows] = await pool.query(
       'CALL sp_get_learning_engagement_report(?, ?, ?)',
-      [null, fromDate, toDate]
+      [instructorId, fromDate, toDate]
     );
     return rows[0]?.[0] || null;
   } catch (error) {
-    console.error('Report Service - getLearningEngagementData error:', error);
+    console.error('Instructor Report Service - getLearningEngagementData error:', error);
     throw error;
   }
 };
 
 /**
- * Get skills assessment data (based on course categories)
+ * Get skills assessment data for instructor's courses
+ * @param {string} instructorId - Instructor UUID
  * @returns {Promise<Array>} Array of skill scores
  */
-const getSkillsAssessmentData = async () => {
+const getSkillsAssessmentData = async (instructorId) => {
   try {
-    const [rows] = await pool.query('CALL sp_get_skills_assessment(?)', [null]);
+    const [rows] = await pool.query('CALL sp_get_skills_assessment(?)', [instructorId]);
     return rows[0] || [];
   } catch (error) {
-    console.error('Report Service - getSkillsAssessmentData error:', error);
+    console.error('Instructor Report Service - getSkillsAssessmentData error:', error);
     throw error;
   }
 };
 
 /**
- * Generate and save a report file
+ * Generate and save a report file for instructor
+ * @param {string} instructorId - Instructor UUID
  * @param {string} reportType - Type of report (user, course-completion, learning-engagement, skills-assessment)
  * @param {string} format - Output format (pdf, excel, csv)
  * @param {Object} options - Additional options (dateRange, department)
  * @returns {Promise<Object>} Generated file info
  */
-const generateReport = async (reportType, format, options = {}) => {
+const generateReport = async (instructorId, reportType, format, options = {}) => {
   try {
     let data;
     let title;
@@ -152,6 +162,7 @@ const generateReport = async (reportType, format, options = {}) => {
       case 'user':
         title = 'User Report';
         data = await getUserReportData(
+          instructorId,
           options.dateRange?.from,
           options.dateRange?.to,
           options.department
@@ -161,6 +172,7 @@ const generateReport = async (reportType, format, options = {}) => {
       case 'course-completion':
         title = 'Course Completion Report';
         data = await getCourseCompletionData(
+          instructorId,
           options.dateRange?.from,
           options.dateRange?.to
         );
@@ -169,6 +181,7 @@ const generateReport = async (reportType, format, options = {}) => {
       case 'learning-engagement':
         title = 'Learning Engagement Report';
         const engagementData = await getLearningEngagementData(
+          instructorId,
           options.dateRange?.from,
           options.dateRange?.to
         );
@@ -189,7 +202,7 @@ const generateReport = async (reportType, format, options = {}) => {
 
       case 'skills-assessment':
         title = 'Skills Assessment Report';
-        data = await getSkillsAssessmentData();
+        data = await getSkillsAssessmentData(instructorId);
         break;
 
       default:
@@ -211,33 +224,7 @@ const generateReport = async (reportType, format, options = {}) => {
       recordCount: Array.isArray(data) ? data.length : 1
     };
   } catch (error) {
-    console.error('Report Service - generateReport error:', error);
-    throw error;
-  }
-};
-
-/**
- * Get all dashboard analytics data in one call
- * @returns {Promise<Object>} Combined analytics data
- */
-const getDashboardAnalytics = async () => {
-  try {
-    const [leaderboard, departmentPerformance, completionTrends, certificationDistribution] =
-      await Promise.all([
-        getLeaderboard(10),
-        getDepartmentPerformance(),
-        getCompletionTrends(),
-        getCertificationDistribution()
-      ]);
-
-    return {
-      leaderboard,
-      departmentPerformance,
-      completionTrends,
-      certificationDistribution
-    };
-  } catch (error) {
-    console.error('Report Service - getDashboardAnalytics error:', error);
+    console.error('Instructor Report Service - generateReport error:', error);
     throw error;
   }
 };
@@ -251,6 +238,5 @@ module.exports = {
   getCourseCompletionData,
   getLearningEngagementData,
   getSkillsAssessmentData,
-  generateReport,
-  getDashboardAnalytics
+  generateReport
 };

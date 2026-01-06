@@ -10,10 +10,7 @@ router.use(authorize(2));
 router.post("/courses", instructorCourseController.addCourse);
 router.put("/courses/:courseId", instructorCourseController.updateCourse);
 router.delete("/courses/:courseId", instructorCourseController.deleteCourse);
-router.get(
-  "/courses/:courseId",
-  instructorCourseController.getCourseDetailsById
-);
+// NOTE: getCourseDetailsById moved to bottom to avoid route conflicts
 //course update operations
 router.put(
   "/courses/:courseId/requirements",
@@ -104,6 +101,40 @@ router.get(
 router.get(
   "/courses/:courseId/batches",
   instructorCourseController.getCourseBatches
+);
+
+// ============================================================================
+// INSTRUCTOR LEARNING ROUTES (Instructor as Learner)
+// These routes allow instructors to browse, enroll, and save courses
+// ============================================================================
+
+// Get subscribed courses (My Courses)
+router.get("/courses/subscribed", instructorCourseController.getSubscribedCourses);
+
+// Get explore/browse courses
+router.get("/courses/explore", instructorCourseController.exploreCourses);
+
+// Get saved courses (Wishlist)
+router.get("/courses/saved", instructorCourseController.getSavedCourses);
+
+// Save course to wishlist
+router.post("/courses/save", instructorCourseController.saveCourse);
+
+// Unsave course from wishlist
+router.post("/courses/unsave", instructorCourseController.unsaveCourse);
+
+// Enroll in course
+router.post("/courses/enroll", instructorCourseController.enrollInCourse);
+
+// ============================================================================
+// IMPORTANT: This route must come AFTER all specific /courses/* routes
+// to avoid Express matching 'explore', 'subscribed', etc. as :courseId
+// ============================================================================
+
+// Get course details - uses learning-based stored procedures
+router.get(
+  "/courses/:courseId",
+  instructorCourseController.getCourseDetailsForLearning
 );
 
 module.exports = router;
