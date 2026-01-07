@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const userManagementController = require('../../controllers/admin/user_management_controller');
+const userManagementController = require('../../controllers/super_admin/user_management_controller');
 const { authenticate, authorize } = require('../../middleware/auth_middleware');
 
-// Apply authentication and admin authorization
+// Apply authentication and super admin authorization
 router.use(authenticate);
-router.use(authorize(3, 4)); // Role 3 = Admin, Role 4 = Super Admin
+router.use(authorize(4)); // Role 4 = Super Admin
 
 // Static routes first (before /:id)
 router.get('/stats', userManagementController.getUserStats);

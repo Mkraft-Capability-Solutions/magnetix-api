@@ -6,7 +6,7 @@ const { authenticate, authorize } = require("../../middleware/auth_middleware");
 
 // All routes require authentication and admin authorization
 router.use(authenticate);
-router.use(authorize(3)); // Role ID 3 = Admin
+router.use(authorize(3, 4)); // Role 3 = Admin, Role 4 = Super Admin
 
 // Get all sessions with optional filters
 router.get("/", adminSessionController.getAllSessions);
