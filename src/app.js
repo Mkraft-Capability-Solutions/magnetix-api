@@ -6,15 +6,30 @@ const path = require("path");
 
 const app = express();
 
-// CORS configuration
-const corsOptions = {
-  origin: [process.env.FRONTEND_URL, process.env.ASSESSMENT_URL],
-  credentials: true,
-  methods: ["GET", "POST","PATCH", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Origin", "Content-Type", "Accept", "Authorization"],
-};
+require("dotenv").config();
 
-app.use(cors(corsOptions));
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  process.env.ASSESSMENT_URL
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // allow Postman / curl / server-to-server
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.error("❌ Blocked by CORS:", origin);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
 app.use(cookieParser());
 
 // Parse JSON and URL-encoded data with size limits

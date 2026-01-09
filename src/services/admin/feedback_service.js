@@ -20,7 +20,7 @@ const getAllForms = async (filters = {}) => {
       ff.id, ff.uuid, ff.slug, ff.name, ff.description, ff.type, ff.status,
       ff.expiry_date, ff.max_responses, ff.one_per_browser,
       ff.collect_name, ff.collect_email, ff.created_at,
-      CONCAT(u.first_name, ' ', u.last_name) as created_by_name,
+      COALESCE(u.email, ff.created_by) as created_by_name,
       (SELECT COUNT(*) FROM feedback_responses WHERE form_id = ff.id) as response_count,
       (SELECT COUNT(*) FROM feedback_questions WHERE form_id = ff.id) as question_count
     FROM feedback_forms ff
@@ -74,6 +74,36 @@ const getFormById = async (formId) => {
 };
 
 /**
+ * Validate questions based on form type
+ */
+const validateQuestions = (formType, questions) => {
+  if (!questions || questions.length === 0) {
+    throw new Error('At least one question is required');
+  }
+
+  for (const question of questions) {
+    // For assessment type, only allow multiple choice questions
+    if (formType === 'assessment') {
+      if (question.type !== 'multiple_choice_single' && question.type !== 'multiple_choice_multi') {
+        throw new Error('Assessment forms can only contain multiple choice questions');
+      }
+    }
+
+    // For multiple choice questions, validate options
+    if (question.type === 'multiple_choice_single' || question.type === 'multiple_choice_multi') {
+      if (!question.options || !Array.isArray(question.options)) {
+        throw new Error('Multiple choice questions must have options');
+      }
+
+      const validOptions = question.options.filter(opt => opt && opt.trim().length > 0);
+      if (validOptions.length < 2) {
+        throw new Error('Multiple choice questions must have at least 2 options');
+      }
+    }
+  }
+};
+
+/**
  * Create new feedback form with questions
  */
 const createForm = async (formData, userUuid) => {
@@ -81,6 +111,9 @@ const createForm = async (formData, userUuid) => {
 
   try {
     await connection.beginTransaction();
+
+    // Validate questions based on form type
+    validateQuestions(formData.type || 'feedback', formData.questions);
 
     const slug = generateSlug();
     const uuid = uuidv4();
@@ -112,17 +145,22 @@ const createForm = async (formData, userUuid) => {
     if (formData.questions && formData.questions.length > 0) {
       for (let i = 0; i < formData.questions.length; i++) {
         const q = formData.questions[i];
+        // Filter out empty options
+        const cleanOptions = q.options ? q.options.filter(opt => opt && opt.trim().length > 0) : null;
+        const correctAnswers = q.correctAnswers && q.correctAnswers.length > 0 ? JSON.stringify(q.correctAnswers) : null;
+
         await connection.query(`
           INSERT INTO feedback_questions
-          (form_id, question_order, question_type, question_text, is_required, options)
-          VALUES (?, ?, ?, ?, ?, ?)
+          (form_id, question_order, question_type, question_text, is_required, options, correct_answers)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
         `, [
           formId,
           i + 1,
           q.type,
           q.text,
           q.required ? 1 : 0,
-          q.options ? JSON.stringify(q.options) : null
+          cleanOptions ? JSON.stringify(cleanOptions) : null,
+          correctAnswers
         ]);
       }
     }
@@ -152,6 +190,11 @@ const updateForm = async (formId, formData) => {
   try {
     await connection.beginTransaction();
 
+    // Validate questions based on form type
+    if (formData.questions) {
+      validateQuestions(formData.type || 'feedback', formData.questions);
+    }
+
     // Update form
     await connection.query(`
       UPDATE feedback_forms SET
@@ -178,17 +221,22 @@ const updateForm = async (formId, formData) => {
     if (formData.questions && formData.questions.length > 0) {
       for (let i = 0; i < formData.questions.length; i++) {
         const q = formData.questions[i];
+        // Filter out empty options
+        const cleanOptions = q.options ? q.options.filter(opt => opt && opt.trim().length > 0) : null;
+        const correctAnswers = q.correctAnswers && q.correctAnswers.length > 0 ? JSON.stringify(q.correctAnswers) : null;
+
         await connection.query(`
           INSERT INTO feedback_questions
-          (form_id, question_order, question_type, question_text, is_required, options)
-          VALUES (?, ?, ?, ?, ?, ?)
+          (form_id, question_order, question_type, question_text, is_required, options, correct_answers)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
         `, [
           formId,
           i + 1,
           q.type,
           q.text,
           q.required ? 1 : 0,
-          q.options ? JSON.stringify(q.options) : null
+          cleanOptions ? JSON.stringify(cleanOptions) : null,
+          correctAnswers
         ]);
       }
     }
@@ -278,6 +326,61 @@ const getPublicFormBySlug = async (slug, browserFingerprint = null) => {
 };
 
 /**
+ * Calculate assessment score
+ */
+const calculateAssessmentScore = (questions, userAnswers) => {
+  let score = 0;
+  let maxScore = questions.length;
+
+  for (const question of questions) {
+    const userAnswer = userAnswers.find(a => a.questionId === question.id);
+    if (!userAnswer || !question.correct_answers) continue;
+
+    const correctAnswers = typeof question.correct_answers === 'string'
+      ? JSON.parse(question.correct_answers)
+      : question.correct_answers;
+
+    if (!correctAnswers || correctAnswers.length === 0) continue;
+
+    // Get user's selected options
+    let userSelectedIndices = [];
+    if (userAnswer.options) {
+      const selectedOptions = typeof userAnswer.options === 'string'
+        ? JSON.parse(userAnswer.options)
+        : userAnswer.options;
+
+      // Convert selected option text to indices
+      if (Array.isArray(selectedOptions) && question.options) {
+        const questionOptions = typeof question.options === 'string'
+          ? JSON.parse(question.options)
+          : question.options;
+
+        userSelectedIndices = selectedOptions.map(selectedOpt =>
+          questionOptions.findIndex(opt => opt === selectedOpt)
+        ).filter(idx => idx !== -1);
+      }
+    }
+
+    // Check if answer is correct
+    // User must select ALL correct answers and NO incorrect answers
+    const correctAnswersSet = new Set(correctAnswers.sort());
+    const userAnswersSet = new Set(userSelectedIndices.sort());
+
+    const isCorrect = correctAnswers.length === userSelectedIndices.length &&
+                     correctAnswers.every(idx => userAnswersSet.has(idx)) &&
+                     userSelectedIndices.every(idx => correctAnswersSet.has(idx));
+
+    if (isCorrect) {
+      score++;
+    }
+  }
+
+  const percentage = maxScore > 0 ? ((score / maxScore) * 100).toFixed(2) : 0;
+
+  return { score, maxScore, percentage };
+};
+
+/**
  * Submit response to public form
  */
 const submitResponse = async (slug, responseData) => {
@@ -295,17 +398,33 @@ const submitResponse = async (slug, responseData) => {
 
     const form = validation.form;
 
+    // Get form details to check if it's an assessment
+    const [formDetails] = await connection.query(
+      'SELECT type FROM feedback_forms WHERE id = ?',
+      [form.id]
+    );
+    const isAssessment = formDetails[0]?.type === 'assessment';
+
+    // Calculate score for assessments
+    let scoreData = null;
+    if (isAssessment && form.questions) {
+      scoreData = calculateAssessmentScore(form.questions, responseData.answers || []);
+    }
+
     // Insert response
     const [responseResult] = await connection.query(`
       INSERT INTO feedback_responses
-      (form_id, browser_fingerprint, respondent_name, respondent_email, ip_address)
-      VALUES (?, ?, ?, ?, ?)
+      (form_id, browser_fingerprint, respondent_name, respondent_email, ip_address, score, max_score, percentage)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       form.id,
       responseData.browserFingerprint || null,
       responseData.name || null,
       responseData.email || null,
-      responseData.ipAddress || null
+      responseData.ipAddress || null,
+      scoreData ? scoreData.score : null,
+      scoreData ? scoreData.maxScore : null,
+      scoreData ? scoreData.percentage : null
     ]);
 
     const responseId = responseResult.insertId;
@@ -328,7 +447,12 @@ const submitResponse = async (slug, responseData) => {
     }
 
     await connection.commit();
-    return { success: true, responseId };
+
+    return {
+      success: true,
+      responseId,
+      ...(scoreData && { score: scoreData.score, maxScore: scoreData.maxScore, percentage: scoreData.percentage })
+    };
   } catch (error) {
     await connection.rollback();
     throw error;
@@ -341,13 +465,23 @@ const submitResponse = async (slug, responseData) => {
  * Get analytics for a form
  */
 const getFormAnalytics = async (formId) => {
+  // Get form type to check if it's an assessment
+  const [formInfo] = await promisePool.query(
+    'SELECT type FROM feedback_forms WHERE id = ?',
+    [formId]
+  );
+  const isAssessment = formInfo[0]?.type === 'assessment';
+
   // Response stats
   const [stats] = await promisePool.query(`
     SELECT
       COUNT(*) as total_responses,
       COUNT(CASE WHEN submitted_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) as responses_this_week,
       MIN(submitted_at) as first_response,
-      MAX(submitted_at) as last_response
+      MAX(submitted_at) as last_response,
+      ${isAssessment ? 'AVG(percentage) as avg_score, MIN(percentage) as min_score, MAX(percentage) as max_score,' : ''}
+      ${isAssessment ? 'COUNT(CASE WHEN percentage >= 60 THEN 1 END) as passed_count,' : ''}
+      ${isAssessment ? 'COUNT(CASE WHEN percentage < 60 THEN 1 END) as failed_count' : 'NULL as avg_score, NULL as min_score, NULL as max_score, NULL as passed_count, NULL as failed_count'}
     FROM feedback_responses
     WHERE form_id = ?
   `, [formId]);
