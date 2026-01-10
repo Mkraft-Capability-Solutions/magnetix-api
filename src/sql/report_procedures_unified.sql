@@ -66,21 +66,18 @@ BEGIN
   ) profile ON u.uuid = profile.user_id
   LEFT JOIN user_points points ON u.uuid = points.user_id
   LEFT JOIN (
-    SELECT user_id, COUNT(*) as completed
-    FROM enrol
-    WHERE enrolled_date IS NOT NULL
-      AND (p_instructor_id IS NULL OR course_id IN (
+    SELECT e.user_id, COUNT(*) as completed
+    FROM enrol e
+    WHERE e.enrolled_date IS NOT NULL
+      AND (p_instructor_id IS NULL OR e.course_id IN (
         SELECT id FROM course WHERE creator_id = p_instructor_id AND is_deleted = 0
       ))
-    GROUP BY user_id
+    GROUP BY e.user_id
   ) course_stats ON u.uuid = course_stats.user_id
   LEFT JOIN (
-    SELECT user_id, COUNT(*) as total_certs
-    FROM student_certificates
-    WHERE p_instructor_id IS NULL OR course_id IN (
-      SELECT id FROM course WHERE creator_id = p_instructor_id AND is_deleted = 0
-    )
-    GROUP BY user_id
+    SELECT sc.user_id, COUNT(*) as total_certs
+    FROM student_certificates sc
+    GROUP BY sc.user_id
   ) cert_stats ON u.uuid = cert_stats.user_id
   WHERE u.is_deleted = 0
     AND (p_instructor_id IS NULL OR u.uuid IN (
@@ -143,14 +140,14 @@ BEGIN
   ) months
   LEFT JOIN (
     SELECT
-      DATE_FORMAT(enrolled_date, '%Y-%m-01') as enroll_month,
+      DATE_FORMAT(e.enrolled_date, '%Y-%m-01') as enroll_month,
       COUNT(*) as enrolled_count
-    FROM enrol
-    WHERE enrolled_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
-      AND (p_instructor_id IS NULL OR course_id IN (
+    FROM enrol e
+    WHERE e.enrolled_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+      AND (p_instructor_id IS NULL OR e.course_id IN (
         SELECT id FROM course WHERE creator_id = p_instructor_id AND is_deleted = 0
       ))
-    GROUP BY DATE_FORMAT(enrolled_date, '%Y-%m-01')
+    GROUP BY DATE_FORMAT(e.enrolled_date, '%Y-%m-01')
   ) enrollments ON months.month_date = enrollments.enroll_month
   LEFT JOIN (
     SELECT
@@ -255,20 +252,17 @@ BEGIN
   ) profile ON u.uuid = profile.user_id
   LEFT JOIN student_corporate_info sci ON u.uuid = sci.user_id
   LEFT JOIN (
-    SELECT user_id, COUNT(*) as enrolled, COUNT(*) as completed
-    FROM enrol
-    WHERE p_instructor_id IS NULL OR course_id IN (
+    SELECT e.user_id, COUNT(*) as enrolled, COUNT(*) as completed
+    FROM enrol e
+    WHERE p_instructor_id IS NULL OR e.course_id IN (
       SELECT id FROM course WHERE creator_id = p_instructor_id AND is_deleted = 0
     )
-    GROUP BY user_id
+    GROUP BY e.user_id
   ) course_stats ON u.uuid = course_stats.user_id
   LEFT JOIN (
-    SELECT user_id, COUNT(*) as total_certs
-    FROM student_certificates
-    WHERE p_instructor_id IS NULL OR course_id IN (
-      SELECT id FROM course WHERE creator_id = p_instructor_id AND is_deleted = 0
-    )
-    GROUP BY user_id
+    SELECT sc.user_id, COUNT(*) as total_certs
+    FROM student_certificates sc
+    GROUP BY sc.user_id
   ) cert_stats ON u.uuid = cert_stats.user_id
   LEFT JOIN user_points points ON u.uuid = points.user_id
   WHERE u.is_deleted = 0
