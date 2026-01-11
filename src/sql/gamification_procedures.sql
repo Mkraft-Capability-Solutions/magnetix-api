@@ -4,7 +4,7 @@
 -- Procedures for points, achievements, levels, and leaderboard
 -- ========================================
 
-USE lms_db;
+USE magnetix_db;
 
 DELIMITER $$
 
@@ -475,36 +475,56 @@ BEGIN
   ELSEIF p_period = 'monthly' THEN
     SET v_start_date = DATE_SUB(NOW(), INTERVAL 30 DAY);
   ELSE
-    SET v_start_date = '1970-01-01 00:00:00'; -- all_time
+    SET v_start_date = '2000-01-01 00:00:00'; -- all_time (use a safer date)
   END IF;
 
-  -- Get leaderboard
-  SELECT
-    u.uuid AS user_id,
-    s.first_name,
-    s.last_name,
-    u.email,
-    up.total_points,
-    up.total_xp,
-    up.current_level,
-    ld.level_name,
-    up.current_streak,
-    COUNT(DISTINCT ua.id) AS achievements_unlocked,
-    COALESCE(SUM(CASE WHEN pt.created_at >= v_start_date THEN pt.points_earned ELSE 0 END), 0) AS period_points
-  FROM user_points up
-  INNER JOIN users u ON up.user_id = u.uuid
-  INNER JOIN students s ON u.uuid = s.user_id
-  LEFT JOIN level_definitions ld ON up.current_level = ld.level
-  LEFT JOIN user_achievements ua ON up.user_id = ua.user_id AND ua.is_unlocked = 1
-  LEFT JOIN point_transactions pt ON up.user_id = pt.user_id
-  WHERE u.is_deleted = 0
-  GROUP BY up.user_id, s.first_name, s.last_name
-  ORDER BY
-    CASE
-      WHEN p_period = 'all_time' THEN up.total_points
-      ELSE period_points
-    END DESC
-  LIMIT p_limit OFFSET p_offset;
+  -- Get leaderboard using conditional ordering
+  IF p_period = 'all_time' THEN
+    SELECT
+      u.uuid AS user_id,
+      s.first_name,
+      s.last_name,
+      u.email,
+      up.total_points,
+      up.total_xp,
+      up.current_level,
+      ld.level_name,
+      up.current_streak,
+      COUNT(DISTINCT ua.id) AS achievements_unlocked,
+      up.total_points AS period_points
+    FROM user_points up
+    INNER JOIN users u ON up.user_id = u.uuid
+    INNER JOIN students s ON u.uuid = s.user_id
+    LEFT JOIN level_definitions ld ON up.current_level = ld.level
+    LEFT JOIN user_achievements ua ON up.user_id = ua.user_id AND ua.is_unlocked = 1
+    WHERE u.is_deleted = 0
+    GROUP BY up.user_id, s.first_name, s.last_name, u.email, up.total_points, up.total_xp, up.current_level, ld.level_name, up.current_streak
+    ORDER BY up.total_points DESC
+    LIMIT p_limit OFFSET p_offset;
+  ELSE
+    SELECT
+      u.uuid AS user_id,
+      s.first_name,
+      s.last_name,
+      u.email,
+      up.total_points,
+      up.total_xp,
+      up.current_level,
+      ld.level_name,
+      up.current_streak,
+      COUNT(DISTINCT ua.id) AS achievements_unlocked,
+      COALESCE(SUM(CASE WHEN pt.created_at >= v_start_date THEN pt.points_earned ELSE 0 END), 0) AS period_points
+    FROM user_points up
+    INNER JOIN users u ON up.user_id = u.uuid
+    INNER JOIN students s ON u.uuid = s.user_id
+    LEFT JOIN level_definitions ld ON up.current_level = ld.level
+    LEFT JOIN user_achievements ua ON up.user_id = ua.user_id AND ua.is_unlocked = 1
+    LEFT JOIN point_transactions pt ON up.user_id = pt.user_id
+    WHERE u.is_deleted = 0
+    GROUP BY up.user_id, s.first_name, s.last_name, u.email, up.total_points, up.total_xp, up.current_level, ld.level_name, up.current_streak
+    ORDER BY period_points DESC
+    LIMIT p_limit OFFSET p_offset;
+  END IF;
 END$$
 
 -- ========================================

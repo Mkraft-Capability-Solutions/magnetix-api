@@ -26,39 +26,118 @@ async function generateTicketNumber() {
  */
 exports.getFAQs = async () => {
   return [
+    // Account FAQs
     {
       id: 1,
       question: 'How do I reset my password?',
       answer:
         'You can reset your password by clicking "Forgot Password" on the login page and following the instructions sent to your email.',
-      category: 'account',
+      category: 'Account',
     },
     {
       id: 2,
-      question: 'How do I enroll in a course?',
+      question: 'How do I update my profile information?',
       answer:
-        'Browse available courses in the catalog, click on the course you want, and click the "Enroll" button.',
-      category: 'course',
+        'Navigate to your profile settings by clicking on your avatar in the top right corner, then select "Edit Profile" to update your information.',
+      category: 'Account',
     },
     {
       id: 3,
-      question: 'What payment methods do you accept?',
-      answer: 'We accept credit cards, debit cards, and PayPal for course payments.',
-      category: 'billing',
+      question: 'How do I change my email address?',
+      answer:
+        'Go to Account Settings, click on "Email Settings", enter your new email address, and verify it through the confirmation email sent to your new address.',
+      category: 'Account',
     },
+
+    // Billing FAQs
     {
       id: 4,
-      question: 'How do I contact support?',
-      answer:
-        'You can use the live chat feature on this page, submit a ticket via "Write Your Query", or call us at the number provided.',
-      category: 'general',
+      question: 'What payment methods do you accept?',
+      answer: 'We accept credit cards, debit cards, PayPal, and wire transfers for course payments.',
+      category: 'Billing',
     },
     {
       id: 5,
       question: 'Can I get a refund for a course?',
       answer:
         'Refunds are available within 14 days of purchase if you have not completed more than 20% of the course content.',
-      category: 'billing',
+      category: 'Billing',
+    },
+    {
+      id: 6,
+      question: 'How do I view my billing history?',
+      answer:
+        'Access your billing history by going to Account Settings > Billing & Payments. You can view all past transactions and download invoices.',
+      category: 'Billing',
+    },
+
+    // Security FAQs
+    {
+      id: 7,
+      question: 'How do I enable two-factor authentication?',
+      answer:
+        'Go to Account Settings > Security, then enable Two-Factor Authentication. Follow the prompts to set up your preferred authentication method (SMS or authenticator app).',
+      category: 'Security',
+    },
+    {
+      id: 8,
+      question: 'Is my personal data secure?',
+      answer:
+        'Yes, we use industry-standard encryption (SSL/TLS) to protect your data. All sensitive information is encrypted both in transit and at rest.',
+      category: 'Security',
+    },
+    {
+      id: 9,
+      question: 'What should I do if I suspect unauthorized access to my account?',
+      answer:
+        'Immediately change your password, enable two-factor authentication, and contact our support team. We will help secure your account and investigate any suspicious activity.',
+      category: 'Security',
+    },
+
+    // General FAQs
+    {
+      id: 10,
+      question: 'How do I enroll in a course?',
+      answer:
+        'Browse available courses in the catalog, click on the course you want, and click the "Enroll" button. Some courses may require approval from your administrator.',
+      category: 'General',
+    },
+    {
+      id: 11,
+      question: 'Can I access courses on mobile devices?',
+      answer:
+        'Yes, our platform is fully responsive and works on all devices including smartphones and tablets. You can also download our mobile app from the App Store or Google Play.',
+      category: 'General',
+    },
+    {
+      id: 12,
+      question: 'How do I track my learning progress?',
+      answer:
+        'Your learning progress is automatically tracked and can be viewed on your dashboard. You can see completion percentages, certificates earned, and upcoming deadlines.',
+      category: 'General',
+    },
+
+    // Support FAQs
+    {
+      id: 13,
+      question: 'How do I contact support?',
+      answer:
+        'You can use the live chat feature on this page, submit a ticket via "Write Your Query", or call us at the number provided. Our support team is available 24/7.',
+      category: 'Support',
+    },
+    {
+      id: 14,
+      question: 'What are your support hours?',
+      answer:
+        'Our support team is available 24/7 via chat and email. Phone support is available Monday-Friday, 9:00 AM - 6:00 PM EST.',
+      category: 'Support',
+    },
+    {
+      id: 15,
+      question: 'How long does it take to get a response?',
+      answer:
+        'Chat responses are typically within 2-5 minutes during business hours. Email and ticket responses are usually within 24 hours. Urgent issues are prioritized.',
+      category: 'Support',
     },
   ];
 };

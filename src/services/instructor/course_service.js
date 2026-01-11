@@ -2604,6 +2604,203 @@ class InstructorCourseService {
       connection.release();
     }
   }
+
+  // ============================================================================
+  // INSTRUCTOR LEARNING METHODS (Instructor as Learner)
+  // These methods allow instructors to browse, enroll, and save courses
+  // Uses the same stored procedures as student service
+  // ============================================================================
+
+  async getSubscribedCourses(instructorId) {
+    try {
+      const [result] = await promisePool.query('CALL get_student_subscribed_courses(?)', [instructorId]);
+      return result[0];
+    } catch (error) {
+      console.error('Error in getSubscribedCourses:', error);
+      throw error;
+    }
+  }
+
+  async exploreCourses(instructorId) {
+    try {
+      const [result] = await promisePool.query('CALL get_explore_courses(?)', [instructorId]);
+      return result[0];
+    } catch (error) {
+      console.error('Error in exploreCourses:', error);
+      throw error;
+    }
+  }
+
+  async getSavedCourses(instructorId) {
+    try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(instructorId.toLowerCase())) {
+        throw new Error('Invalid instructor UUID format');
+      }
+
+      const [result] = await promisePool.query('CALL get_saved_courses(?)', [instructorId]);
+      return result[0];
+    } catch (error) {
+      console.error('Error in getSavedCourses:', error);
+      throw error;
+    }
+  }
+
+  async saveCourse(instructorId, courseId) {
+    try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(instructorId.toLowerCase())) {
+        throw new Error('Invalid instructor UUID format');
+      }
+
+      if (!courseId || isNaN(courseId)) {
+        throw new Error('Invalid course ID');
+      }
+
+      const [result] = await promisePool.query('CALL save_course(?, ?)', [instructorId, courseId]);
+      return result[0][0];
+    } catch (error) {
+      if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+        throw new Error('The course or instructor does not exist');
+      }
+      console.error('Error in saveCourse:', error);
+      throw error;
+    }
+  }
+
+  async unsaveCourse(instructorId, courseId) {
+    try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(instructorId.toLowerCase())) {
+        throw new Error('Invalid instructor UUID format');
+      }
+
+      if (!courseId || isNaN(courseId)) {
+        throw new Error('Invalid course ID');
+      }
+
+      const [result] = await promisePool.query('CALL unsave_course(?, ?)', [instructorId, courseId]);
+      return result[0][0];
+    } catch (error) {
+      if (error.code === '45000') {
+        throw new Error(error.sqlMessage);
+      }
+      console.error('Error in unsaveCourse:', error);
+      throw error;
+    }
+  }
+
+  async enrollInCourse(instructorId, courseId) {
+    try {
+      const normalizedInstructorId = instructorId.toLowerCase();
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(normalizedInstructorId)) {
+        throw new Error('Invalid instructor UUID format');
+      }
+
+      const [result] = await promisePool.query('CALL enroll_student_in_course(?, ?)', [normalizedInstructorId, courseId]);
+
+      const debugInfo = result.filter(row => row[0] && (row[0].debug || row[0].warning));
+      const message = result.find(row => row[0] && row[0].message)[0].message;
+
+      return {
+        message: message,
+        firstLessonUnlocked: debugInfo.some(info => info[0].debug && info[0].debug.includes('Inserted progress')),
+        debug: debugInfo.map(info => info[0])
+      };
+    } catch (error) {
+      if (error.code === 'ER_SIGNAL_EXCEPTION') {
+        throw new Error(error.sqlMessage);
+      } else if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+        throw new Error('The course or instructor does not exist');
+      }
+      console.error('Error in enrollInCourse:', error);
+      throw error;
+    }
+  }
+
+  async getCourseDetailsForLearning(instructorId, courseId) {
+    try {
+      // First check enrollment status
+      const [enrollmentCheck] = await promisePool.query(
+        'CALL check_course_enrollment(?, ?)',
+        [instructorId, courseId]
+      );
+      const isEnrolled = enrollmentCheck[0][0].is_enrolled;
+
+      // Get appropriate course details based on enrollment
+      if (isEnrolled) {
+        const [results] = await promisePool.query(
+          'CALL get_course_enrolled_details(?, ?)',
+          [instructorId, courseId]
+        );
+
+        // Process results - same structure as student service
+        const courseInfo = results[0][0];
+        const requirements = results[1];
+        const outcomes = results[2];
+        const faqs = results[3];
+        const skills = results[4];
+        const sections = results[5];
+        const contentLessons = results[6];
+        const iltsLessons = results[7];
+        const reviews = results[8];
+        const ratingStats = results[9][0];
+        const lessonsWithProgress = results[10];
+        const progressSummary = results[11][0];
+        const achievedSkills = results[12];
+
+        return {
+          ...courseInfo,
+          requirements,
+          outcomes,
+          faqs,
+          skills,
+          sections,
+          lessons: lessonsWithProgress,
+          reviews,
+          rating_stats: ratingStats,
+          progress: progressSummary,
+          achieved_skills: achievedSkills,
+          is_enrolled: true
+        };
+      } else {
+        const [results] = await promisePool.query(
+          'CALL get_course_basic_details(?)',
+          [courseId]
+        );
+
+        const courseInfo = results[0][0];
+        const requirements = results[1];
+        const outcomes = results[2];
+        const faqs = results[3];
+        const skills = results[4];
+        const sections = results[5];
+        const contentLessons = results[6];
+        const iltsLessons = results[7];
+        const reviews = results[8];
+        const ratingStats = results[9][0];
+
+        const allLessons = [...contentLessons, ...iltsLessons];
+
+        return {
+          ...courseInfo,
+          requirements,
+          outcomes,
+          faqs,
+          skills,
+          sections,
+          lessons: allLessons,
+          reviews,
+          rating_stats: ratingStats,
+          is_enrolled: false
+        };
+      }
+    } catch (error) {
+      console.error('Error in getCourseDetailsForLearning:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new InstructorCourseService();

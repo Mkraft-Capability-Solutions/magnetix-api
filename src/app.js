@@ -6,15 +6,30 @@ const path = require("path");
 
 const app = express();
 
-// CORS configuration
-const corsOptions = {
-  origin: [process.env.FRONTEND_URL, process.env.ASSESSMENT_URL],
-  credentials: true,
-  methods: ["GET", "POST","PATCH", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Origin", "Content-Type", "Accept", "Authorization"],
-};
+require("dotenv").config();
 
-app.use(cors(corsOptions));
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  process.env.ASSESSMENT_URL
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // allow Postman / curl / server-to-server
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.error("❌ Blocked by CORS:", origin);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
 app.use(cookieParser());
 
 // Parse JSON and URL-encoded data with size limits
@@ -47,6 +62,12 @@ const instructorCourseRoutes = require("./routes/instructor/course_routes");
 const instructorNotificationRoutes = require("./routes/instructor/notification_routes");
 const instructorAvailabilityRoutes = require("./routes/instructor/availability_routes");
 const instructorProfileRoutes = require("./routes/instructor/instructor_profile_routes");
+const instructorDashboardRoutes = require("./routes/instructor/dashboard_routes");
+const instructorReportRoutes = require("./routes/instructor/report_routes");
+const instructorTeamRoutes = require("./routes/instructor/team_routes");
+const instructorUserManagementRoutes = require("./routes/instructor/user_management_routes");
+const instructorMarketingRoutes = require("./routes/instructor/marketing_routes");
+const instructorILTRoutes = require("./routes/instructor/ilt_routes");
 const adminInstructorRoutes = require("./routes/admin/instructor_routes");
 const adminStudentRoutes = require("./routes/admin/student_routes");
 const adminEventRoutes = require("./routes/admin/event_routes");
@@ -63,6 +84,14 @@ const adminReportRoutes = require("./routes/admin/report_routes");
 const adminTeamRoutes = require("./routes/admin/team_routes");
 const adminILTRoutes = require("./routes/admin/ilt_routes");
 const adminBulkUploadRoutes = require("./routes/admin/bulk_upload_routes");
+const superAdminDashboardRoutes = require("./routes/super_admin/dashboard_routes");
+const superAdminTeamRoutes = require("./routes/super_admin/team_routes");
+const superAdminUserManagementRoutes = require("./routes/super_admin/user_management_routes");
+const superAdminBulkUploadRoutes = require("./routes/super_admin/bulk_upload_routes");
+const superAdminFeedbackRoutes = require("./routes/super_admin/feedback_routes");
+const superAdminMarketingRoutes = require("./routes/super_admin/marketing_routes");
+const superAdminILTRoutes = require("./routes/super_admin/ilt_routes");
+const superAdminReportRoutes = require("./routes/super_admin/report_routes");
 
 // Use routes with API prefixes
 app.use("/api/landing", landingRoutes);
@@ -91,6 +120,12 @@ app.use("/api/instructor/notifications", instructorNotificationRoutes);
 app.use("/api/instructor", instructorProfileRoutes);
 app.use("/api/instructor", instructorAvailabilityRoutes);
 app.use("/api/instructor", instructorCourseRoutes);
+app.use("/api/instructor/dashboard", instructorDashboardRoutes);
+app.use("/api/instructor/reports", instructorReportRoutes);
+app.use("/api/instructor/teams", instructorTeamRoutes);
+app.use("/api/instructor/users", instructorUserManagementRoutes);
+app.use("/api/instructor/marketing", instructorMarketingRoutes);
+app.use("/api/instructor/ilt", instructorILTRoutes);
 app.use("/api/admin/instructors", adminInstructorRoutes);
 app.use("/api/admin/students", adminStudentRoutes);
 app.use("/api/admin/events", adminEventRoutes);
@@ -113,6 +148,14 @@ app.use("/api/admin/marketing", require("./routes/admin/marketing_routes"));
 app.use("/api/notifications", require("./routes/notification_routes"));
 app.use("/api/admin/feedback", require("./routes/admin/feedback_routes"));
 app.use("/api/public/feedback", require("./routes/public/feedback_routes"));
+app.use("/api/super-admin/dashboard", superAdminDashboardRoutes);
+app.use("/api/super-admin/teams", superAdminTeamRoutes);
+app.use("/api/super-admin/users", superAdminUserManagementRoutes);
+app.use("/api/super-admin/bulk-upload", superAdminBulkUploadRoutes);
+app.use("/api/super-admin/feedback", superAdminFeedbackRoutes);
+app.use("/api/super-admin/marketing", superAdminMarketingRoutes);
+app.use("/api/super-admin/ilt", superAdminILTRoutes);
+app.use("/api/super-admin/reports", superAdminReportRoutes);
 
 // Serve uploaded files (e.g., profile pictures)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));

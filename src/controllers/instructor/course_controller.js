@@ -838,3 +838,159 @@ exports.getCourseBatches = async (req, res, next) => {
     next(error);
   }
 };
+
+// ============================================================================
+// INSTRUCTOR LEARNING CONTROLLERS (Instructor as Learner)
+// These endpoints allow instructors to browse, enroll, and save courses
+// ============================================================================
+
+exports.getSubscribedCourses = async (req, res, next) => {
+  try {
+    const courses = await instructorCourseService.getSubscribedCourses(req.user.uuid);
+    res.json({
+      success: true,
+      data: courses,
+    });
+  } catch (error) {
+    console.error("Error in getSubscribedCourses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get subscribed courses",
+      error: error.message,
+    });
+  }
+};
+
+exports.exploreCourses = async (req, res, next) => {
+  try {
+    const courses = await instructorCourseService.exploreCourses(req.user.uuid);
+    res.json({
+      success: true,
+      data: courses,
+    });
+  } catch (error) {
+    console.error("Error in exploreCourses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get explore courses",
+      error: error.message,
+    });
+  }
+};
+
+exports.getSavedCourses = async (req, res, next) => {
+  try {
+    const courses = await instructorCourseService.getSavedCourses(req.user.uuid);
+    res.json({
+      success: true,
+      data: courses,
+    });
+  } catch (error) {
+    console.error("Error in getSavedCourses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get saved courses",
+      error: error.message,
+    });
+  }
+};
+
+exports.saveCourse = async (req, res, next) => {
+  try {
+    const { course_id } = req.body;
+
+    if (!course_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Course ID is required",
+      });
+    }
+
+    const result = await instructorCourseService.saveCourse(req.user.uuid, course_id);
+    res.json({
+      success: true,
+      message: result.message || "Course saved successfully",
+      data: null,
+    });
+  } catch (error) {
+    console.error("Error in saveCourse:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to save course",
+    });
+  }
+};
+
+exports.unsaveCourse = async (req, res, next) => {
+  try {
+    const { course_id } = req.body;
+
+    if (!course_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Course ID is required",
+      });
+    }
+
+    const result = await instructorCourseService.unsaveCourse(req.user.uuid, course_id);
+    res.json({
+      success: true,
+      message: result.message || "Course unsaved successfully",
+      data: null,
+    });
+  } catch (error) {
+    console.error("Error in unsaveCourse:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to unsave course",
+    });
+  }
+};
+
+exports.enrollInCourse = async (req, res, next) => {
+  try {
+    const { course_id } = req.body;
+
+    if (!course_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Course ID is required",
+      });
+    }
+
+    const result = await instructorCourseService.enrollInCourse(req.user.uuid, course_id);
+    res.json({
+      success: true,
+      message: result.message || "Successfully enrolled in course",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in enrollInCourse:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to enroll in course",
+    });
+  }
+};
+
+exports.getCourseDetailsForLearning = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const courseDetails = await instructorCourseService.getCourseDetailsForLearning(
+      req.user.uuid,
+      courseId
+    );
+
+    res.json({
+      success: true,
+      data: courseDetails,
+    });
+  } catch (error) {
+    console.error("Error in getCourseDetailsForLearning:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get course details",
+      error: error.message,
+    });
+  }
+};

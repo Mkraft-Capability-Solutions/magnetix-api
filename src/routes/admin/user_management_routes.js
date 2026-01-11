@@ -5,7 +5,7 @@ const { authenticate, authorize } = require('../../middleware/auth_middleware');
 
 // Apply authentication and admin authorization
 router.use(authenticate);
-router.use(authorize(3));
+router.use(authorize(3, 4)); // Role 3 = Admin, Role 4 = Super Admin
 
 // Static routes first (before /:id)
 router.get('/stats', userManagementController.getUserStats);

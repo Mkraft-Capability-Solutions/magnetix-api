@@ -5,7 +5,7 @@ const { authenticate, authorize } = require('../../middleware/auth_middleware');
 
 // Apply authentication and admin authorization to all routes
 router.use(authenticate);
-router.use(authorize(3)); // Role 3 = Admin
+router.use(authorize(3, 4)); // Role 3 = Admin, Role 4 = Super Admin
 
 /**
  * GET /api/admin/teams/stats
