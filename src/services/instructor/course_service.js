@@ -71,7 +71,13 @@ class InstructorCourseService {
         ]
       );
 
-      const courseId = result[0][0].id;
+      // Debug: Log the entire result structure
+      console.log("Raw result from stored procedure:", JSON.stringify(result, null, 2));
+      console.log("result[0]:", result[0]);
+      console.log("result[0][0]:", result[0] ? result[0][0] : "undefined");
+
+      // The stored procedure returns 'id' field
+      const courseId = result[0][0].id || result[0][0].courseId;
       console.log("Course created with ID:", courseId);
 
       if (!courseId) {
@@ -302,7 +308,7 @@ class InstructorCourseService {
             [sectionGroup.sectionTitle, courseId, userId, userId]
           );
 
-          const sectionId = sectionResult[0][0].id;
+          const sectionId = sectionResult[0][0].id || sectionResult[0][0].sectionId;
           console.log(`Section created with ID: ${sectionId}`);
 
           // Process lessons in this new section
@@ -908,7 +914,7 @@ class InstructorCourseService {
             [sectionGroup.sectionTitle, courseId, userId, userId]
           );
 
-          const sectionId = sectionResult[0][0].id;
+          const sectionId = sectionResult[0][0].id || sectionResult[0][0].sectionId;
           console.log(`Update - Section created with ID: ${sectionId}`);
 
           // Process lessons in this new section
@@ -1854,7 +1860,7 @@ class InstructorCourseService {
         params
       );
 
-      const lessonId = result[0][0].id;
+      const lessonId = result[0][0].id || result[0][0].lessonId;
       console.log("Lesson created with ID:", lessonId);
 
       // Note: File uploads are handled on the frontend after lesson creation
@@ -1965,16 +1971,62 @@ class InstructorCourseService {
   async getSectionsByCourseId(courseId) {
     console.log("getSectionsByCourseId called with courseId:", courseId);
 
-    const [rows] = await promisePool.query(
-      "SELECT * FROM course_section WHERE course_id = ?",
+    // Get sections
+    const [sections] = await promisePool.query(
+      "SELECT * FROM course_section WHERE course_id = ? ORDER BY id ASC",
       [courseId]
     );
 
-    if (rows.length === 0) {
-      throw new Error("No sections found for this course");
-    }
+    // Get lessons for this course
+    const [lessons] = await promisePool.query(
+      `SELECT l.*
+      FROM course_lesson l
+      WHERE l.course_id = ?
+      ORDER BY l.section_id, l.lesson_order, l.id ASC`,
+      [courseId]
+    );
 
-    return rows.map((row) => new CourseSectionDTO(row));
+    // Group lessons by section
+    const sectionsWithLessons = sections.map((section) => {
+      const sectionLessons = lessons.filter(
+        (lesson) => lesson.section_id === section.id
+      );
+
+      return {
+        id: section.id,
+        title: section.title,
+        sectionOrder: section.id, // Using id as order since section_order doesn't exist
+        createdAt: section.created_date,
+        lessons: sectionLessons.map((lesson) => ({
+          id: lesson.id,
+          title: lesson.title,
+          section: section.title,
+          sectionId: section.id,
+          lessonType: lesson.lesson_type,
+          lessonOrder: lesson.lesson_order,
+          // Content-Based fields
+          contentType: lesson.content_type,
+          lessonContentDocument: lesson.lesson_content_document,
+          scormPackage: lesson.scorm_package,
+          videoUpload: lesson.video_upload,
+          contentUrl: lesson.content_url,
+          lessonDuration: lesson.lesson_duration,
+          description: lesson.description,
+          skills: lesson.skills ? JSON.parse(lesson.skills) : [],
+          // ILTS fields
+          iltsType: lesson.ilts_type,
+          iltsUrl: lesson.ilts_url,
+          startDate: lesson.start_date,
+          startTime: lesson.start_time,
+          endDate: lesson.end_date,
+          endTime: lesson.end_time,
+          eventVenue: lesson.event_venue,
+          meetUrl: lesson.meet_url,
+        })),
+      };
+    });
+
+    return sectionsWithLessons;
   }
 
   // Individual section update methods for editing
