@@ -46,23 +46,28 @@ class InstructorCourseService {
 
     try {
       // Add main course
+      // Convert empty arrays to NULL for stored procedure
+      const metaKeywordsValue = metaKeywords && metaKeywords.length > 0
+        ? (Array.isArray(metaKeywords) ? metaKeywords.join(',') : metaKeywords)
+        : null;
+
       const [result] = await connection.query(
         "CALL add_instructor_course(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           userId,
           title,
-          shortDescription,
-          description,
+          shortDescription || null,
+          description || null,
           languageId,
           categoryId,
           subCategoryId,
           level,
-          courseDuration,
-          thumbnail,
-          mediaType,
-          mediaUrl,
-          metaKeywords,
-          metaDescription,
+          courseDuration || null,
+          thumbnail || null,
+          mediaType || null,
+          mediaUrl || null,
+          metaKeywordsValue,
+          metaDescription || null,
         ]
       );
 
@@ -621,24 +626,29 @@ class InstructorCourseService {
 
     try {
       // Update main course
+      // Convert empty arrays to NULL for stored procedure
+      const metaKeywordsValue = metaKeywords && metaKeywords.length > 0
+        ? (Array.isArray(metaKeywords) ? metaKeywords.join(',') : metaKeywords)
+        : null;
+
       const [result] = await connection.query(
         "CALL update_instructor_course(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           courseId,
           userId,
           title,
-          shortDescription,
-          description,
+          shortDescription || null,
+          description || null,
           languageId,
           categoryId,
           subCategoryId,
           level,
-          courseDuration,
-          thumbnail,
-          mediaType,
-          mediaUrl,
-          metaKeywords,
-          metaDescription,
+          courseDuration || null,
+          thumbnail || null,
+          mediaType || null,
+          mediaUrl || null,
+          metaKeywordsValue,
+          metaDescription || null,
         ]
       );
 
@@ -1172,18 +1182,46 @@ class InstructorCourseService {
   }
 
   async getCategories() {
-    const [rows] = await promisePool.query("CALL get_all_categories()");
-    return rows[0];
+    // Use direct query with proper column aliases
+    const [rows] = await promisePool.query(`
+      SELECT
+        id,
+        category_name as name,
+        created_date as createdAt,
+        last_updated as updatedAt
+      FROM category
+      ORDER BY category_name ASC
+    `);
+    return rows;
   }
 
   async getSubCategories() {
-    const [rows] = await promisePool.query("CALL get_all_subcategories()");
-    return rows[0];
+    // Use direct query with proper column aliases
+    const [rows] = await promisePool.query(`
+      SELECT
+        id,
+        subcategory_name as name,
+        category_id as categoryId,
+        created_date as createdAt,
+        last_updated as updatedAt
+      FROM sub_category
+      ORDER BY category_id, subcategory_name ASC
+    `);
+    return rows;
   }
 
   async getLanguages() {
-    const [rows] = await promisePool.query("CALL get_all_languages()");
-    return rows[0];
+    // Use direct query with proper column aliases
+    const [rows] = await promisePool.query(`
+      SELECT
+        id,
+        language_name as name,
+        language_name as code,
+        created_date as createdAt
+      FROM language
+      ORDER BY language_name ASC
+    `);
+    return rows;
   }
 
   // Add new category
@@ -2798,6 +2836,201 @@ class InstructorCourseService {
       }
     } catch (error) {
       console.error('Error in getCourseDetailsForLearning:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // COURSE OFFERINGS & SESSIONS METHODS
+  // ============================================================================
+
+  /**
+   * Create a course offering
+   */
+  async createCourseOffering(courseId, offeringData, creatorId) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_create_course_offering(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          courseId,
+          offeringData.name,
+          offeringData.locationId || null,
+          offeringData.locationName || null,
+          offeringData.startDate,
+          offeringData.endDate,
+          offeringData.timezone || 'EST',
+          offeringData.totalSeats,
+          offeringData.enableWaitlist ? 1 : 0,
+          creatorId
+        ]
+      );
+
+      return result[0][0];
+    } catch (error) {
+      console.error('Error creating course offering:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get course offerings by course ID
+   */
+  async getCourseOfferings(courseId) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_get_course_offerings(?)',
+        [courseId]
+      );
+
+      return result[0];
+    } catch (error) {
+      console.error('Error getting course offerings:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a course offering
+   */
+  async updateCourseOffering(offeringId, offeringData) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_update_course_offering(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          offeringId,
+          offeringData.name,
+          offeringData.locationId || null,
+          offeringData.locationName || null,
+          offeringData.startDate,
+          offeringData.endDate,
+          offeringData.timezone || 'EST',
+          offeringData.totalSeats,
+          offeringData.enableWaitlist ? 1 : 0,
+          offeringData.status || 'Draft'
+        ]
+      );
+
+      return result[0][0];
+    } catch (error) {
+      console.error('Error updating course offering:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a course offering (soft delete)
+   */
+  async deleteCourseOffering(offeringId) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_delete_course_offering(?)',
+        [offeringId]
+      );
+
+      return result[0][0];
+    } catch (error) {
+      console.error('Error deleting course offering:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a course session
+   */
+  async createCourseSession(courseId, sessionData, creatorId) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_create_course_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          courseId,
+          sessionData.offeringId || null,
+          sessionData.sectionId || null,
+          sessionData.lessonId || null,
+          sessionData.name,
+          sessionData.sessionDate,
+          sessionData.startTime,
+          sessionData.endTime,
+          sessionData.instructorId || null,
+          sessionData.deliveryMethod || 'Virtual',
+          sessionData.locationId || null,
+          sessionData.roomId || null,
+          sessionData.locationRoom || null,
+          sessionData.virtualMeetingLink || null,
+          sessionData.maxCapacity || 0,
+          sessionData.description || null,
+          creatorId
+        ]
+      );
+
+      return result[0][0];
+    } catch (error) {
+      console.error('Error creating course session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get course sessions by course ID or offering ID
+   */
+  async getCourseSessions(courseId, offeringId = null) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_get_course_sessions(?, ?)',
+        [courseId, offeringId]
+      );
+
+      return result[0];
+    } catch (error) {
+      console.error('Error getting course sessions:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a course session
+   */
+  async updateCourseSession(sessionId, sessionData) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_update_course_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          sessionId,
+          sessionData.name,
+          sessionData.sessionDate,
+          sessionData.startTime,
+          sessionData.endTime,
+          sessionData.instructorId || null,
+          sessionData.deliveryMethod || 'Virtual',
+          sessionData.locationId || null,
+          sessionData.roomId || null,
+          sessionData.locationRoom || null,
+          sessionData.virtualMeetingLink || null,
+          sessionData.maxCapacity || 0,
+          sessionData.description || null,
+          sessionData.status || 'Scheduled'
+        ]
+      );
+
+      return result[0][0];
+    } catch (error) {
+      console.error('Error updating course session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a course session (soft delete)
+   */
+  async deleteCourseSession(sessionId) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_delete_course_session(?)',
+        [sessionId]
+      );
+
+      return result[0][0];
+    } catch (error) {
+      console.error('Error deleting course session:', error);
       throw error;
     }
   }

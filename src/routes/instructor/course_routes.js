@@ -104,6 +104,46 @@ router.get(
 );
 
 // ============================================================================
+// COURSE OFFERINGS & SESSIONS ROUTES
+// ============================================================================
+
+// Course Offerings
+router.post(
+  "/courses/:courseId/offerings",
+  instructorCourseController.createCourseOffering
+);
+router.get(
+  "/courses/:courseId/offerings",
+  instructorCourseController.getCourseOfferings
+);
+router.put(
+  "/offerings/:offeringId",
+  instructorCourseController.updateCourseOffering
+);
+router.delete(
+  "/offerings/:offeringId",
+  instructorCourseController.deleteCourseOffering
+);
+
+// Course Sessions
+router.post(
+  "/courses/:courseId/sessions",
+  instructorCourseController.createCourseSession
+);
+router.get(
+  "/courses/:courseId/sessions",
+  instructorCourseController.getCourseSessions
+);
+router.put(
+  "/sessions/:sessionId",
+  instructorCourseController.updateCourseSession
+);
+router.delete(
+  "/sessions/:sessionId",
+  instructorCourseController.deleteCourseSession
+);
+
+// ============================================================================
 // INSTRUCTOR LEARNING ROUTES (Instructor as Learner)
 // These routes allow instructors to browse, enroll, and save courses
 // ============================================================================
