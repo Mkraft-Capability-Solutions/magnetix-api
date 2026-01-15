@@ -45,4 +45,17 @@ router.put('/skills/:skillId', authenticate, authorize(1), aiLearningPathControl
  */
 router.delete('/skills/:skillId', authenticate, authorize(1), aiLearningPathController.deleteSkill);
 
+/**
+ * Search trainees by name or email (for sharing)
+ * GET /api/student/ai-learning-path/trainees/search?q=searchQuery
+ */
+router.get('/trainees/search', authenticate, authorize(1), aiLearningPathController.searchTrainees);
+
+/**
+ * Share (copy) a learning path to another trainee
+ * POST /api/student/ai-learning-path/learning-paths/:pathId/share
+ * Body: { toUserId: string }
+ */
+router.post('/learning-paths/:pathId/share', authenticate, authorize(1), aiLearningPathController.shareLearningPath);
+
 module.exports = router;

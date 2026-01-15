@@ -114,3 +114,60 @@ exports.deleteSkill = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Search trainees by name or email (for sharing learning paths)
+ * GET /api/student/ai-learning-path/trainees/search?q=searchQuery
+ */
+exports.searchTrainees = async (req, res, next) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'Search query must be at least 2 characters'
+      });
+    }
+    const response = await aiLearningPathService.searchTrainees(req.user.uuid, q.trim());
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Share (copy) a learning path to another trainee
+ * POST /api/student/ai-learning-path/learning-paths/:pathId/share
+ * Body: { toUserId: string }
+ */
+exports.shareLearningPath = async (req, res, next) => {
+  try {
+    const { pathId } = req.params;
+    const { toUserId } = req.body;
+
+    if (!toUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'toUserId is required'
+      });
+    }
+
+    if (toUserId === req.user.uuid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot share learning path with yourself'
+      });
+    }
+
+    const response = await aiLearningPathService.shareLearningPath(pathId, req.user.uuid, toUserId);
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+    res.status(201).json(response);
+  } catch (error) {
+    next(error);
+  }
+};

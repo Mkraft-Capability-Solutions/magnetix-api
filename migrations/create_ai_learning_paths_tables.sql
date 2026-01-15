@@ -27,12 +27,16 @@ CREATE TABLE IF NOT EXISTS `ai_learning_paths` (
   `estimated_duration_weeks` INT,
   `time_spent_hours` DECIMAL(10,2) DEFAULT 0.00,
   `last_accessed` TIMESTAMP NULL,
+  `shared_by_user_id` VARCHAR(36) NULL COMMENT 'User who shared this path (if shared)',
+  `original_path_id` INT NULL COMMENT 'Original learning path ID if this is a shared copy',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
   FOREIGN KEY (`user_id`) REFERENCES `users`(`uuid`) ON DELETE CASCADE,
+  FOREIGN KEY (`shared_by_user_id`) REFERENCES `users`(`uuid`) ON DELETE SET NULL,
   INDEX `idx_user_status` (`user_id`, `status`),
-  INDEX `idx_user_progress` (`user_id`, `progress`)
+  INDEX `idx_user_progress` (`user_id`, `progress`),
+  INDEX `idx_shared_by` (`shared_by_user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ========================================

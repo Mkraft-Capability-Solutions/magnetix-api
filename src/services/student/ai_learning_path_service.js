@@ -249,6 +249,71 @@ class AILearningPathService {
       });
     }
   }
+
+  /**
+   * Search trainees by name or email (for sharing learning paths)
+   * @param {string} currentUserId - Current user's UUID (to exclude from results)
+   * @param {string} searchQuery - Search query string
+   * @returns {ServiceResponseDTO} Array of matching trainees
+   */
+  async searchTrainees(currentUserId, searchQuery) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL search_trainees(?, ?)',
+        [currentUserId, searchQuery]
+      );
+
+      const trainees = result[0];
+
+      return new ServiceResponseDTO(true, trainees, 'Trainees found successfully');
+    } catch (error) {
+      return new ErrorResponseDTO({
+        message: error.message || 'Failed to search trainees',
+        code: 'SEARCH_TRAINEES_ERROR'
+      });
+    }
+  }
+
+  /**
+   * Share (copy) a learning path to another trainee
+   * @param {number} pathId - Learning path ID to share
+   * @param {string} fromUserId - User who is sharing
+   * @param {string} toUserId - User to share with
+   * @returns {ServiceResponseDTO} Newly created learning path copy
+   */
+  async shareLearningPath(pathId, fromUserId, toUserId) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL copy_learning_path_to_user(?, ?, ?)',
+        [pathId, fromUserId, toUserId]
+      );
+
+      const newLearningPath = result[0][0];
+
+      if (!newLearningPath) {
+        return new ErrorResponseDTO({
+          message: 'Failed to share learning path',
+          code: 'SHARE_FAILED',
+          status: 500
+        });
+      }
+
+      return new ServiceResponseDTO(true, newLearningPath, 'Learning path shared successfully');
+    } catch (error) {
+      // Handle specific error from stored procedure
+      if (error.sqlState === '45000') {
+        return new ErrorResponseDTO({
+          message: error.message || 'Learning path not found or access denied',
+          code: 'ACCESS_DENIED',
+          status: 403
+        });
+      }
+      return new ErrorResponseDTO({
+        message: error.message || 'Failed to share learning path',
+        code: 'SHARE_ERROR'
+      });
+    }
+  }
 }
 
 module.exports = new AILearningPathService();
