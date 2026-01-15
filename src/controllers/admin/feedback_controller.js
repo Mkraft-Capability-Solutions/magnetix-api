@@ -229,11 +229,24 @@ exports.submitPublicResponse = async (req, res) => {
       });
     }
 
-    res.json({
+    // Build response with assessment results if available
+    const response = {
       success: true,
       message: 'Response submitted successfully',
       data: { responseId: result.responseId }
-    });
+    };
+
+    // Include assessment results if present
+    if (result.score !== undefined) {
+      response.score = result.score;
+      response.maxScore = result.maxScore;
+      response.percentage = result.percentage;
+      response.results = result.results;
+      response.respondentName = result.respondentName;
+      response.respondentEmail = result.respondentEmail;
+    }
+
+    res.json(response);
   } catch (error) {
     console.error('Feedback Controller - submitPublicResponse error:', error);
     res.status(500).json({

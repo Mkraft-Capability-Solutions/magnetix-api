@@ -557,3 +557,79 @@ exports.checkTrainerOrAdmin = async (req, res, next) => {
     });
   }
 };
+
+// ==============================================
+// LOCATION MASTER DATA CONTROLLERS
+// ==============================================
+
+exports.getCountries = async (req, res) => {
+  try {
+    const countries = await iltService.getCountries();
+
+    res.json({
+      success: true,
+      data: countries
+    });
+  } catch (error) {
+    console.error('ILT Controller - getCountries error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch countries',
+      error: error.message
+    });
+  }
+};
+
+exports.getStatesByCountry = async (req, res) => {
+  try {
+    const { countryId } = req.params;
+
+    if (!countryId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Country ID is required'
+      });
+    }
+
+    const states = await iltService.getStatesByCountry(countryId);
+
+    res.json({
+      success: true,
+      data: states
+    });
+  } catch (error) {
+    console.error('ILT Controller - getStatesByCountry error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch states',
+      error: error.message
+    });
+  }
+};
+
+exports.getDistrictsByState = async (req, res) => {
+  try {
+    const { stateId } = req.params;
+
+    if (!stateId) {
+      return res.status(400).json({
+        success: false,
+        message: 'State ID is required'
+      });
+    }
+
+    const districts = await iltService.getDistrictsByState(stateId);
+
+    res.json({
+      success: true,
+      data: districts
+    });
+  } catch (error) {
+    console.error('ILT Controller - getDistrictsByState error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch districts',
+      error: error.message
+    });
+  }
+};

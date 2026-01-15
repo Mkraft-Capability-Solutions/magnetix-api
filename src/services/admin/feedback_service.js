@@ -315,6 +315,7 @@ const getPublicFormBySlug = async (slug, browserFingerprint = null) => {
       id: form.id,
       name: form.name,
       description: form.description,
+      type: form.type,
       collectName: form.collect_name === 1,
       collectEmail: form.collect_email === 1,
       questions: questions.map(q => ({
@@ -407,11 +408,71 @@ const submitResponse = async (slug, responseData) => {
 
     // Calculate score for assessments
     let scoreData = null;
-    if (isAssessment && form.questions) {
-      scoreData = calculateAssessmentScore(form.questions, responseData.answers || []);
+    let detailedResults = null;
+    if (isAssessment) {
+      // Fetch questions with correct_answers for scoring (not included in public form response)
+      const [questionsWithAnswers] = await connection.query(`
+        SELECT id, question_order, question_type, question_text, options, correct_answers
+        FROM feedback_questions
+        WHERE form_id = ?
+        ORDER BY question_order ASC
+      `, [form.id]);
+
+      if (questionsWithAnswers.length > 0) {
+        scoreData = calculateAssessmentScore(questionsWithAnswers, responseData.answers || []);
+
+        // Build detailed results for each question
+        detailedResults = questionsWithAnswers.map(question => {
+          const userAnswer = (responseData.answers || []).find(a => a.questionId === question.id);
+
+          // Parse correct answers
+          const correctAnswers = question.correct_answers
+            ? (typeof question.correct_answers === 'string'
+                ? JSON.parse(question.correct_answers)
+                : question.correct_answers)
+            : [];
+
+          // Parse question options
+          const questionOptions = question.options
+            ? (typeof question.options === 'string'
+                ? JSON.parse(question.options)
+                : question.options)
+            : [];
+
+          // Get user's selected option indices
+          let userSelectedIndices = [];
+          if (userAnswer && userAnswer.options) {
+            const selectedOptions = typeof userAnswer.options === 'string'
+              ? JSON.parse(userAnswer.options)
+              : userAnswer.options;
+
+            if (Array.isArray(selectedOptions)) {
+              userSelectedIndices = selectedOptions.map(selectedOpt =>
+                questionOptions.findIndex(opt => opt === selectedOpt)
+              ).filter(idx => idx !== -1);
+            }
+          }
+
+          // Check if correct
+          const correctAnswersSet = new Set(correctAnswers);
+          const userAnswersSet = new Set(userSelectedIndices);
+          const isCorrect = correctAnswers.length === userSelectedIndices.length &&
+                           correctAnswers.every(idx => userAnswersSet.has(idx)) &&
+                           userSelectedIndices.every(idx => correctAnswersSet.has(idx));
+
+          return {
+            questionId: question.id,
+            questionText: question.question_text,
+            options: questionOptions,
+            userSelectedIndices,
+            correctIndices: correctAnswers,
+            isCorrect
+          };
+        });
+      }
     }
 
-    // Insert response
+    // Insert response (frontend sends respondentName/respondentEmail)
     const [responseResult] = await connection.query(`
       INSERT INTO feedback_responses
       (form_id, browser_fingerprint, respondent_name, respondent_email, ip_address, score, max_score, percentage)
@@ -419,8 +480,8 @@ const submitResponse = async (slug, responseData) => {
     `, [
       form.id,
       responseData.browserFingerprint || null,
-      responseData.name || null,
-      responseData.email || null,
+      responseData.respondentName || responseData.name || null,
+      responseData.respondentEmail || responseData.email || null,
       responseData.ipAddress || null,
       scoreData ? scoreData.score : null,
       scoreData ? scoreData.maxScore : null,
@@ -451,7 +512,14 @@ const submitResponse = async (slug, responseData) => {
     return {
       success: true,
       responseId,
-      ...(scoreData && { score: scoreData.score, maxScore: scoreData.maxScore, percentage: scoreData.percentage })
+      ...(scoreData && {
+        score: scoreData.score,
+        maxScore: scoreData.maxScore,
+        percentage: scoreData.percentage,
+        results: detailedResults,
+        respondentName: responseData.respondentName || responseData.name || null,
+        respondentEmail: responseData.respondentEmail || responseData.email || null
+      })
     };
   } catch (error) {
     await connection.rollback();

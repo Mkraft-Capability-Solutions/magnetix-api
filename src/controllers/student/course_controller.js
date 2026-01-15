@@ -288,7 +288,9 @@ exports.getCourseDetails = async (req, res, next) => {
 
 exports.markLessonCompleted = async (req, res, next) => {
     try {
-        const { lessonId, courseId } = req.body;
+        // Support both URL params (new) and body params (legacy) for backward compatibility
+        const lessonId = req.params.lessonId || req.body.lessonId;
+        const courseId = req.params.courseId || req.body.courseId;
         const userId = req.user.uuid;
 
         if (!lessonId || !courseId) {
@@ -299,7 +301,7 @@ exports.markLessonCompleted = async (req, res, next) => {
         }
 
         const response = await courseService.markLessonCompleted(userId, lessonId, courseId);
-        
+
         if (!response.success) {
             return res.status(response.error.status || 500).json(response);
         }

@@ -25,6 +25,8 @@ router.get('/:courseId/skills/remaining', authenticate, authorize(1), courseCont
 
 router.get('/:courseId', authenticate, authorize(1), courseController.getCourseDetails);
 
+// Mark lesson complete - supports both URL params and body params for backward compatibility
+router.post('/:courseId/lessons/:lessonId/complete', authenticate, authorize(1), courseController.markLessonCompleted);
 router.post('/mark-lesson-completed', authenticate, authorize(1), courseController.markLessonCompleted);
 
 module.exports = router;

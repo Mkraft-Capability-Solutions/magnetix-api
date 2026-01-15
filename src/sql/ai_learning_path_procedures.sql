@@ -12,6 +12,7 @@ DELIMITER $$
 -- PROCEDURE 1: Get User Learning Paths
 -- ========================================
 -- Returns all active learning paths for a user
+-- Includes sharer information for shared paths
 -- ========================================
 DROP PROCEDURE IF EXISTS `get_user_learning_paths`$$
 
@@ -24,8 +25,11 @@ BEGIN
     (SELECT COUNT(*)
      FROM ai_learning_path_modules
      WHERE learning_path_id = lp.id
-       AND status = 'completed') as completed_count
+       AND status = 'completed') as completed_count,
+    CONCAT(s.first_name, ' ', s.last_name) as shared_by_name,
+    s.dp as shared_by_dp
   FROM ai_learning_paths lp
+  LEFT JOIN students s ON lp.shared_by_user_id = s.user_id
   WHERE lp.user_id = p_user_id
     AND lp.status != 'archived'
   ORDER BY lp.last_accessed DESC, lp.created_at DESC;
@@ -326,6 +330,152 @@ BEGIN
 
   -- Return result
   SELECT affected_rows as deleted;
+END$$
+
+-- ========================================
+-- PROCEDURE 8: Search Trainees
+-- ========================================
+-- Search trainees by name or email for sharing
+-- Excludes the current user from results
+-- ========================================
+DROP PROCEDURE IF EXISTS `search_trainees`$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `search_trainees` (
+  IN `p_current_user_id` VARCHAR(36),
+  IN `p_search_query` VARCHAR(100)
+)
+BEGIN
+  SELECT
+    s.user_id as uuid,
+    s.first_name,
+    s.last_name,
+    u.email,
+    s.dp
+  FROM students s
+  JOIN users u ON s.user_id = u.uuid
+  WHERE s.user_id != p_current_user_id
+    AND u.is_deleted = 0
+    AND (
+      LOWER(s.first_name) LIKE CONCAT('%', LOWER(p_search_query), '%')
+      OR LOWER(s.last_name) LIKE CONCAT('%', LOWER(p_search_query), '%')
+      OR LOWER(CONCAT(s.first_name, ' ', s.last_name)) LIKE CONCAT('%', LOWER(p_search_query), '%')
+      OR LOWER(u.email) LIKE CONCAT('%', LOWER(p_search_query), '%')
+    )
+  ORDER BY s.first_name, s.last_name
+  LIMIT 10;
+END$$
+
+-- ========================================
+-- PROCEDURE 9: Copy Learning Path to User
+-- ========================================
+-- Copies a learning path (with modules and topics)
+-- to another user as a shared path
+-- ========================================
+DROP PROCEDURE IF EXISTS `copy_learning_path_to_user`$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `copy_learning_path_to_user` (
+  IN `p_path_id` INT,
+  IN `p_from_user_id` VARCHAR(36),
+  IN `p_to_user_id` VARCHAR(36)
+)
+BEGIN
+  DECLARE v_new_path_id INT;
+  DECLARE v_original_path_exists INT;
+
+  -- Check if original path exists and belongs to from_user
+  SELECT COUNT(*) INTO v_original_path_exists
+  FROM ai_learning_paths
+  WHERE id = p_path_id AND user_id = p_from_user_id;
+
+  IF v_original_path_exists = 0 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Learning path not found or access denied';
+  END IF;
+
+  -- Copy the learning path
+  INSERT INTO ai_learning_paths (
+    user_id,
+    title,
+    description,
+    type,
+    difficulty_level,
+    total_modules,
+    completed_modules,
+    progress,
+    status,
+    estimated_duration_weeks,
+    time_spent_hours,
+    shared_by_user_id,
+    original_path_id
+  )
+  SELECT
+    p_to_user_id,
+    title,
+    description,
+    type,
+    difficulty_level,
+    total_modules,
+    0,  -- Reset completed_modules for new user
+    0.00,  -- Reset progress for new user
+    'not_started',  -- Reset status
+    estimated_duration_weeks,
+    0.00,  -- Reset time_spent
+    p_from_user_id,  -- Set who shared it
+    p_path_id  -- Reference to original path
+  FROM ai_learning_paths
+  WHERE id = p_path_id;
+
+  SET v_new_path_id = LAST_INSERT_ID();
+
+  -- Copy modules (reset progress/status for new user)
+  INSERT INTO ai_learning_path_modules (
+    learning_path_id,
+    module_order,
+    title,
+    description,
+    duration_weeks,
+    status,
+    score,
+    progress
+  )
+  SELECT
+    v_new_path_id,
+    module_order,
+    title,
+    description,
+    duration_weeks,
+    CASE WHEN module_order = 1 THEN 'unlocked' ELSE 'locked' END,  -- First module unlocked
+    NULL,  -- Reset score
+    0.00  -- Reset progress
+  FROM ai_learning_path_modules
+  WHERE learning_path_id = p_path_id
+  ORDER BY module_order;
+
+  -- Copy topics for each module
+  INSERT INTO ai_learning_path_module_topics (
+    module_id,
+    topic_name,
+    topic_order,
+    is_completed
+  )
+  SELECT
+    new_m.id,
+    old_t.topic_name,
+    old_t.topic_order,
+    FALSE  -- Reset completion status
+  FROM ai_learning_path_module_topics old_t
+  JOIN ai_learning_path_modules old_m ON old_t.module_id = old_m.id
+  JOIN ai_learning_path_modules new_m ON new_m.learning_path_id = v_new_path_id
+    AND new_m.module_order = old_m.module_order
+  WHERE old_m.learning_path_id = p_path_id;
+
+  -- Return the new learning path with sharer info
+  SELECT
+    lp.*,
+    CONCAT(s.first_name, ' ', s.last_name) as shared_by_name,
+    s.dp as shared_by_dp
+  FROM ai_learning_paths lp
+  LEFT JOIN students s ON lp.shared_by_user_id = s.user_id
+  WHERE lp.id = v_new_path_id;
 END$$
 
 DELIMITER ;

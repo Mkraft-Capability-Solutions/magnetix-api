@@ -1,18 +1,18 @@
 const corporateInfoService = require('../../services/student/corporate_info_service');
 const Joi = require('joi');
 
-// Validation schema for corporate info
+// Validation schema for corporate info (strips unknown fields like id, user_id, timestamps)
 const corporateInfoSchema = Joi.object({
-  job_profile: Joi.string().optional().allow(''),
-  designation: Joi.string().optional().allow(''),
-  department: Joi.string().optional().allow(''),
-  employee_id: Joi.string().optional().allow(''),
-  organization_name: Joi.string().optional().allow(''),
-  location: Joi.string().optional().allow(''),
-  manager_name: Joi.string().optional().allow(''),
-  manager_email: Joi.string().email().optional().allow(''),
-  manager_contact: Joi.string().optional().allow('')
-});
+  job_profile: Joi.string().optional().allow('', null),
+  designation: Joi.string().optional().allow('', null),
+  department: Joi.string().optional().allow('', null),
+  employee_id: Joi.string().optional().allow('', null),
+  organization_name: Joi.string().optional().allow('', null),
+  location: Joi.string().optional().allow('', null),
+  manager_name: Joi.string().optional().allow('', null),
+  manager_email: Joi.string().email().optional().allow('', null),
+  manager_contact: Joi.string().optional().allow('', null)
+}).options({ stripUnknown: true });
 
 /**
  * Get corporate information for the authenticated student
@@ -45,8 +45,8 @@ exports.getCorporateInfo = async (req, res, next) => {
  */
 exports.updateCorporateInfo = async (req, res, next) => {
   try {
-    // Validate request body
-    const { error } = corporateInfoSchema.validate(req.body);
+    // Validate request body and strip unknown fields (id, user_id, timestamps)
+    const { error, value: validatedData } = corporateInfoSchema.validate(req.body);
     if (error) {
       return res.status(400).json({
         success: false,
@@ -56,7 +56,7 @@ exports.updateCorporateInfo = async (req, res, next) => {
 
     const userId = req.user.uuid;
 
-    const corporateInfo = await corporateInfoService.updateCorporateInfo(userId, req.body);
+    const corporateInfo = await corporateInfoService.updateCorporateInfo(userId, validatedData);
 
     res.json({
       success: true,

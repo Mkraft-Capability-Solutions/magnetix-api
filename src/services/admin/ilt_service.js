@@ -82,7 +82,10 @@ exports.createLocation = async (locationData) => {
       capacity = 0,
       timezone = null,
       manager = null,
-      facilities = []
+      facilities = [],
+      countryId = null,
+      stateId = null,
+      districtId = null
     } = locationData;
 
     const facilitiesJson = JSON.stringify(facilities);
@@ -91,6 +94,18 @@ exports.createLocation = async (locationData) => {
       'CALL sp_create_location(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [name, city, state, country, address, zipCode, email, phone, capacity, timezone, manager, facilitiesJson]
     );
+
+    const locationId = results[0][0].id;
+
+    // Update the ID columns if provided
+    if (countryId || stateId || districtId) {
+      await pool.query(
+        `UPDATE training_locations
+         SET country_id = ?, state_id = ?, district_id = ?
+         WHERE id = ?`,
+        [countryId, stateId, districtId, locationId]
+      );
+    }
 
     return results[0][0];
   } catch (error) {
@@ -114,7 +129,10 @@ exports.updateLocation = async (id, locationData) => {
       timezone = null,
       manager = null,
       facilities = [],
-      status = 'Active'
+      status = 'Active',
+      countryId = null,
+      stateId = null,
+      districtId = null
     } = locationData;
 
     const facilitiesJson = JSON.stringify(facilities);
@@ -122,6 +140,14 @@ exports.updateLocation = async (id, locationData) => {
     const [results] = await pool.query(
       'CALL sp_update_location(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [id, name, city, state, country, address, zipCode, email, phone, capacity, timezone, manager, facilitiesJson, status]
+    );
+
+    // Update the ID columns
+    await pool.query(
+      `UPDATE training_locations
+       SET country_id = ?, state_id = ?, district_id = ?
+       WHERE id = ?`,
+      [countryId, stateId, districtId, id]
     );
 
     return results[0][0];
@@ -468,6 +494,57 @@ exports.addTrainerFromUser = async (userId, trainerData = {}) => {
     return result.insertId;
   } catch (error) {
     console.error('ILT Service - addTrainerFromUser error:', error);
+    throw error;
+  }
+};
+
+// ==============================================
+// LOCATION MASTER DATA SERVICE
+// ==============================================
+
+exports.getCountries = async () => {
+  try {
+    const [results] = await pool.query(
+      `SELECT id, name, code, phone_code as phoneCode
+       FROM countries
+       WHERE is_active = 1
+       ORDER BY name ASC`
+    );
+    return results;
+  } catch (error) {
+    console.error('ILT Service - getCountries error:', error);
+    throw error;
+  }
+};
+
+exports.getStatesByCountry = async (countryId) => {
+  try {
+    const [results] = await pool.query(
+      `SELECT id, name, code, type
+       FROM states
+       WHERE country_id = ? AND is_active = 1
+       ORDER BY name ASC`,
+      [countryId]
+    );
+    return results;
+  } catch (error) {
+    console.error('ILT Service - getStatesByCountry error:', error);
+    throw error;
+  }
+};
+
+exports.getDistrictsByState = async (stateId) => {
+  try {
+    const [results] = await pool.query(
+      `SELECT id, name, code
+       FROM districts
+       WHERE state_id = ? AND is_active = 1
+       ORDER BY name ASC`,
+      [stateId]
+    );
+    return results;
+  } catch (error) {
+    console.error('ILT Service - getDistrictsByState error:', error);
     throw error;
   }
 };

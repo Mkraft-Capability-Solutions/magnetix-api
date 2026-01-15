@@ -994,3 +994,175 @@ exports.getCourseDetailsForLearning = async (req, res, next) => {
     });
   }
 };
+
+// ============================================================================
+// COURSE OFFERINGS & SESSIONS CONTROLLERS
+// ============================================================================
+
+/**
+ * Create a course offering
+ */
+exports.createCourseOffering = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const result = await instructorCourseService.createCourseOffering(
+      courseId,
+      req.body,
+      req.user.uuid
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Course offering created successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in createCourseOffering:", error);
+    next(error);
+  }
+};
+
+/**
+ * Get course offerings
+ */
+exports.getCourseOfferings = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const offerings = await instructorCourseService.getCourseOfferings(courseId);
+
+    res.json({
+      success: true,
+      data: offerings,
+    });
+  } catch (error) {
+    console.error("Error in getCourseOfferings:", error);
+    next(error);
+  }
+};
+
+/**
+ * Update a course offering
+ */
+exports.updateCourseOffering = async (req, res, next) => {
+  try {
+    const offeringId = req.params.offeringId;
+    const result = await instructorCourseService.updateCourseOffering(
+      offeringId,
+      req.body
+    );
+
+    res.json({
+      success: true,
+      message: "Course offering updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateCourseOffering:", error);
+    next(error);
+  }
+};
+
+/**
+ * Delete a course offering
+ */
+exports.deleteCourseOffering = async (req, res, next) => {
+  try {
+    const offeringId = req.params.offeringId;
+    const result = await instructorCourseService.deleteCourseOffering(offeringId);
+
+    res.json({
+      success: true,
+      message: "Course offering deleted successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in deleteCourseOffering:", error);
+    next(error);
+  }
+};
+
+/**
+ * Create a course session
+ */
+exports.createCourseSession = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const result = await instructorCourseService.createCourseSession(
+      courseId,
+      req.body,
+      req.user.uuid
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Course session created successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in createCourseSession:", error);
+    next(error);
+  }
+};
+
+/**
+ * Get course sessions
+ */
+exports.getCourseSessions = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const offeringId = req.query.offeringId || null;
+    const sessions = await instructorCourseService.getCourseSessions(
+      courseId,
+      offeringId
+    );
+
+    res.json({
+      success: true,
+      data: sessions,
+    });
+  } catch (error) {
+    console.error("Error in getCourseSessions:", error);
+    next(error);
+  }
+};
+
+/**
+ * Update a course session
+ */
+exports.updateCourseSession = async (req, res, next) => {
+  try {
+    const sessionId = req.params.sessionId;
+    const result = await instructorCourseService.updateCourseSession(
+      sessionId,
+      req.body
+    );
+
+    res.json({
+      success: true,
+      message: "Course session updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateCourseSession:", error);
+    next(error);
+  }
+};
+
+/**
+ * Delete a course session
+ */
+exports.deleteCourseSession = async (req, res, next) => {
+  try {
+    const sessionId = req.params.sessionId;
+    const result = await instructorCourseService.deleteCourseSession(sessionId);
+
+    res.json({
+      success: true,
+      message: "Course session deleted successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in deleteCourseSession:", error);
+    next(error);
+  }
+};
