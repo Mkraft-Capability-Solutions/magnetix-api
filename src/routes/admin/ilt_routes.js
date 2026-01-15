@@ -18,6 +18,31 @@ router.use(authenticate);
 router.get('/stats', authorize(3, 4), iltController.getStats);
 
 // ==============================================
+// LOCATION MASTER DATA ROUTES (Cascading Dropdowns)
+// ==============================================
+
+/**
+ * GET /api/admin/ilt/countries
+ * Get all countries for dropdown
+ * Access: Admin, SuperAdmin
+ */
+router.get('/countries', authorize(3, 4), iltController.getCountries);
+
+/**
+ * GET /api/admin/ilt/states/:countryId
+ * Get states by country ID for dropdown
+ * Access: Admin, SuperAdmin
+ */
+router.get('/states/:countryId', authorize(3, 4), iltController.getStatesByCountry);
+
+/**
+ * GET /api/admin/ilt/districts/:stateId
+ * Get districts by state ID for dropdown
+ * Access: Admin, SuperAdmin
+ */
+router.get('/districts/:stateId', authorize(3, 4), iltController.getDistrictsByState);
+
+// ==============================================
 // LOCATIONS ROUTES
 // ==============================================
 
