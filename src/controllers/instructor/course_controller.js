@@ -631,6 +631,7 @@ exports.addLesson = async (req, res, next) => {
     const courseId = req.params.courseId;
     const creatorId = req.user.uuid;
     const lesson = req.body;
+
     // Validation
     if (!lesson.title || !lesson.sectionId) {
       return res.status(400).json({
@@ -639,7 +640,27 @@ exports.addLesson = async (req, res, next) => {
       });
     }
 
-    // Save lessons
+    // Parse skills if it's a string (from FormData)
+    if (lesson.skills && typeof lesson.skills === 'string') {
+      try {
+        lesson.skills = JSON.parse(lesson.skills);
+      } catch (e) {
+        lesson.skills = [];
+      }
+    }
+
+    // Add file information if file was uploaded
+    if (req.file) {
+      lesson.uploadedFile = {
+        filename: req.file.filename,
+        originalname: req.file.originalname,
+        path: req.file.path,
+        size: req.file.size,
+        mimetype: req.file.mimetype,
+      };
+    }
+
+    // Save lesson
     const result = await instructorCourseService.addLesson(
       courseId,
       lesson,

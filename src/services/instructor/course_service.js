@@ -1803,24 +1803,46 @@ class InstructorCourseService {
       };
 
       if (lessonData.contentType) {
+        // Check if a file was uploaded via multer
+        if (lessonData.uploadedFile) {
+          // Convert absolute path to relative URL
+          // Path is like: /Volumes/.../magnetix-api/uploads/lessons/videos/file.mp4
+          // We want: /uploads/lessons/videos/file.mp4
+          const pathParts = lessonData.uploadedFile.path.split('uploads/lessons/');
+          if (pathParts.length > 1) {
+            contentUrl = '/uploads/lessons/' + pathParts[1];
+          } else {
+            // Fallback to filename if path parsing fails
+            contentUrl = `/uploads/lessons/${lessonData.contentType === 'mp4' ? 'videos' : lessonData.contentType === 'scorm' ? 'scorm' : 'documents'}/${lessonData.uploadedFile.filename}`;
+          }
+          console.log(`File uploaded: ${lessonData.uploadedFile.originalname} -> ${contentUrl}`);
+        }
+
         switch (lessonData.contentType) {
           case 'mp4':
             dbContentType = 'mp4';
-            mp4File = isValidFile(lessonData.videoUpload) ? lessonData.videoUpload :
+            // Use contentUrl if file was uploaded, otherwise check for existing file path
+            mp4File = contentUrl ? contentUrl :
+                     isValidFile(lessonData.videoUpload) ? lessonData.videoUpload :
                      isValidFile(lessonData.file) ? lessonData.file : null;
             break;
           case 'document':
             dbContentType = 'document';
-            documentFile = isValidFile(lessonData.lessonContentDocument) ? lessonData.lessonContentDocument :
+            // Use contentUrl if file was uploaded, otherwise check for existing file path
+            documentFile = contentUrl ? contentUrl :
+                          isValidFile(lessonData.lessonContentDocument) ? lessonData.lessonContentDocument :
                           isValidFile(lessonData.file) ? lessonData.file : null;
             break;
           case 'scorm':
             dbContentType = 'scorm';
-            scormFile = isValidFile(lessonData.scormPackage) ? lessonData.scormPackage :
+            // Use contentUrl if file was uploaded, otherwise check for existing file path
+            scormFile = contentUrl ? contentUrl :
+                       isValidFile(lessonData.scormPackage) ? lessonData.scormPackage :
                        isValidFile(lessonData.file) ? lessonData.file : null;
             break;
           case 'url':
             dbContentType = 'url';
+            // For URL type, contentUrl comes from the input field, not file upload
             contentUrl = lessonData.contentUrl || lessonData.url || null;
             break;
           default:
@@ -1863,9 +1885,13 @@ class InstructorCourseService {
       const lessonId = result[0][0].id || result[0][0].lessonId;
       console.log("Lesson created with ID:", lessonId);
 
-      // Note: File uploads are handled on the frontend after lesson creation
-      // The backend doesn't receive File objects - only file paths for existing files
-      console.log(`Single lesson - Lesson created with ID ${lessonId}. File uploads will be handled by frontend.`);
+      // File uploads are handled via multer middleware
+      // Uploaded files are stored in uploads/lessons/{documents,videos,scorm}/
+      if (lessonData.uploadedFile) {
+        console.log(`Single lesson - Lesson created with ID ${lessonId} with uploaded file: ${contentUrl}`);
+      } else {
+        console.log(`Single lesson - Lesson created with ID ${lessonId}`);
+      }
 
       // Handle ILTS if lesson type is ILTS
       if (lessonData.lessonType === "ILTS") {

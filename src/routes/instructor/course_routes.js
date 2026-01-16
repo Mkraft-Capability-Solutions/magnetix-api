@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const instructorCourseController = require("../../controllers/instructor/course_controller");
 const { authenticate, authorize } = require("../../middleware/auth_middleware");
+const lessonUpload = require("../../middleware/lessonUpload");
 
 router.use(authenticate);
 router.use(authorize(2));
@@ -32,7 +33,7 @@ router.post(
   "/courses/:courseId/sections",
   instructorCourseController.addSection
 );
-router.post("/courses/:courseId/lessons", instructorCourseController.addLesson);
+router.post("/courses/:courseId/lessons", lessonUpload, instructorCourseController.addLesson);
 
 // Individual section update endpoints for editing
 router.put(
