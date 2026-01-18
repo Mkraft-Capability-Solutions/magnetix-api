@@ -101,6 +101,7 @@ class UploadService {
       const entries = zip.getEntries();
       console.log(`Upload service - Found ${entries.length} entries in zip`);
 
+      // Create unique folder name using timestamp
       const folderName = `${Date.now()}`;
       const extractPath = path.join(dirPath, folderName);
 
@@ -264,7 +265,73 @@ class UploadService {
     return scormPath;
   }
 
-  // Lesson SCORM
+  // Lesson SCORM - Upload folder (multiple files)
+  async uploadScormFolder(files, lessonId) {
+    try {
+      console.log(`[uploadScormFolder] Uploading SCORM folder for lesson ${lessonId}, ${files.length} files`);
+
+      // Get old SCORM folder name if updating
+      let oldFolderName = null;
+      if (lessonId) {
+        const [rows] = await promisePool.query(
+          "SELECT lesson_content_scorm FROM course_lesson WHERE id = ?",
+          [lessonId]
+        );
+        if (rows.length > 0 && rows[0].lesson_content_scorm) {
+          oldFolderName = rows[0].lesson_content_scorm;
+        }
+      }
+
+      // Create unique folder name using timestamp
+      const folderName = `${Date.now()}`;
+      const folderPath = path.join(this.uploadPaths.lessonScorm, folderName);
+
+      // Ensure folder exists
+      await this.ensureDirectoryExists(folderPath);
+
+      // Save all files preserving folder structure
+      for (const file of files) {
+        // The webkitRelativePath or path from multer contains the folder structure
+        const relativePath = file.webkitRelativePath || file.originalname;
+
+        // Remove the root folder name if present (e.g., "ScormPackage/story.html" -> "story.html")
+        const pathParts = relativePath.split('/');
+        const cleanPath = pathParts.length > 1 ? pathParts.slice(1).join('/') : relativePath;
+
+        const filePath = path.join(folderPath, cleanPath);
+        const fileDir = path.dirname(filePath);
+
+        // Ensure subdirectory exists
+        await this.ensureDirectoryExists(fileDir);
+
+        // Write file
+        await fs.promises.writeFile(filePath, file.buffer);
+        console.log(`[uploadScormFolder] Saved file: ${cleanPath}`);
+      }
+
+      // Update database
+      if (lessonId) {
+        await promisePool.query(
+          "UPDATE course_lesson SET lesson_content_scorm = ? WHERE id = ?",
+          [folderName, lessonId]
+        );
+
+        // Delete old SCORM folder after successful update
+        if (oldFolderName) {
+          const oldFolderPath = path.join(this.uploadPaths.lessonScorm, oldFolderName);
+          await this.deleteOldDirectory(oldFolderPath);
+        }
+      }
+
+      console.log(`[uploadScormFolder] Successfully uploaded SCORM folder: ${folderName}`);
+      return folderName;
+    } catch (error) {
+      console.error(`[uploadScormFolder] Error:`, error);
+      throw new Error(`Failed to upload SCORM folder: ${error.message}`);
+    }
+  }
+
+  // Lesson SCORM - Upload ZIP file (single file)
   async uploadLessonScorm(file, lessonId) {
     // Get old SCORM folder name if updating
     let oldFolderName = null;

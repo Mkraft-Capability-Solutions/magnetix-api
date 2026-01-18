@@ -77,6 +77,7 @@ router.get(
   instructorCourseController.getSubCategories
 );
 router.get("/metadata/languages", instructorCourseController.getLanguages);
+router.get("/metadata/batches", instructorCourseController.getBatches);
 
 // Add new category and subcategory
 router.post("/metadata/categories", instructorCourseController.addCategory);

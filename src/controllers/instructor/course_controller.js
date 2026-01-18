@@ -299,6 +299,18 @@ exports.getLanguages = async (req, res, next) => {
   }
 };
 
+exports.getBatches = async (req, res, next) => {
+  try {
+    const batches = await instructorCourseService.getBatches();
+    res.json({
+      success: true,
+      data: batches,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Add new category
 exports.addCategory = async (req, res, next) => {
   try {
@@ -628,9 +640,16 @@ exports.addSection = async (req, res, next) => {
 };
 exports.addLesson = async (req, res, next) => {
   try {
-    const courseId = req.params.courseId;
+    const courseId = parseInt(req.params.courseId, 10);
     const creatorId = req.user.uuid;
     const lesson = req.body;
+
+    console.log('=== addLesson Controller ===');
+    console.log('courseId:', courseId);
+    console.log('creatorId:', creatorId);
+    console.log('lesson body:', JSON.stringify(lesson, null, 2));
+    console.log('req.file:', req.file);
+    console.log('req.files:', req.files);
 
     // Validation
     if (!lesson.title || !lesson.sectionId) {
@@ -649,15 +668,18 @@ exports.addLesson = async (req, res, next) => {
       }
     }
 
-    // Add file information if file was uploaded
+    // Parse sectionId to integer if it's a string
+    if (lesson.sectionId && typeof lesson.sectionId === 'string') {
+      lesson.sectionId = parseInt(lesson.sectionId, 10);
+    }
+
+    // Add file information if file(s) were uploaded
     if (req.file) {
-      lesson.uploadedFile = {
-        filename: req.file.filename,
-        originalname: req.file.originalname,
-        path: req.file.path,
-        size: req.file.size,
-        mimetype: req.file.mimetype,
-      };
+      // Single file (document/video/SCORM ZIP) - pass the full file object with buffer
+      lesson.uploadedFile = req.file;
+    } else if (req.files && req.files.length > 1) {
+      // Multiple files (legacy SCORM folder upload) - pass the full file objects with buffers
+      lesson.uploadedFiles = req.files;
     }
 
     // Save lesson
@@ -674,6 +696,12 @@ exports.addLesson = async (req, res, next) => {
     });
   } catch (error) {
     console.error("Error in addLesson:", error);
+    console.error("Error details:", {
+      message: error.message,
+      code: error.code,
+      sqlMessage: error.sqlMessage,
+      sql: error.sql
+    });
     next(error);
   }
 };

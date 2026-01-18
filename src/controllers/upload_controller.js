@@ -92,23 +92,33 @@ exports.uploadCourseOverviewScorm = async (req, res, next) => {
 
 exports.uploadLessonScorm = async (req, res, next) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    // Support both single ZIP file and multiple files (folder upload)
+    if (!req.file && (!req.files || req.files.length === 0)) {
+      return res.status(400).json({ success: false, message: 'No files uploaded' });
     }
 
     if (!req.body.lessonId) {
       return res.status(400).json({ success: false, message: 'Lesson ID is required' });
     }
 
-    console.log('Uploading SCORM for lesson:', req.body.lessonId, 'File:', req.file.originalname);
-    
-    const folderName = await uploadService.uploadLessonScorm(req.file, req.body.lessonId);
-    
-    console.log('SCORM upload successful, folder:', folderName);
-    
-    res.json({ 
-      success: true, 
-      message: 'Lesson SCORM content uploaded and extracted successfully',
+    let folderName;
+
+    // Check if it's a folder upload (multiple files) or ZIP file (single file)
+    if (req.files && req.files.length > 0) {
+      // Multiple files - folder upload
+      console.log('Uploading SCORM folder for lesson:', req.body.lessonId, 'Files:', req.files.length);
+      folderName = await uploadService.uploadScormFolder(req.files, req.body.lessonId);
+      console.log('SCORM folder upload successful:', folderName);
+    } else if (req.file) {
+      // Single ZIP file - extract it
+      console.log('Uploading SCORM ZIP for lesson:', req.body.lessonId, 'File:', req.file.originalname);
+      folderName = await uploadService.uploadLessonScorm(req.file, req.body.lessonId);
+      console.log('SCORM ZIP upload and extraction successful:', folderName);
+    }
+
+    res.json({
+      success: true,
+      message: 'Lesson SCORM content uploaded successfully',
       data: { folderName }
     });
   } catch (error) {

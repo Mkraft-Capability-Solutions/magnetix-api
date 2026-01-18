@@ -7,9 +7,9 @@ const { authenticate, authorize } = require('../middleware/auth_middleware');
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 1024 * 1024 * 1024, // 1GB
+    fileSize: 1024 * 1024 * 1024, // 1GB per file
     fieldSize: 1024 * 1024 * 1024, // 1GB for field data
-    files: 10, // max 10 files
+    files: 1000, // max 1000 files (for SCORM folders with many files)
     fields: 20 // max 20 fields
   },
   fileFilter: (req, file, cb) => {
@@ -60,8 +60,8 @@ router.post('/user/profile',
   uploadController.uploadUserProfilePicture
 );
 
-// Lesson uploads
-router.post('/lesson/scorm', 
+// Lesson uploads - SCORM (supports both ZIP file and folder upload)
+router.post('/lesson/scorm',
   authenticate,
   authorize(2,3),
   (req, res, next) => {
@@ -70,10 +70,26 @@ router.post('/lesson/scorm',
     console.log('Content-Length:', req.headers['content-length']);
     next();
   },
-  upload.single('scorm'),
+  // Accept either single file or multiple files (folder upload)
+  upload.any(),
   (req, res, next) => {
     console.log('SCORM upload - After multer processing');
-    console.log('File received:', req.file ? req.file.originalname : 'No file');
+
+    // Organize files by field name
+    if (req.files && req.files.length > 0) {
+      const scormFiles = req.files.filter(f => f.fieldname === 'scorm' || f.fieldname.startsWith('scorm'));
+
+      if (scormFiles.length === 1) {
+        // Single file (likely ZIP)
+        req.file = scormFiles[0];
+        console.log('Single SCORM file:', req.file.originalname);
+      } else if (scormFiles.length > 1) {
+        // Multiple files (folder upload)
+        req.files = scormFiles;
+        console.log('SCORM folder upload:', scormFiles.length, 'files');
+      }
+    }
+
     console.log('Body:', req.body);
     next();
   },

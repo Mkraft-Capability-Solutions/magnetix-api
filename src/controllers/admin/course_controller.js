@@ -668,6 +668,18 @@ exports.getLanguages = async (req, res, next) => {
   }
 };
 
+exports.getBatches = async (req, res, next) => {
+  try {
+    const batches = await AdminCourseService.getBatches();
+    res.json({
+      success: true,
+      data: batches,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.addCategory = async (req, res, next) => {
   try {
     const { categoryName } = req.body;

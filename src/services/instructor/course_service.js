@@ -1230,6 +1230,18 @@ class InstructorCourseService {
     return rows;
   }
 
+  async getBatches() {
+    // Fetch all available batches from the batches table
+    const [rows] = await promisePool.query(`
+      SELECT
+        id,
+        batch_name as name
+      FROM batches
+      ORDER BY batch_name ASC
+    `);
+    return rows;
+  }
+
   // Add new category
   async addCategory(categoryName, creatorId) {
     try {
@@ -1803,42 +1815,42 @@ class InstructorCourseService {
       };
 
       if (lessonData.contentType) {
-        // Check if a file was uploaded via multer
-        if (lessonData.uploadedFile) {
-          // Convert absolute path to relative URL
-          // Path is like: /Volumes/.../magnetix-api/uploads/lessons/videos/file.mp4
-          // We want: /uploads/lessons/videos/file.mp4
-          const pathParts = lessonData.uploadedFile.path.split('uploads/lessons/');
-          if (pathParts.length > 1) {
-            contentUrl = '/uploads/lessons/' + pathParts[1];
-          } else {
-            // Fallback to filename if path parsing fails
-            contentUrl = `/uploads/lessons/${lessonData.contentType === 'mp4' ? 'videos' : lessonData.contentType === 'scorm' ? 'scorm' : 'documents'}/${lessonData.uploadedFile.filename}`;
-          }
-          console.log(`File uploaded: ${lessonData.uploadedFile.originalname} -> ${contentUrl}`);
-        }
-
         switch (lessonData.contentType) {
           case 'mp4':
             dbContentType = 'mp4';
-            // Use contentUrl if file was uploaded, otherwise check for existing file path
-            mp4File = contentUrl ? contentUrl :
-                     isValidFile(lessonData.videoUpload) ? lessonData.videoUpload :
-                     isValidFile(lessonData.file) ? lessonData.file : null;
+            // If file will be uploaded, keep as null (will be updated after upload)
+            // Otherwise use existing file path
+            if (lessonData.uploadedFile) {
+              mp4File = null; // Will be updated after upload
+            } else {
+              mp4File = contentUrl ? contentUrl :
+                       isValidFile(lessonData.videoUpload) ? lessonData.videoUpload :
+                       isValidFile(lessonData.file) ? lessonData.file : null;
+            }
             break;
           case 'document':
             dbContentType = 'document';
-            // Use contentUrl if file was uploaded, otherwise check for existing file path
-            documentFile = contentUrl ? contentUrl :
-                          isValidFile(lessonData.lessonContentDocument) ? lessonData.lessonContentDocument :
-                          isValidFile(lessonData.file) ? lessonData.file : null;
+            // If file will be uploaded, keep as null (will be updated after upload)
+            // Otherwise use existing file path
+            if (lessonData.uploadedFile) {
+              documentFile = null; // Will be updated after upload
+            } else {
+              documentFile = contentUrl ? contentUrl :
+                            isValidFile(lessonData.lessonContentDocument) ? lessonData.lessonContentDocument :
+                            isValidFile(lessonData.file) ? lessonData.file : null;
+            }
             break;
           case 'scorm':
             dbContentType = 'scorm';
-            // Use contentUrl if file was uploaded, otherwise check for existing file path
-            scormFile = contentUrl ? contentUrl :
-                       isValidFile(lessonData.scormPackage) ? lessonData.scormPackage :
-                       isValidFile(lessonData.file) ? lessonData.file : null;
+            // If file will be uploaded, keep as null (will be updated after upload)
+            // Otherwise use existing file path
+            if (lessonData.uploadedFile || lessonData.uploadedFiles) {
+              scormFile = null; // Will be updated after upload and extraction
+            } else {
+              scormFile = contentUrl ? contentUrl :
+                         isValidFile(lessonData.scormPackage) ? lessonData.scormPackage :
+                         isValidFile(lessonData.file) ? lessonData.file : null;
+            }
             break;
           case 'url':
             dbContentType = 'url';
@@ -1855,23 +1867,39 @@ class InstructorCourseService {
       console.log(`Single lesson - SCORM file: ${scormFile}`);
       console.log(`Single lesson - MP4 file: ${mp4File}`);
       console.log(`Single lesson - Content URL: ${contentUrl}`);
-      console.log('Full lesson data received:', JSON.stringify(lessonData, null, 2));
+      console.log('Lesson data received (excluding file buffers):', {
+        title: lessonData.title,
+        sectionId: lessonData.sectionId,
+        lessonType: lessonData.lessonType,
+        contentType: lessonData.contentType,
+        hasUploadedFile: !!lessonData.uploadedFile,
+        hasUploadedFiles: !!lessonData.uploadedFiles,
+        uploadedFilesCount: lessonData.uploadedFiles?.length || 0
+      });
 
-      // Ensure all parameters are properly defined (null instead of undefined)
+      // Convert skills array to JSON string if present
+      const skillsJson = lessonData.skills && Array.isArray(lessonData.skills)
+        ? JSON.stringify(lessonData.skills)
+        : null;
+
+      // Parameters must match the stored procedure signature:
+      // p_course_id, p_section_id, p_title, p_lesson_type, p_content_type,
+      // p_lesson_content_document, p_scorm_package, p_video_upload, p_content_url,
+      // p_lesson_duration, p_description, p_skills, p_creator_id
       const params = [
-        lessonData.title || null,
-        lessonData.sectionId || null,
-        lessonData.lessonType || "Content-Based",
-        dbContentType || null,
-        documentFile === undefined ? null : documentFile,
-        scormFile === undefined ? null : scormFile,
-        mp4File === undefined ? null : mp4File,
-        contentUrl === undefined ? null : contentUrl,
-        lessonData.lessonDuration || lessonData.duration || null,
-        courseId,
-        creatorId,
-        creatorId,
-        lessonData.lessonOrder || null, // Let stored procedure calculate if not provided
+        courseId,                                               // p_course_id
+        lessonData.sectionId || null,                          // p_section_id
+        lessonData.title || null,                              // p_title
+        lessonData.lessonType || "Content-Based",              // p_lesson_type
+        dbContentType || null,                                 // p_content_type
+        documentFile === undefined ? null : documentFile,      // p_lesson_content_document
+        scormFile === undefined ? null : scormFile,            // p_scorm_package
+        mp4File === undefined ? null : mp4File,                // p_video_upload
+        contentUrl === undefined ? null : contentUrl,          // p_content_url
+        lessonData.lessonDuration || lessonData.duration || null,  // p_lesson_duration
+        lessonData.description || null,                        // p_description
+        skillsJson,                                            // p_skills
+        creatorId,                                             // p_creator_id
       ];
 
       console.log('SQL parameters:', params);
@@ -1885,13 +1913,49 @@ class InstructorCourseService {
       const lessonId = result[0][0].id || result[0][0].lessonId;
       console.log("Lesson created with ID:", lessonId);
 
-      // File uploads are handled via multer middleware
-      // Uploaded files are stored in uploads/lessons/{documents,videos,scorm}/
-      if (lessonData.uploadedFile) {
-        console.log(`Single lesson - Lesson created with ID ${lessonId} with uploaded file: ${contentUrl}`);
-      } else {
-        console.log(`Single lesson - Lesson created with ID ${lessonId}`);
+      // Handle file uploads after lesson creation (like old LMS system)
+      if (lessonData.uploadedFiles && lessonData.uploadedFiles.length > 0) {
+        // Multiple files (SCORM folder upload)
+        console.log(`Uploading SCORM folder for lesson ${lessonId} with ${lessonData.uploadedFiles.length} files`);
+        try {
+          const uploadService = require('../upload_service');
+          const uploadedFilename = await uploadService.uploadScormFolder(
+            lessonData.uploadedFiles,
+            lessonId
+          );
+          console.log(`SCORM folder uploaded successfully: ${uploadedFilename}`);
+        } catch (uploadError) {
+          console.error(`Failed to upload SCORM folder for lesson ${lessonId}:`, uploadError);
+          throw new Error(`SCORM upload failed: ${uploadError.message}`);
+        }
+      } else if (lessonData.uploadedFile) {
+        // Single file upload (document, video, or SCORM ZIP)
+        console.log(`Uploading file for lesson ${lessonId}: ${lessonData.uploadedFile.originalname}`);
+        try {
+          const uploadService = require('../upload_service');
+          let uploadedFilename;
+
+          if (dbContentType === 'document') {
+            uploadedFilename = await uploadService.uploadLessonDocument(lessonData.uploadedFile, lessonId);
+            console.log(`Document uploaded successfully: ${uploadedFilename}`);
+          } else if (dbContentType === 'mp4') {
+            uploadedFilename = await uploadService.uploadLessonMp4(lessonData.uploadedFile, lessonId);
+            console.log(`MP4 uploaded successfully: ${uploadedFilename}`);
+          } else if (dbContentType === 'scorm') {
+            // Extract SCORM ZIP and get UUID folder name
+            uploadedFilename = await uploadService.uploadLessonScorm(lessonData.uploadedFile, lessonId);
+            console.log(`SCORM package uploaded and extracted successfully: ${uploadedFilename}`);
+          }
+        } catch (uploadError) {
+          console.error(`Failed to upload file for lesson ${lessonId}:`, uploadError);
+          // Throw error for SCORM since it's critical, but not for document/video
+          if (dbContentType === 'scorm') {
+            throw new Error(`SCORM upload failed: ${uploadError.message}`);
+          }
+        }
       }
+
+      console.log(`Single lesson - Lesson created with ID ${lessonId}`);
 
       // Handle ILTS if lesson type is ILTS
       if (lessonData.lessonType === "ILTS") {

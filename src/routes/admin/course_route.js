@@ -97,6 +97,7 @@ router.get(
 router.get("/metadata/categories", adminCourseController.getCategories);
 router.get("/metadata/subcategories", adminCourseController.getSubCategories);
 router.get("/metadata/languages", adminCourseController.getLanguages);
+router.get("/metadata/batches", adminCourseController.getBatches);
 router.post("/metadata/categories", adminCourseController.addCategory);
 router.post("/metadata/subcategories", adminCourseController.addSubCategory);
 
