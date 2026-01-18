@@ -1394,11 +1394,11 @@ class InstructorCourseService {
             // Add content-based lesson details
             if (row.lesson_type === 'Content-Based') {
               lesson.content = {
-                type: row.content_type,
-                document: row.content_document,
-                scorm: row.content_scorm,
-                mp4: row.content_mp4,
-                url: row.content_url
+                type: row.contentType,
+                document: row.lessonContentDocument,
+                scorm: row.scormPackage,
+                mp4: row.videoUpload,
+                url: row.contentUrl
               };
             }
 
@@ -1836,20 +1836,24 @@ class InstructorCourseService {
       console.log('Full lesson data received:', JSON.stringify(lessonData, null, 2));
 
       // Ensure all parameters are properly defined (null instead of undefined)
+      // Order must match stored procedure signature: add_course_lesson(
+      //   p_course_id, p_section_id, p_title, p_lesson_type, p_content_type,
+      //   p_lesson_content_document, p_scorm_package, p_video_upload, p_content_url,
+      //   p_lesson_duration, p_description, p_skills, p_creator_id)
       const params = [
-        lessonData.title || null,
-        lessonData.sectionId || null,
-        lessonData.lessonType || "Content-Based",
-        dbContentType || null,
-        documentFile === undefined ? null : documentFile,
-        scormFile === undefined ? null : scormFile,
-        mp4File === undefined ? null : mp4File,
-        contentUrl === undefined ? null : contentUrl,
-        lessonData.lessonDuration || lessonData.duration || null,
-        courseId,
-        creatorId,
-        creatorId,
-        lessonData.lessonOrder || null, // Let stored procedure calculate if not provided
+        courseId,                                        // p_course_id
+        lessonData.sectionId || null,                    // p_section_id
+        lessonData.title || null,                        // p_title
+        lessonData.lessonType || "Content-Based",        // p_lesson_type
+        dbContentType || null,                           // p_content_type
+        documentFile === undefined ? null : documentFile, // p_lesson_content_document
+        scormFile === undefined ? null : scormFile,      // p_scorm_package
+        mp4File === undefined ? null : mp4File,          // p_video_upload
+        contentUrl === undefined ? null : contentUrl,    // p_content_url
+        lessonData.lessonDuration || lessonData.duration || null, // p_lesson_duration
+        lessonData.description || null,                  // p_description
+        lessonData.skills ? JSON.stringify(lessonData.skills) : null, // p_skills
+        creatorId,                                       // p_creator_id
       ];
 
       console.log('SQL parameters:', params);
