@@ -823,6 +823,30 @@ exports.getSectionsByCourseId = async (req, res, next) => {
   }
 };
 
+exports.getLessonById = async (req, res, next) => {
+  try {
+    const { courseId, lessonId } = req.params;
+    const lesson = await instructorCourseService.getLessonById(
+      courseId,
+      lessonId
+    );
+
+    res.json({
+      success: true,
+      data: lesson,
+    });
+  } catch (error) {
+    console.error("Error in getLessonById:", error);
+    if (error.message === "Lesson not found") {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    next(error);
+  }
+};
+
 exports.getCourseBatches = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;

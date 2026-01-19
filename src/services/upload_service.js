@@ -105,9 +105,69 @@ class UploadService {
       const extractPath = path.join(dirPath, folderName);
 
       console.log("Upload service - Extracting to:", extractPath);
-      zip.extractAllTo(extractPath, true);
 
-      console.log("Upload service - Extraction completed successfully");
+      // Create extract directory
+      await this.ensureDirectoryExists(extractPath);
+
+      // Check if zip has a single root folder (common in SCORM packages)
+      // Filter out macOS metadata first
+      const validEntries = entries.filter(entry =>
+        !entry.entryName.includes('__MACOSX') && !entry.entryName.includes('.DS_Store')
+      );
+
+      let rootFolder = null;
+      const topLevelItems = new Set();
+
+      validEntries.forEach(entry => {
+        const parts = entry.entryName.split('/');
+        if (parts.length > 0 && parts[0]) {
+          topLevelItems.add(parts[0]);
+        }
+      });
+
+      // If there's only one top-level folder, we'll strip it
+      if (topLevelItems.size === 1) {
+        rootFolder = Array.from(topLevelItems)[0] + '/';
+        console.log(`Upload service - Detected single root folder: ${rootFolder} - will flatten structure`);
+      }
+
+      // Extract files, filtering out __MACOSX and .DS_Store
+      let extractedCount = 0;
+      validEntries.forEach(entry => {
+        let entryName = entry.entryName;
+
+        // If there's a single root folder, remove it from the path
+        if (rootFolder && entryName.startsWith(rootFolder)) {
+          entryName = entryName.substring(rootFolder.length);
+        }
+
+        // Skip empty paths (the root folder itself)
+        if (!entryName) {
+          return;
+        }
+
+        // Extract the entry
+        if (entry.isDirectory) {
+          const dirPath = path.join(extractPath, entryName);
+          if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath, { recursive: true });
+          }
+        } else {
+          const filePath = path.join(extractPath, entryName);
+          const fileDir = path.dirname(filePath);
+
+          // Ensure parent directory exists
+          if (!fs.existsSync(fileDir)) {
+            fs.mkdirSync(fileDir, { recursive: true });
+          }
+
+          // Write file
+          fs.writeFileSync(filePath, entry.getData());
+          extractedCount++;
+        }
+      });
+
+      console.log(`Upload service - Extraction completed successfully. Extracted ${extractedCount} files`);
 
       // Verify extraction by checking if directory exists
       if (!fs.existsSync(extractPath)) {

@@ -12,7 +12,7 @@ class CourseDTO {
     this.total_lessons = courseData.total_lessons || 0;
     this.level = courseData.level || 'beginner';
     this.course_duration = courseData.course_duration || '0 hours';
-    this.thumbnail = courseData.thumbnail || '';
+    this.thumbnail = courseData.thumbnail ? `/uploads/courses/thumbnail/${courseData.thumbnail}` : '';
     this.course_overview_provider = courseData.course_overview_provider || null;
     this.course_overview_video_url = courseData.course_overview_video_url || null;
     this.status = courseData.status || 'pending';
@@ -22,7 +22,7 @@ class CourseDTO {
     this.instructor = {
       id: courseData.creator_id || courseData.instructor_id,
       name: courseData.instructor_name || '',
-      dp: courseData.instructor_dp || null,
+      dp: courseData.instructor_dp ? `/uploads/users/profile_picture/${courseData.instructor_dp}` : null,
       about: courseData.instructor_about || '',
       social_links: courseData.instructor_social_links ? 
         (typeof courseData.instructor_social_links === 'string' ? 
@@ -49,7 +49,7 @@ class CourseReviewDTO {
     this.user = {
       id: reviewData.user_id,
       name: reviewData.user_name || 'Anonymous',
-      avatar: reviewData.user_avatar || null,
+      avatar: reviewData.user_avatar ? `/uploads/users/profile_picture/${reviewData.user_avatar}` : null,
       role: reviewData.user_role || 'student'
     };
   }
@@ -152,25 +152,36 @@ class CourseDetailDTO {
 
 class CourseLessonDTO {
   constructor(lessonData) {
-    this.id = lessonData.id || lessonData.lesson_id; 
+    this.id = lessonData.id || lessonData.lesson_id;
     this.title = lessonData.title;
     this.section_id = lessonData.section_id;
-    this.lesson_type = lessonData.lesson_type;
-    this.is_completed = !!lessonData.is_completed;
-    this.is_unlocked = !!lessonData.is_unlocked;
+    this.lessonType = lessonData.lesson_type;
+    this.isCompleted = !!lessonData.is_completed || !!lessonData.completed;
+    this.isUnlocked = !!lessonData.is_unlocked;
     this.last_accessed = lessonData.last_accessed || null;
-    this.lesson_duration = lessonData.lesson_duration || '0 mins';
-    
+    this.duration = lessonData.lesson_duration || lessonData.duration || '0 mins';
+    this.progress = lessonData.progress || 0;
+
     if (lessonData.lesson_type === 'Content-Based') {
-      this.content = {
-        type: lessonData.lesson_content_type,
-        document: lessonData.lesson_content_document || null,
-        url: lessonData.lesson_content_url || null,
-        mp4: lessonData.lesson_content_mp4 || null,
-        scorm: lessonData.lesson_content_scorm || null
-      };
+      // Map content type field names
+      this.contentType = lessonData.content_type || lessonData.contentType;
+
+      // Map the appropriate URL field to contentUrl based on content type
+      let contentUrl = '';
+      if (this.contentType === 'document') {
+        contentUrl = lessonData.documentUrl || lessonData.lesson_content_document || '';
+      } else if (this.contentType === 'mp4') {
+        contentUrl = lessonData.videoUrl || lessonData.lesson_content_mp4 || '';
+      } else if (this.contentType === 'scorm') {
+        contentUrl = lessonData.scormUrl || lessonData.lesson_content_scorm || '';
+      } else if (this.contentType === 'url') {
+        contentUrl = lessonData.externalUrl || lessonData.lesson_content_url || '';
+      }
+
+      this.contentUrl = contentUrl;
     } else if (lessonData.lesson_type === 'ILTS') {
-      this.ilts_info = {
+      this.iltsMode = lessonData.venue ? 'Offline' : 'Online';
+      this.iltsInfo = {
         mode: lessonData.venue ? 'Offline' : 'Online',
         meet_url: lessonData.meet_url || null,
         venue: lessonData.venue || null,
@@ -179,9 +190,9 @@ class CourseLessonDTO {
         end_date: lessonData.end_date || null,
         end_time: lessonData.end_time || null
       };
-      
+
       if (lessonData.venue) {
-        this.ilts_info.message = `Attend in person at ${lessonData.venue} on ${lessonData.start_date} at ${lessonData.start_time}`;
+        this.iltsInfo.message = `Attend in person at ${lessonData.venue} on ${lessonData.start_date} at ${lessonData.start_time}`;
       }
     }
   }

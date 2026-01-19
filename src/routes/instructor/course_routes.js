@@ -59,6 +59,10 @@ router.get(
   "/courses/:courseId/sections",
   instructorCourseController.getSectionsByCourseId
 );
+router.get(
+  "/courses/:courseId/lessons/:lessonId",
+  instructorCourseController.getLessonById
+);
 // Get courses// Get instructor's own courses (not from stored procedure)
 router.get(
   "/courses/instructor/active",
