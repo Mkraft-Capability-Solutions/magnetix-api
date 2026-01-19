@@ -275,13 +275,44 @@ exports.getCourseDetails = async (req, res, next) => {
     }
 
     const response = await courseService.getCourseDetails(userId, courseId);
-    
+
     if (!response.success) {
       return res.status(response.error.status || 500).json(response);
     }
 
     res.json(response);
   } catch (error) {
+    next(error);
+  }
+};
+
+exports.getLessonById = async (req, res, next) => {
+  try {
+    const { courseId, lessonId } = req.params;
+
+    console.log('getLessonById called with courseId:', courseId, 'lessonId:', lessonId);
+
+    if (!courseId || !lessonId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Course ID and Lesson ID are required'
+      });
+    }
+
+    const lesson = await courseService.getLessonById(courseId, lessonId);
+
+    res.json({
+      success: true,
+      data: lesson,
+    });
+  } catch (error) {
+    console.error('Error in getLessonById:', error);
+    if (error.message === 'Lesson not found') {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+      });
+    }
     next(error);
   }
 };

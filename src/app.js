@@ -10,7 +10,11 @@ require("dotenv").config();
 
 const allowedOrigins = [
   process.env.FRONTEND_URL,
-  process.env.ASSESSMENT_URL
+  process.env.ASSESSMENT_URL,
+  'http://localhost:5111', // Backend URL (for cases where frontend is served from same origin)
+  'http://localhost:3000', // Default React port
+  'http://localhost:3001', // Alternative port
+  'http://localhost:3002', // Current frontend port
 ].filter(Boolean);
 
 app.use(cors({
