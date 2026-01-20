@@ -106,6 +106,8 @@ const courseSchema = Joi.object({
   // Batch assignment fields
   batchIds: Joi.array().items(Joi.number().integer()).optional().default([]),
   availableToAllBatches: Joi.boolean().optional().default(false),
+  // Course status
+  status: Joi.string().valid('pending', 'active', 'inactive').optional(),
 });
 
 exports.addCourse = async (req, res, next) => {

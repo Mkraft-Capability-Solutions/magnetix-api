@@ -22,6 +22,10 @@ router.get('/skills/achieved/total', authenticate, authorize(1), courseControlle
 router.get('/:courseId/skills/gained', authenticate, authorize(1), courseController.getGainedSkillsByCourse);
 router.get('/:courseId/skills/remaining', authenticate, authorize(1), courseController.getRemainingSkillsByCourse);
 
+// Rating routes - must come before /:courseId to avoid route conflicts
+router.get('/:courseId/my-rating', authenticate, authorize(1), courseController.getUserCourseRating);
+router.post('/:courseId/rate', authenticate, authorize(1), courseController.submitCourseRating);
+router.put('/:courseId/rate', authenticate, authorize(1), courseController.updateCourseRating);
 
 router.get('/:courseId', authenticate, authorize(1), courseController.getCourseDetails);
 

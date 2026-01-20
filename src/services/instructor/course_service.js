@@ -13,6 +13,7 @@ const {
   SkillDTO,
   DTOTransformer,
 } = require("../../dto/instructor/course_dto");
+const { RatingStatsDTO } = require("../../dto/course_dto");
 
 class InstructorCourseService {
   async addCourse(userId, courseData) {
@@ -3107,7 +3108,7 @@ class InstructorCourseService {
           sections,
           lessons: mappedLessons,
           reviews,
-          rating_stats: ratingStats,
+          rating_stats: new RatingStatsDTO(ratingStats),
           progress: progressSummary,
           achieved_skills: achievedSkills,
           is_enrolled: true
@@ -3143,7 +3144,7 @@ class InstructorCourseService {
           sections,
           lessons: mappedLessons,
           reviews,
-          rating_stats: ratingStats,
+          rating_stats: new RatingStatsDTO(ratingStats),
           is_enrolled: false
         };
       }
