@@ -1170,7 +1170,7 @@ class InstructorCourseService {
   // Get active courses directly from table
   async getInstructorActiveCourses(userId) {
     const [rows] = await promisePool.query(
-      `SELECT * FROM course 
+      `SELECT * FROM course
             WHERE creator_id = ? AND status = 'active' AND is_deleted = 0`,
       [userId]
     );
@@ -1180,7 +1180,7 @@ class InstructorCourseService {
   // Get pending courses directly from table
   async getInstructorPendingCourses(userId) {
     const [rows] = await promisePool.query(
-      `SELECT * FROM course 
+      `SELECT * FROM course
             WHERE creator_id = ? AND status = 'pending' AND is_deleted = 0
             ORDER BY last_updated DESC`,
       [userId]
@@ -3335,6 +3335,39 @@ class InstructorCourseService {
       return result[0][0];
     } catch (error) {
       console.error('Error deleting course session:', error);
+      throw error;
+    }
+  }
+
+  async updateCourseStatus(courseId, status, instructorId) {
+    try {
+      // Verify the course belongs to the instructor
+      const [courseCheck] = await promisePool.query(
+        'SELECT id, creator_id FROM course WHERE id = ? AND is_deleted = 0',
+        [courseId]
+      );
+
+      if (courseCheck.length === 0) {
+        throw new Error('Course not found');
+      }
+
+      if (courseCheck[0].creator_id !== instructorId) {
+        throw new Error('You do not have permission to update this course');
+      }
+
+      // Update the course status
+      await promisePool.query(
+        'UPDATE course SET status = ?, last_updated = NOW(), last_updated_by = ? WHERE id = ?',
+        [status, instructorId, courseId]
+      );
+
+      return {
+        courseId: parseInt(courseId),
+        status: status,
+        message: 'Course status updated successfully'
+      };
+    } catch (error) {
+      console.error('Error updating course status:', error);
       throw error;
     }
   }

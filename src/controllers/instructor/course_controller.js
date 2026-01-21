@@ -1209,3 +1209,42 @@ exports.deleteCourseSession = async (req, res, next) => {
     next(error);
   }
 };
+
+// Update course status
+exports.updateCourseStatus = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required",
+      });
+    }
+
+    // Validate status value
+    const validStatuses = ['active', 'inactive', 'pending'];
+    if (!validStatuses.includes(status.toLowerCase())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status value. Must be one of: active, inactive, pending",
+      });
+    }
+
+    const result = await instructorCourseService.updateCourseStatus(
+      courseId,
+      status,
+      req.user.uuid
+    );
+
+    res.json({
+      success: true,
+      message: "Course status updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateCourseStatus:", error);
+    next(error);
+  }
+};

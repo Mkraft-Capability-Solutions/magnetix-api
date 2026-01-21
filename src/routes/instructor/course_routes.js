@@ -173,6 +173,9 @@ router.post("/courses/unsave", instructorCourseController.unsaveCourse);
 // Enroll in course
 router.post("/courses/enroll", instructorCourseController.enrollInCourse);
 
+// Update course status
+router.patch("/courses/:courseId/status", instructorCourseController.updateCourseStatus);
+
 // ============================================================================
 // IMPORTANT: This route must come AFTER all specific /courses/* routes
 // to avoid Express matching 'explore', 'subscribed', etc. as :courseId
