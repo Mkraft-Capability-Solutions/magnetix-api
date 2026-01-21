@@ -2835,6 +2835,22 @@ class InstructorCourseService {
         throw new Error('Invalid instructor UUID format');
       }
 
+      // Use the same stored procedure as student service
+      const [result] = await promisePool.query(
+        'CALL get_saved_courses(?)',
+        [instructorId]
+      );
+
+      return result[0];
+    } catch (error) {
+      console.error('Error in getSavedCourses:', error);
+      throw error;
+    }
+  }
+
+  async getAllActiveCourses(instructorId) {
+    try {
+      // Query to get all active courses regardless of creator or enrollment
       const query = `
         SELECT
           c.id,
@@ -2844,21 +2860,22 @@ class InstructorCourseService {
           c.level,
           c.course_duration as duration,
           cat.name as category,
+          c.created_at as publishedDate,
           (SELECT COUNT(*) FROM enrol e WHERE e.course_id = c.id) as enrollmentCount,
           (SELECT COUNT(*) FROM course_lesson cl WHERE cl.course_id = c.id) as lessonCount,
+          EXISTS(SELECT 1 FROM saved_courses sc WHERE sc.user_id = ? AND sc.course_id = c.id) as isSaved,
           EXISTS(SELECT 1 FROM enrol e WHERE e.user_id = ? AND e.course_id = c.id) as is_enrolled
-        FROM saved_courses sc
-        INNER JOIN course c ON sc.course_id = c.id AND c.is_deleted = 0
+        FROM course c
         LEFT JOIN course_category cat ON c.category_id = cat.id AND cat.is_deleted = 0
-        WHERE sc.user_id = ?
-          AND c.status = 'published'
-        ORDER BY c.id DESC
+        WHERE c.status = 'active'
+          AND c.is_deleted = 0
+        ORDER BY c.created_at DESC
       `;
 
       const [result] = await promisePool.query(query, [instructorId, instructorId]);
       return result;
     } catch (error) {
-      console.error('Error in getSavedCourses:', error);
+      console.error('Error in getAllActiveCourses:', error);
       throw error;
     }
   }
@@ -2874,33 +2891,13 @@ class InstructorCourseService {
         throw new Error('Invalid course ID');
       }
 
-      // Check if course exists
-      const [courseCheck] = await promisePool.query(
-        'SELECT id FROM course WHERE id = ? AND is_deleted = 0',
-        [courseId]
-      );
-
-      if (courseCheck.length === 0) {
-        throw new Error('Course does not exist');
-      }
-
-      // Check if already saved
-      const [existing] = await promisePool.query(
-        'SELECT id FROM saved_courses WHERE user_id = ? AND course_id = ?',
+      // Use the same stored procedure as student service
+      const [result] = await promisePool.query(
+        'CALL save_course(?, ?)',
         [instructorId, courseId]
       );
 
-      if (existing.length > 0) {
-        return { message: 'Course already saved' };
-      }
-
-      // Insert new saved course
-      await promisePool.query(
-        'INSERT INTO saved_courses (user_id, course_id, created_at) VALUES (?, ?, NOW())',
-        [instructorId, courseId]
-      );
-
-      return { message: 'Course saved successfully' };
+      return { message: result[0][0].message };
     } catch (error) {
       if (error.code === 'ER_NO_REFERENCED_ROW_2') {
         throw new Error('The course or instructor does not exist');
@@ -2921,24 +2918,17 @@ class InstructorCourseService {
         throw new Error('Invalid course ID');
       }
 
-      // Check if course is saved
-      const [existing] = await promisePool.query(
-        'SELECT id FROM saved_courses WHERE user_id = ? AND course_id = ?',
+      // Use the same stored procedure as student service
+      const [result] = await promisePool.query(
+        'CALL unsave_course(?, ?)',
         [instructorId, courseId]
       );
 
-      if (existing.length === 0) {
-        throw new Error('Course is not in your saved list');
-      }
-
-      // Delete the saved course
-      await promisePool.query(
-        'DELETE FROM saved_courses WHERE user_id = ? AND course_id = ?',
-        [instructorId, courseId]
-      );
-
-      return { message: 'Course removed from saved list successfully' };
+      return { message: result[0][0].message };
     } catch (error) {
+      if (error.code === '45000') {
+        throw new Error(error.sqlMessage);
+      }
       console.error('Error in unsaveCourse:', error);
       throw error;
     }

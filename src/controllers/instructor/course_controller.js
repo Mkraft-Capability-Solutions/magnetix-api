@@ -904,6 +904,23 @@ exports.exploreCourses = async (req, res, next) => {
   }
 };
 
+exports.getAllActiveCourses = async (req, res, next) => {
+  try {
+    const courses = await instructorCourseService.getAllActiveCourses(req.user.uuid);
+    res.json({
+      success: true,
+      data: courses,
+    });
+  } catch (error) {
+    console.error("Error in getAllActiveCourses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get all active courses",
+      error: error.message,
+    });
+  }
+};
+
 exports.getSavedCourses = async (req, res, next) => {
   try {
     const courses = await instructorCourseService.getSavedCourses(req.user.uuid);

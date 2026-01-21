@@ -158,6 +158,9 @@ router.get("/courses/subscribed", instructorCourseController.getSubscribedCourse
 // Get explore/browse courses
 router.get("/courses/explore", instructorCourseController.exploreCourses);
 
+// Get all active courses (regardless of enrollment or creator)
+router.get("/courses/all-active", instructorCourseController.getAllActiveCourses);
+
 // Get saved courses (Wishlist)
 router.get("/courses/saved", instructorCourseController.getSavedCourses);
 
