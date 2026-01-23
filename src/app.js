@@ -167,6 +167,7 @@ app.use("/api/super-admin/marketing", superAdminMarketingRoutes);
 app.use("/api/super-admin/ilt", superAdminILTRoutes);
 app.use("/api/super-admin/reports", superAdminReportRoutes);
 app.use("/api/super-admin/content", superAdminLessonRoutes);
+app.use("/api/super-admin/catalog", require("./routes/super_admin/catalog_routes"));
 
 // Serve uploaded files (e.g., profile pictures)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
