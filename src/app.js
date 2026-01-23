@@ -98,6 +98,7 @@ const superAdminFeedbackRoutes = require("./routes/super_admin/feedback_routes")
 const superAdminMarketingRoutes = require("./routes/super_admin/marketing_routes");
 const superAdminILTRoutes = require("./routes/super_admin/ilt_routes");
 const superAdminReportRoutes = require("./routes/super_admin/report_routes");
+const superAdminLessonRoutes = require("./routes/super_admin/lesson_routes");
 
 // Use routes with API prefixes
 app.use("/api/landing", landingRoutes);
@@ -164,6 +165,7 @@ app.use("/api/super-admin/feedback", superAdminFeedbackRoutes);
 app.use("/api/super-admin/marketing", superAdminMarketingRoutes);
 app.use("/api/super-admin/ilt", superAdminILTRoutes);
 app.use("/api/super-admin/reports", superAdminReportRoutes);
+app.use("/api/super-admin/content", superAdminLessonRoutes);
 
 // Serve uploaded files (e.g., profile pictures)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
