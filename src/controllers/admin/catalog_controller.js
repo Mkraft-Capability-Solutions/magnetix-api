@@ -384,3 +384,35 @@ exports.deleteSubcategory = async (req, res, next) => {
     next(error);
   }
 };
+
+// ============================================================================
+// CATALOG COURSES - VIEW OPERATIONS
+// ============================================================================
+
+/**
+ * Get catalog courses with optional filters
+ * GET /api/admin/catalog/courses
+ * Query params: categoryId, subcategoryId, level, minDuration, maxDuration, search
+ */
+exports.getCatalogCourses = async (req, res, next) => {
+  try {
+    const filters = {
+      categoryId: req.query.categoryId ? parseInt(req.query.categoryId) : null,
+      subcategoryId: req.query.subcategoryId ? parseInt(req.query.subcategoryId) : null,
+      level: req.query.level || null,
+      minDuration: req.query.minDuration ? parseInt(req.query.minDuration) : null,
+      maxDuration: req.query.maxDuration ? parseInt(req.query.maxDuration) : null,
+      search: req.query.search || null,
+    };
+
+    const courses = await CatalogService.getCatalogCourses(filters);
+
+    res.json({
+      success: true,
+      data: courses,
+    });
+  } catch (error) {
+    console.error("Error in getCatalogCourses:", error);
+    next(error);
+  }
+};

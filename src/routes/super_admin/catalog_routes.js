@@ -42,4 +42,11 @@ router.put("/subcategories/:subcategoryId", catalogController.updateSubcategory)
 // Delete subcategory
 router.delete("/subcategories/:subcategoryId", catalogController.deleteSubcategory);
 
+// ============================================================================
+// CATALOG COURSES ROUTES
+// ============================================================================
+
+// Get all catalog courses with optional filters
+router.get("/courses", catalogController.getCatalogCourses);
+
 module.exports = router;

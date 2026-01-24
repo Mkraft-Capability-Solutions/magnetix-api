@@ -400,6 +400,121 @@ class CatalogService {
       throw error;
     }
   }
+
+  // ============================================================================
+  // CATALOG COURSES - VIEW OPERATIONS
+  // ============================================================================
+
+  /**
+   * Get all active courses for catalog view with optional filters
+   * Supports filtering by category, subcategory, level, and duration
+   */
+  async getCatalogCourses(filters = {}) {
+    try {
+      const { categoryId, subcategoryId, level, minDuration, maxDuration, search } = filters;
+
+      let query = `
+        SELECT
+          c.id,
+          c.title,
+          cat.category_name as category,
+          subcat.subcategory_name as subcategory,
+          c.level,
+          c.course_duration as duration,
+          c.thumbnail,
+          c.short_description as description,
+          COALESCE((
+            SELECT AVG(rating)
+            FROM course_rating
+            WHERE course_id = c.id
+          ), 0) as rating,
+          (
+            SELECT COUNT(*)
+            FROM enrol
+            WHERE course_id = c.id
+          ) as enrolledCount
+        FROM course c
+        LEFT JOIN category cat ON c.category_id = cat.id
+        LEFT JOIN sub_category subcat ON c.sub_category_id = subcat.id
+        WHERE c.status = 'active' AND c.is_deleted = 0
+      `;
+
+      const params = [];
+
+      // Apply category filter
+      if (categoryId) {
+        query += ` AND c.category_id = ?`;
+        params.push(categoryId);
+      }
+
+      // Apply subcategory filter
+      if (subcategoryId) {
+        query += ` AND c.sub_category_id = ?`;
+        params.push(subcategoryId);
+      }
+
+      // Apply level filter
+      if (level) {
+        query += ` AND c.level = ?`;
+        params.push(level);
+      }
+
+      // Apply duration filters
+      if (minDuration) {
+        query += ` AND c.course_duration >= ?`;
+        params.push(minDuration);
+      }
+      if (maxDuration) {
+        query += ` AND c.course_duration <= ?`;
+        params.push(maxDuration);
+      }
+
+      // Apply search filter
+      if (search) {
+        query += ` AND (c.title LIKE ? OR c.short_description LIKE ?)`;
+        params.push(`%${search}%`, `%${search}%`);
+      }
+
+      query += ` ORDER BY c.last_updated DESC`;
+
+      const [courses] = await promisePool.query(query, params);
+
+      // Format the response
+      return courses.map(course => ({
+        id: course.id.toString(),
+        title: course.title,
+        category: course.category || 'Uncategorized',
+        subcategory: course.subcategory || null,
+        level: course.level || 'Beginner',
+        duration: this._formatDuration(course.duration),
+        thumbnail: course.thumbnail,
+        description: course.description,
+        rating: parseFloat(course.rating).toFixed(1),
+        enrolledCount: course.enrolledCount
+      }));
+    } catch (error) {
+      console.error("Error in getCatalogCourses:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper method to format course duration
+   */
+  _formatDuration(duration) {
+    if (!duration) return 'Self-paced';
+
+    // If duration is already a string with 'weeks', return it
+    if (typeof duration === 'string' && duration.includes('week')) {
+      return duration;
+    }
+
+    // If duration is a number (weeks), format it
+    const weeks = parseInt(duration);
+    if (isNaN(weeks)) return 'Self-paced';
+
+    return `${weeks} ${weeks === 1 ? 'week' : 'weeks'}`;
+  }
 }
 
 module.exports = new CatalogService();
