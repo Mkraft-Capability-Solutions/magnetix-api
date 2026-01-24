@@ -10,7 +10,11 @@ require("dotenv").config();
 
 const allowedOrigins = [
   process.env.FRONTEND_URL,
-  process.env.ASSESSMENT_URL
+  process.env.ASSESSMENT_URL,
+  'http://localhost:5111', // Backend URL (for cases where frontend is served from same origin)
+  'http://localhost:3000', // Default React port
+  'http://localhost:3001', // Alternative port
+  'http://localhost:3002', // Current frontend port
 ].filter(Boolean);
 
 app.use(cors({
@@ -68,6 +72,7 @@ const instructorTeamRoutes = require("./routes/instructor/team_routes");
 const instructorUserManagementRoutes = require("./routes/instructor/user_management_routes");
 const instructorMarketingRoutes = require("./routes/instructor/marketing_routes");
 const instructorILTRoutes = require("./routes/instructor/ilt_routes");
+const instructorBatchRoutes = require("./routes/instructor/batch_routes");
 const adminInstructorRoutes = require("./routes/admin/instructor_routes");
 const adminStudentRoutes = require("./routes/admin/student_routes");
 const adminEventRoutes = require("./routes/admin/event_routes");
@@ -84,6 +89,7 @@ const adminReportRoutes = require("./routes/admin/report_routes");
 const adminTeamRoutes = require("./routes/admin/team_routes");
 const adminILTRoutes = require("./routes/admin/ilt_routes");
 const adminBulkUploadRoutes = require("./routes/admin/bulk_upload_routes");
+const adminLessonRoutes = require("./routes/admin/lesson_routes");
 const superAdminDashboardRoutes = require("./routes/super_admin/dashboard_routes");
 const superAdminTeamRoutes = require("./routes/super_admin/team_routes");
 const superAdminUserManagementRoutes = require("./routes/super_admin/user_management_routes");
@@ -92,6 +98,7 @@ const superAdminFeedbackRoutes = require("./routes/super_admin/feedback_routes")
 const superAdminMarketingRoutes = require("./routes/super_admin/marketing_routes");
 const superAdminILTRoutes = require("./routes/super_admin/ilt_routes");
 const superAdminReportRoutes = require("./routes/super_admin/report_routes");
+const superAdminLessonRoutes = require("./routes/super_admin/lesson_routes");
 
 // Use routes with API prefixes
 app.use("/api/landing", landingRoutes);
@@ -126,6 +133,8 @@ app.use("/api/instructor/teams", instructorTeamRoutes);
 app.use("/api/instructor/users", instructorUserManagementRoutes);
 app.use("/api/instructor/marketing", instructorMarketingRoutes);
 app.use("/api/instructor/ilt", instructorILTRoutes);
+app.use("/api/instructor/batches", instructorBatchRoutes);
+app.use("/api/instructor/group-projects", require("./routes/trainer/group_project_routes"));
 app.use("/api/admin/instructors", adminInstructorRoutes);
 app.use("/api/admin/students", adminStudentRoutes);
 app.use("/api/admin/events", adminEventRoutes);
@@ -134,6 +143,9 @@ app.use("/api/admin/batches", adminBatchRoutes);
 app.use("/api/admin/mentorship/sessions", adminSessionRoutes);
 app.use("/api/admin/profile", require("./routes/admin/profile_route"));
 app.use("/api/admin/courses", require("./routes/admin/course_route"));
+app.use("/api/admin/catalog", require("./routes/admin/catalog_routes"));
+app.use("/api/admin/group-projects", require("./routes/admin/group_project_routes"));
+app.use("/api/admin", require("./routes/admin/certification_routes"));
 app.use("/api/admin/dashboard", adminDashboardRoutes);
 app.use("/api/admin/settings", adminSettingsRoutes);
 app.use("/api/admin/users", adminUserManagementRoutes);
@@ -141,6 +153,7 @@ app.use("/api/admin/reports", adminReportRoutes);
 app.use("/api/admin/teams", adminTeamRoutes);
 app.use("/api/admin/ilt", adminILTRoutes);
 app.use("/api/admin/bulk-upload", adminBulkUploadRoutes);
+app.use("/api/admin/content", adminLessonRoutes);
 app.use("/api/google/meet", googleMeetRoutes);
 app.use("/api/google/oauth", googleOAuthRoutes);
 app.use("/api/support", supportRoutes);
@@ -156,6 +169,9 @@ app.use("/api/super-admin/feedback", superAdminFeedbackRoutes);
 app.use("/api/super-admin/marketing", superAdminMarketingRoutes);
 app.use("/api/super-admin/ilt", superAdminILTRoutes);
 app.use("/api/super-admin/reports", superAdminReportRoutes);
+app.use("/api/super-admin/content", superAdminLessonRoutes);
+app.use("/api/super-admin/catalog", require("./routes/super_admin/catalog_routes"));
+app.use("/api/super-admin/group-projects", require("./routes/super_admin/group_project_routes"));
 
 // Serve uploaded files (e.g., profile pictures)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));

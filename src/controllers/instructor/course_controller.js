@@ -106,6 +106,8 @@ const courseSchema = Joi.object({
   // Batch assignment fields
   batchIds: Joi.array().items(Joi.number().integer()).optional().default([]),
   availableToAllBatches: Joi.boolean().optional().default(false),
+  // Course status
+  status: Joi.string().valid('pending', 'active', 'inactive').optional(),
 });
 
 exports.addCourse = async (req, res, next) => {
@@ -823,6 +825,30 @@ exports.getSectionsByCourseId = async (req, res, next) => {
   }
 };
 
+exports.getLessonById = async (req, res, next) => {
+  try {
+    const { courseId, lessonId } = req.params;
+    const lesson = await instructorCourseService.getLessonById(
+      courseId,
+      lessonId
+    );
+
+    res.json({
+      success: true,
+      data: lesson,
+    });
+  } catch (error) {
+    console.error("Error in getLessonById:", error);
+    if (error.message === "Lesson not found") {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    next(error);
+  }
+};
+
 exports.getCourseBatches = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;
@@ -873,6 +899,23 @@ exports.exploreCourses = async (req, res, next) => {
     res.status(500).json({
       success: false,
       message: "Failed to get explore courses",
+      error: error.message,
+    });
+  }
+};
+
+exports.getAllActiveCourses = async (req, res, next) => {
+  try {
+    const courses = await instructorCourseService.getAllActiveCourses(req.user.uuid);
+    res.json({
+      success: true,
+      data: courses,
+    });
+  } catch (error) {
+    console.error("Error in getAllActiveCourses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get all active courses",
       error: error.message,
     });
   }
@@ -1163,6 +1206,45 @@ exports.deleteCourseSession = async (req, res, next) => {
     });
   } catch (error) {
     console.error("Error in deleteCourseSession:", error);
+    next(error);
+  }
+};
+
+// Update course status
+exports.updateCourseStatus = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required",
+      });
+    }
+
+    // Validate status value
+    const validStatuses = ['active', 'inactive', 'pending'];
+    if (!validStatuses.includes(status.toLowerCase())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status value. Must be one of: active, inactive, pending",
+      });
+    }
+
+    const result = await instructorCourseService.updateCourseStatus(
+      courseId,
+      status,
+      req.user.uuid
+    );
+
+    res.json({
+      success: true,
+      message: "Course status updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateCourseStatus:", error);
     next(error);
   }
 };

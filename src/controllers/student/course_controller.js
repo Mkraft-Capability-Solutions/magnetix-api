@@ -275,13 +275,44 @@ exports.getCourseDetails = async (req, res, next) => {
     }
 
     const response = await courseService.getCourseDetails(userId, courseId);
-    
+
     if (!response.success) {
       return res.status(response.error.status || 500).json(response);
     }
 
     res.json(response);
   } catch (error) {
+    next(error);
+  }
+};
+
+exports.getLessonById = async (req, res, next) => {
+  try {
+    const { courseId, lessonId } = req.params;
+
+    console.log('getLessonById called with courseId:', courseId, 'lessonId:', lessonId);
+
+    if (!courseId || !lessonId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Course ID and Lesson ID are required'
+      });
+    }
+
+    const lesson = await courseService.getLessonById(courseId, lessonId);
+
+    res.json({
+      success: true,
+      data: lesson,
+    });
+  } catch (error) {
+    console.error('Error in getLessonById:', error);
+    if (error.message === 'Lesson not found') {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+      });
+    }
     next(error);
   }
 };
@@ -310,4 +341,95 @@ exports.markLessonCompleted = async (req, res, next) => {
     } catch (error) {
         next(error);
     }
+};
+
+// Get user's rating for a specific course
+exports.getUserCourseRating = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+    const userId = req.user.uuid;
+
+    if (!courseId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Course ID is required'
+      });
+    }
+
+    const response = await courseService.getUserCourseRating(userId, courseId);
+
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Submit a new course rating
+exports.submitCourseRating = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+    const userId = req.user.uuid;
+    const { rating, review } = req.body;
+
+    if (!courseId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Course ID is required'
+      });
+    }
+
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rating is required and must be between 1 and 5'
+      });
+    }
+
+    const response = await courseService.submitCourseRating(userId, courseId, rating, review);
+
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+
+    res.status(201).json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update an existing course rating
+exports.updateCourseRating = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+    const userId = req.user.uuid;
+    const { rating, review } = req.body;
+
+    if (!courseId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Course ID is required'
+      });
+    }
+
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rating is required and must be between 1 and 5'
+      });
+    }
+
+    const response = await courseService.updateCourseRating(userId, courseId, rating, review);
+
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
 };

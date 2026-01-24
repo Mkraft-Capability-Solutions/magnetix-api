@@ -490,6 +490,55 @@ async getCourseDetails(userId, courseId) {
   }
 }
 
+async getLessonById(courseId, lessonId) {
+  console.log("getLessonById called with courseId:", courseId, "lessonId:", lessonId);
+
+  try {
+    const [lessons] = await promisePool.query(
+      `SELECT l.*, s.title as section_title
+      FROM course_lesson l
+      LEFT JOIN course_section s ON l.section_id = s.id
+      WHERE l.id = ? AND l.course_id = ?`,
+      [lessonId, courseId]
+    );
+
+    if (lessons.length === 0) {
+      throw new Error("Lesson not found");
+    }
+
+    const lesson = lessons[0];
+
+    return {
+      id: lesson.id,
+      title: lesson.title,
+      section: lesson.section_title,
+      sectionId: lesson.section_id,
+      lessonType: lesson.lesson_type,
+      lessonOrder: lesson.lesson_order,
+      contentType: lesson.lesson_content_type,
+      lessonContentDocument: lesson.lesson_content_document,
+      lesson_content_scorm: lesson.lesson_content_scorm,
+      lesson_content_mp4: lesson.lesson_content_mp4,
+      lesson_content_url: lesson.lesson_content_url,
+      lessonDuration: lesson.lesson_duration,
+      duration: lesson.lesson_duration,
+      description: lesson.description,
+      skills: lesson.skills ? JSON.parse(lesson.skills) : [],
+      iltsType: lesson.ilts_type,
+      iltsUrl: lesson.ilts_url,
+      startDate: lesson.start_date,
+      startTime: lesson.start_time,
+      endDate: lesson.end_date,
+      endTime: lesson.end_time,
+      eventVenue: lesson.event_venue,
+      meetUrl: lesson.meet_url,
+    };
+  } catch (error) {
+    console.error("Error in getLessonById:", error);
+    throw error;
+  }
+}
+
 async markLessonCompleted(userId, lessonId, courseId) {
     try {
         const [result] = await promisePool.query(
@@ -533,6 +582,101 @@ async markLessonCompleted(userId, lessonId, courseId) {
         }
         return new ErrorResponseDTO(error);
     }
+}
+
+// Get user's rating for a specific course
+async getUserCourseRating(userId, courseId) {
+  try {
+    const [result] = await promisePool.query(
+      'SELECT rating, review, date_added, last_modified FROM course_rating WHERE user_id = ? AND course_id = ?',
+      [userId, courseId]
+    );
+
+    if (result.length === 0) {
+      return new ServiceResponseDTO(true, null, 'No rating found for this course');
+    }
+
+    return new ServiceResponseDTO(true, {
+      rating: result[0].rating,
+      review: result[0].review,
+      dateAdded: result[0].date_added,
+      lastModified: result[0].last_modified
+    });
+  } catch (error) {
+    return new ErrorResponseDTO(error);
+  }
+}
+
+// Submit a new course rating
+async submitCourseRating(userId, courseId, rating, review = '') {
+  try {
+    // Check if user is enrolled in the course
+    const enrollmentCheck = await this.checkEnrollment(userId, courseId);
+    if (!enrollmentCheck.success || !enrollmentCheck.data.is_enrolled) {
+      return new ErrorResponseDTO(new Error('You must be enrolled in the course to submit a rating'), 403);
+    }
+
+    // Check if user has already rated
+    const existingRating = await this.getUserCourseRating(userId, courseId);
+    if (existingRating.success && existingRating.data) {
+      return new ErrorResponseDTO(new Error('You have already rated this course. Please update your existing rating instead.'), 400);
+    }
+
+    // Insert new rating
+    const [result] = await promisePool.query(
+      'INSERT INTO course_rating (user_id, course_id, rating, review, date_added, last_modified) VALUES (?, ?, ?, ?, NOW(), NOW())',
+      [userId, courseId, rating, review]
+    );
+
+    // Award points for rating a course
+    await achievementsService.awardPoints(
+      userId,
+      5,
+      0,
+      'course_rate',
+      'rating',
+      courseId,
+      `Rated course ID: ${courseId}`
+    );
+
+    return new ServiceResponseDTO(true, {
+      id: result.insertId,
+      rating,
+      review,
+      message: 'Rating submitted successfully'
+    });
+  } catch (error) {
+    return new ErrorResponseDTO(error);
+  }
+}
+
+// Update an existing course rating
+async updateCourseRating(userId, courseId, rating, review = '') {
+  try {
+    // Check if user has an existing rating
+    const existingRating = await this.getUserCourseRating(userId, courseId);
+    if (!existingRating.success || !existingRating.data) {
+      return new ErrorResponseDTO(new Error('No existing rating found. Please submit a new rating instead.'), 404);
+    }
+
+    // Update rating
+    const [result] = await promisePool.query(
+      'UPDATE course_rating SET rating = ?, review = ?, last_modified = NOW() WHERE user_id = ? AND course_id = ?',
+      [rating, review, userId, courseId]
+    );
+
+    if (result.affectedRows === 0) {
+      return new ErrorResponseDTO(new Error('Failed to update rating'), 500);
+    }
+
+    return new ServiceResponseDTO(true, {
+      rating,
+      review,
+      message: 'Rating updated successfully'
+    });
+  } catch (error) {
+    return new ErrorResponseDTO(error);
+  }
 }
 
 }

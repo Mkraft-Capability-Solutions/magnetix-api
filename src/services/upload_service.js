@@ -105,9 +105,69 @@ class UploadService {
       const extractPath = path.join(dirPath, folderName);
 
       console.log("Upload service - Extracting to:", extractPath);
-      zip.extractAllTo(extractPath, true);
 
-      console.log("Upload service - Extraction completed successfully");
+      // Create extract directory
+      await this.ensureDirectoryExists(extractPath);
+
+      // Check if zip has a single root folder (common in SCORM packages)
+      // Filter out macOS metadata first
+      const validEntries = entries.filter(entry =>
+        !entry.entryName.includes('__MACOSX') && !entry.entryName.includes('.DS_Store')
+      );
+
+      let rootFolder = null;
+      const topLevelItems = new Set();
+
+      validEntries.forEach(entry => {
+        const parts = entry.entryName.split('/');
+        if (parts.length > 0 && parts[0]) {
+          topLevelItems.add(parts[0]);
+        }
+      });
+
+      // If there's only one top-level folder, we'll strip it
+      if (topLevelItems.size === 1) {
+        rootFolder = Array.from(topLevelItems)[0] + '/';
+        console.log(`Upload service - Detected single root folder: ${rootFolder} - will flatten structure`);
+      }
+
+      // Extract files, filtering out __MACOSX and .DS_Store
+      let extractedCount = 0;
+      validEntries.forEach(entry => {
+        let entryName = entry.entryName;
+
+        // If there's a single root folder, remove it from the path
+        if (rootFolder && entryName.startsWith(rootFolder)) {
+          entryName = entryName.substring(rootFolder.length);
+        }
+
+        // Skip empty paths (the root folder itself)
+        if (!entryName) {
+          return;
+        }
+
+        // Extract the entry
+        if (entry.isDirectory) {
+          const dirPath = path.join(extractPath, entryName);
+          if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath, { recursive: true });
+          }
+        } else {
+          const filePath = path.join(extractPath, entryName);
+          const fileDir = path.dirname(filePath);
+
+          // Ensure parent directory exists
+          if (!fs.existsSync(fileDir)) {
+            fs.mkdirSync(fileDir, { recursive: true });
+          }
+
+          // Write file
+          fs.writeFileSync(filePath, entry.getData());
+          extractedCount++;
+        }
+      });
+
+      console.log(`Upload service - Extraction completed successfully. Extracted ${extractedCount} files`);
 
       // Verify extraction by checking if directory exists
       if (!fs.existsSync(extractPath)) {
@@ -266,15 +326,37 @@ class UploadService {
 
   // Lesson SCORM
   async uploadLessonScorm(file, lessonId) {
+    console.log("uploadLessonScorm called with lessonId:", lessonId);
+
     // Get old SCORM folder name if updating
     let oldFolderName = null;
+    let isStandalone = false;
+
     if (lessonId) {
-      const [rows] = await promisePool.query(
-        "SELECT lesson_content_scorm FROM course_lesson WHERE id = ?",
+      // Check if it's a standalone lesson first
+      const [standaloneRows] = await promisePool.query(
+        "SELECT lesson_content_scorm FROM standalone_lessons WHERE id = ?",
         [lessonId]
       );
-      if (rows.length > 0 && rows[0].lesson_content_scorm) {
-        oldFolderName = rows[0].lesson_content_scorm;
+
+      console.log("Standalone check result:", standaloneRows);
+
+      if (standaloneRows.length > 0) {
+        isStandalone = true;
+        console.log("Lesson is STANDALONE");
+        if (standaloneRows[0].lesson_content_scorm) {
+          oldFolderName = standaloneRows[0].lesson_content_scorm;
+        }
+      } else {
+        // If not standalone, check course_lesson table
+        console.log("Lesson not found in standalone_lessons, checking course_lesson");
+        const [courseRows] = await promisePool.query(
+          "SELECT lesson_content_scorm FROM course_lesson WHERE id = ?",
+          [lessonId]
+        );
+        if (courseRows.length > 0 && courseRows[0].lesson_content_scorm) {
+          oldFolderName = courseRows[0].lesson_content_scorm;
+        }
       }
     }
 
@@ -284,11 +366,23 @@ class UploadService {
       [".zip"]
     );
 
+    console.log("SCORM extracted to folder:", folderName);
+
     if (lessonId) {
-      await promisePool.query(
-        "UPDATE course_lesson SET lesson_content_scorm = ? WHERE id = ?",
-        [folderName, lessonId]
-      );
+      // Update the appropriate table
+      if (isStandalone) {
+        console.log("Updating standalone_lessons table");
+        await promisePool.query(
+          "UPDATE standalone_lessons SET lesson_content_scorm = ? WHERE id = ?",
+          [folderName, lessonId]
+        );
+      } else {
+        console.log("Updating course_lesson table");
+        await promisePool.query(
+          "UPDATE course_lesson SET lesson_content_scorm = ? WHERE id = ?",
+          [folderName, lessonId]
+        );
+      }
 
       // Delete old SCORM folder after successful update
       if (oldFolderName) {
@@ -297,20 +391,43 @@ class UploadService {
       }
     }
 
+    console.log("uploadLessonScorm completed successfully");
     return folderName;
   }
 
   // Lesson Document
   async uploadLessonDocument(file, lessonId) {
+    console.log("uploadLessonDocument called with lessonId:", lessonId);
+
     // Get old document filename if updating
     let oldFilename = null;
+    let isStandalone = false;
+
     if (lessonId) {
-      const [rows] = await promisePool.query(
-        "SELECT lesson_content_document FROM course_lesson WHERE id = ?",
+      // Check if it's a standalone lesson first
+      const [standaloneRows] = await promisePool.query(
+        "SELECT lesson_content_document FROM standalone_lessons WHERE id = ?",
         [lessonId]
       );
-      if (rows.length > 0 && rows[0].lesson_content_document) {
-        oldFilename = rows[0].lesson_content_document;
+
+      console.log("Standalone check result:", standaloneRows);
+
+      if (standaloneRows.length > 0) {
+        isStandalone = true;
+        console.log("Lesson is STANDALONE");
+        if (standaloneRows[0].lesson_content_document) {
+          oldFilename = standaloneRows[0].lesson_content_document;
+        }
+      } else {
+        // If not standalone, check course_lesson table
+        console.log("Lesson not found in standalone_lessons, checking course_lesson");
+        const [courseRows] = await promisePool.query(
+          "SELECT lesson_content_document FROM course_lesson WHERE id = ?",
+          [lessonId]
+        );
+        if (courseRows.length > 0 && courseRows[0].lesson_content_document) {
+          oldFilename = courseRows[0].lesson_content_document;
+        }
       }
     }
 
@@ -320,11 +437,23 @@ class UploadService {
       [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".txt"]
     );
 
+    console.log("Document uploaded with filename:", filename);
+
     if (lessonId) {
-      await promisePool.query(
-        "UPDATE course_lesson SET lesson_content_document = ? WHERE id = ?",
-        [filename, lessonId]
-      );
+      // Update the appropriate table
+      if (isStandalone) {
+        console.log("Updating standalone_lessons table");
+        await promisePool.query(
+          "UPDATE standalone_lessons SET lesson_content_document = ? WHERE id = ?",
+          [filename, lessonId]
+        );
+      } else {
+        console.log("Updating course_lesson table");
+        await promisePool.query(
+          "UPDATE course_lesson SET lesson_content_document = ? WHERE id = ?",
+          [filename, lessonId]
+        );
+      }
 
       // Delete old file after successful update
       if (oldFilename) {
@@ -333,20 +462,43 @@ class UploadService {
       }
     }
 
+    console.log("uploadLessonDocument completed successfully");
     return filename;
   }
 
   // Lesson MP4
   async uploadLessonMp4(file, lessonId) {
+    console.log("uploadLessonMp4 called with lessonId:", lessonId);
+
     // Get old MP4 filename if updating
     let oldFilename = null;
+    let isStandalone = false;
+
     if (lessonId) {
-      const [rows] = await promisePool.query(
-        "SELECT lesson_content_mp4 FROM course_lesson WHERE id = ?",
+      // Check if it's a standalone lesson first
+      const [standaloneRows] = await promisePool.query(
+        "SELECT lesson_content_mp4 FROM standalone_lessons WHERE id = ?",
         [lessonId]
       );
-      if (rows.length > 0 && rows[0].lesson_content_mp4) {
-        oldFilename = rows[0].lesson_content_mp4;
+
+      console.log("Standalone check result:", standaloneRows);
+
+      if (standaloneRows.length > 0) {
+        isStandalone = true;
+        console.log("Lesson is STANDALONE");
+        if (standaloneRows[0].lesson_content_mp4) {
+          oldFilename = standaloneRows[0].lesson_content_mp4;
+        }
+      } else {
+        // If not standalone, check course_lesson table
+        console.log("Lesson not found in standalone_lessons, checking course_lesson");
+        const [courseRows] = await promisePool.query(
+          "SELECT lesson_content_mp4 FROM course_lesson WHERE id = ?",
+          [lessonId]
+        );
+        if (courseRows.length > 0 && courseRows[0].lesson_content_mp4) {
+          oldFilename = courseRows[0].lesson_content_mp4;
+        }
       }
     }
 
@@ -356,11 +508,23 @@ class UploadService {
       [".mp4"]
     );
 
+    console.log("MP4 uploaded with filename:", filename);
+
     if (lessonId) {
-      await promisePool.query(
-        "UPDATE course_lesson SET lesson_content_mp4 = ? WHERE id = ?",
-        [filename, lessonId]
-      );
+      // Update the appropriate table
+      if (isStandalone) {
+        console.log("Updating standalone_lessons table");
+        await promisePool.query(
+          "UPDATE standalone_lessons SET lesson_content_mp4 = ? WHERE id = ?",
+          [filename, lessonId]
+        );
+      } else {
+        console.log("Updating course_lesson table");
+        await promisePool.query(
+          "UPDATE course_lesson SET lesson_content_mp4 = ? WHERE id = ?",
+          [filename, lessonId]
+        );
+      }
 
       // Delete old file after successful update
       if (oldFilename) {
@@ -369,6 +533,7 @@ class UploadService {
       }
     }
 
+    console.log("uploadLessonMp4 completed successfully");
     return filename;
   }
 

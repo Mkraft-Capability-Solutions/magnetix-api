@@ -4,7 +4,7 @@ const instructorCourseController = require("../../controllers/instructor/course_
 const { authenticate, authorize } = require("../../middleware/auth_middleware");
 
 router.use(authenticate);
-router.use(authorize(2));
+router.use(authorize(2, 3, 4)); // Role 2 = Instructor, Role 3 = Admin
 
 // Course CRUD operations
 router.post("/courses", instructorCourseController.addCourse);
@@ -58,6 +58,10 @@ router.delete(
 router.get(
   "/courses/:courseId/sections",
   instructorCourseController.getSectionsByCourseId
+);
+router.get(
+  "/courses/:courseId/lessons/:lessonId",
+  instructorCourseController.getLessonById
 );
 // Get courses// Get instructor's own courses (not from stored procedure)
 router.get(
@@ -154,6 +158,9 @@ router.get("/courses/subscribed", instructorCourseController.getSubscribedCourse
 // Get explore/browse courses
 router.get("/courses/explore", instructorCourseController.exploreCourses);
 
+// Get all active courses (regardless of enrollment or creator)
+router.get("/courses/all-active", instructorCourseController.getAllActiveCourses);
+
 // Get saved courses (Wishlist)
 router.get("/courses/saved", instructorCourseController.getSavedCourses);
 
@@ -165,6 +172,9 @@ router.post("/courses/unsave", instructorCourseController.unsaveCourse);
 
 // Enroll in course
 router.post("/courses/enroll", instructorCourseController.enrollInCourse);
+
+// Update course status
+router.patch("/courses/:courseId/status", instructorCourseController.updateCourseStatus);
 
 // ============================================================================
 // IMPORTANT: This route must come AFTER all specific /courses/* routes
