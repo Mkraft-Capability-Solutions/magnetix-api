@@ -4,7 +4,7 @@ const instructorCourseController = require("../../controllers/instructor/course_
 const { authenticate, authorize } = require("../../middleware/auth_middleware");
 
 router.use(authenticate);
-router.use(authorize(2));
+router.use(authorize(2, 3, 4)); // Role 2 = Instructor, Role 3 = Admin
 
 // Course CRUD operations
 router.post("/courses", instructorCourseController.addCourse);
