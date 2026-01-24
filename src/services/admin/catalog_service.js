@@ -515,6 +515,388 @@ class CatalogService {
 
     return `${weeks} ${weeks === 1 ? 'week' : 'weeks'}`;
   }
+
+  // ============================================================================
+  // FEATURED COURSES OPERATIONS
+  // ============================================================================
+
+  /**
+   * Get all featured courses
+   */
+  async getFeaturedCourses() {
+    try {
+      const [featured] = await promisePool.query(`
+        SELECT
+          fc.id,
+          fc.course_id as courseId,
+          c.title,
+          cat.category_name as category,
+          COALESCE((
+            SELECT AVG(rating)
+            FROM course_rating
+            WHERE course_id = c.id
+          ), 0) as rating,
+          (
+            SELECT COUNT(*)
+            FROM enrol
+            WHERE course_id = c.id
+          ) as enrolled,
+          fc.is_active as isActive,
+          fc.display_order as displayOrder
+        FROM featured_courses fc
+        INNER JOIN course c ON fc.course_id = c.id
+        LEFT JOIN category cat ON c.category_id = cat.id
+        WHERE c.is_deleted = 0
+        ORDER BY fc.display_order ASC, fc.created_date DESC
+      `);
+
+      return featured.map(course => ({
+        id: course.id.toString(),
+        courseId: course.courseId.toString(),
+        title: course.title,
+        category: course.category || 'Uncategorized',
+        rating: parseFloat(course.rating),
+        enrolled: course.enrolled,
+        isActive: Boolean(course.isActive)
+      }));
+    } catch (error) {
+      console.error("Error in getFeaturedCourses:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add a featured course
+   */
+  async addFeaturedCourse(courseId, createdBy) {
+    try {
+      // Check if course exists and is active
+      const [course] = await promisePool.query(
+        "SELECT id FROM course WHERE id = ? AND status = 'active' AND is_deleted = 0",
+        [courseId]
+      );
+
+      if (course.length === 0) {
+        throw new Error("Course not found or not active");
+      }
+
+      // Check if course is already featured
+      const [existing] = await promisePool.query(
+        "SELECT id FROM featured_courses WHERE course_id = ?",
+        [courseId]
+      );
+
+      if (existing.length > 0) {
+        throw new Error("Course is already featured");
+      }
+
+      // Get the next display order
+      const [maxOrder] = await promisePool.query(
+        "SELECT COALESCE(MAX(display_order), 0) as maxOrder FROM featured_courses"
+      );
+
+      const displayOrder = maxOrder[0].maxOrder + 1;
+
+      // Insert featured course
+      const [result] = await promisePool.query(
+        "INSERT INTO featured_courses (course_id, display_order, created_by, last_updated_by) VALUES (?, ?, ?, ?)",
+        [courseId, displayOrder, createdBy, createdBy]
+      );
+
+      return {
+        id: result.insertId,
+        courseId: courseId,
+        displayOrder: displayOrder
+      };
+    } catch (error) {
+      console.error("Error in addFeaturedCourse:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Toggle featured course active status
+   */
+  async toggleFeaturedCourse(featuredId, updatedBy) {
+    try {
+      const [current] = await promisePool.query(
+        "SELECT is_active FROM featured_courses WHERE id = ?",
+        [featuredId]
+      );
+
+      if (current.length === 0) {
+        throw new Error("Featured course not found");
+      }
+
+      const newStatus = current[0].is_active ? 0 : 1;
+
+      await promisePool.query(
+        "UPDATE featured_courses SET is_active = ?, last_updated_by = ? WHERE id = ?",
+        [newStatus, updatedBy, featuredId]
+      );
+
+      return { id: featuredId, isActive: Boolean(newStatus) };
+    } catch (error) {
+      console.error("Error in toggleFeaturedCourse:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove a featured course
+   */
+  async removeFeaturedCourse(featuredId) {
+    try {
+      const [result] = await promisePool.query(
+        "DELETE FROM featured_courses WHERE id = ?",
+        [featuredId]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error("Featured course not found");
+      }
+
+      return { success: true, message: "Featured course removed successfully" };
+    } catch (error) {
+      console.error("Error in removeFeaturedCourse:", error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // RECOMMENDATION RULES OPERATIONS
+  // ============================================================================
+
+  /**
+   * Get all recommendation rules with their courses
+   */
+  async getRecommendationRules() {
+    try {
+      // Get all rules
+      const [rules] = await promisePool.query(`
+        SELECT
+          id,
+          rule_name,
+          rule_condition,
+          status,
+          created_date as createdAt,
+          last_updated as updatedAt
+        FROM recommendation_rules
+        ORDER BY created_date DESC
+      `);
+
+      // Get courses for each rule
+      for (let rule of rules) {
+        const [courses] = await promisePool.query(`
+          SELECT
+            c.id,
+            c.title
+          FROM recommendation_rule_courses rrc
+          INNER JOIN course c ON rrc.course_id = c.id
+          WHERE rrc.rule_id = ? AND c.is_deleted = 0
+        `, [rule.id]);
+
+        rule.courses = courses.map(c => ({
+          id: c.id.toString(),
+          title: c.title
+        }));
+      }
+
+      return rules.map(rule => ({
+        id: rule.id.toString(),
+        rule_name: rule.rule_name,
+        rule_condition: rule.rule_condition,
+        status: rule.status,
+        courses: rule.courses || []
+      }));
+    } catch (error) {
+      console.error("Error in getRecommendationRules:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add a new recommendation rule
+   */
+  async addRecommendationRule(ruleName, ruleCondition, courseIds, createdBy) {
+    try {
+      // Check if rule name already exists
+      const [existing] = await promisePool.query(
+        "SELECT id FROM recommendation_rules WHERE LOWER(rule_name) = LOWER(?)",
+        [ruleName]
+      );
+
+      if (existing.length > 0) {
+        throw new Error("Rule name already exists");
+      }
+
+      // Insert the rule
+      const [result] = await promisePool.query(
+        "INSERT INTO recommendation_rules (rule_name, rule_condition, created_by, last_updated_by) VALUES (?, ?, ?, ?)",
+        [ruleName, ruleCondition, createdBy, createdBy]
+      );
+
+      const ruleId = result.insertId;
+
+      // Add courses to the rule
+      if (courseIds && courseIds.length > 0) {
+        const values = courseIds.map(courseId => [ruleId, courseId]);
+        await promisePool.query(
+          "INSERT INTO recommendation_rule_courses (rule_id, course_id) VALUES ?",
+          [values]
+        );
+      }
+
+      return {
+        id: ruleId,
+        rule_name: ruleName,
+        rule_condition: ruleCondition,
+        status: 'Active',
+        courses: courseIds || []
+      };
+    } catch (error) {
+      console.error("Error in addRecommendationRule:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a recommendation rule
+   */
+  async updateRecommendationRule(ruleId, ruleName, ruleCondition, courseIds, updatedBy) {
+    try {
+      // Check if another rule with the same name exists
+      const [existing] = await promisePool.query(
+        "SELECT id FROM recommendation_rules WHERE LOWER(rule_name) = LOWER(?) AND id != ?",
+        [ruleName, ruleId]
+      );
+
+      if (existing.length > 0) {
+        throw new Error("Rule name already exists");
+      }
+
+      // Update the rule
+      const [result] = await promisePool.query(
+        "UPDATE recommendation_rules SET rule_name = ?, rule_condition = ?, last_updated_by = ? WHERE id = ?",
+        [ruleName, ruleCondition, updatedBy, ruleId]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error("Recommendation rule not found");
+      }
+
+      // Remove existing course associations
+      await promisePool.query(
+        "DELETE FROM recommendation_rule_courses WHERE rule_id = ?",
+        [ruleId]
+      );
+
+      // Add new course associations
+      if (courseIds && courseIds.length > 0) {
+        const values = courseIds.map(courseId => [ruleId, courseId]);
+        await promisePool.query(
+          "INSERT INTO recommendation_rule_courses (rule_id, course_id) VALUES ?",
+          [values]
+        );
+      }
+
+      return {
+        id: ruleId,
+        rule_name: ruleName,
+        rule_condition: ruleCondition,
+        courses: courseIds || []
+      };
+    } catch (error) {
+      console.error("Error in updateRecommendationRule:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Toggle recommendation rule status
+   */
+  async toggleRecommendationRuleStatus(ruleId, updatedBy) {
+    try {
+      const [current] = await promisePool.query(
+        "SELECT status FROM recommendation_rules WHERE id = ?",
+        [ruleId]
+      );
+
+      if (current.length === 0) {
+        throw new Error("Recommendation rule not found");
+      }
+
+      const newStatus = current[0].status === 'Active' ? 'Inactive' : 'Active';
+
+      await promisePool.query(
+        "UPDATE recommendation_rules SET status = ?, last_updated_by = ? WHERE id = ?",
+        [newStatus, updatedBy, ruleId]
+      );
+
+      return { id: ruleId, status: newStatus };
+    } catch (error) {
+      console.error("Error in toggleRecommendationRuleStatus:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a recommendation rule
+   */
+  async deleteRecommendationRule(ruleId) {
+    try {
+      // Delete the rule (cascade will remove course associations)
+      const [result] = await promisePool.query(
+        "DELETE FROM recommendation_rules WHERE id = ?",
+        [ruleId]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error("Recommendation rule not found");
+      }
+
+      return { success: true, message: "Recommendation rule deleted successfully" };
+    } catch (error) {
+      console.error("Error in deleteRecommendationRule:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get active courses for searchable dropdown
+   */
+  async getActiveCourses(search = '') {
+    try {
+      let query = `
+        SELECT
+          id,
+          title,
+          short_description as description
+        FROM course
+        WHERE status = 'active' AND is_deleted = 0
+      `;
+
+      const params = [];
+
+      if (search) {
+        query += ` AND (title LIKE ? OR short_description LIKE ?)`;
+        params.push(`%${search}%`, `%${search}%`);
+      }
+
+      query += ` ORDER BY title ASC LIMIT 50`;
+
+      const [courses] = await promisePool.query(query, params);
+
+      return courses.map(course => ({
+        id: course.id.toString(),
+        title: course.title,
+        description: course.description
+      }));
+    } catch (error) {
+      console.error("Error in getActiveCourses:", error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new CatalogService();

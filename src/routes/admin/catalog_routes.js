@@ -49,4 +49,46 @@ router.delete("/subcategories/:subcategoryId", catalogController.deleteSubcatego
 // Get all catalog courses with optional filters
 router.get("/courses", catalogController.getCatalogCourses);
 
+// ============================================================================
+// FEATURED COURSES ROUTES
+// ============================================================================
+
+// Get all featured courses
+router.get("/featured-courses", catalogController.getFeaturedCourses);
+
+// Add a featured course
+router.post("/featured-courses", catalogController.addFeaturedCourse);
+
+// Toggle featured course status
+router.patch("/featured-courses/:featuredId/toggle", catalogController.toggleFeaturedCourse);
+
+// Remove a featured course
+router.delete("/featured-courses/:featuredId", catalogController.removeFeaturedCourse);
+
+// ============================================================================
+// RECOMMENDATION RULES ROUTES
+// ============================================================================
+
+// Get all recommendation rules
+router.get("/recommendation-rules", catalogController.getRecommendationRules);
+
+// Add a new recommendation rule
+router.post("/recommendation-rules", catalogController.addRecommendationRule);
+
+// Update a recommendation rule
+router.put("/recommendation-rules/:ruleId", catalogController.updateRecommendationRule);
+
+// Toggle recommendation rule status
+router.patch("/recommendation-rules/:ruleId/toggle", catalogController.toggleRecommendationRuleStatus);
+
+// Delete a recommendation rule
+router.delete("/recommendation-rules/:ruleId", catalogController.deleteRecommendationRule);
+
+// ============================================================================
+// HELPER ROUTES
+// ============================================================================
+
+// Get active courses for searchable dropdown
+router.get("/active-courses", catalogController.getActiveCourses);
+
 module.exports = router;
