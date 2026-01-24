@@ -134,6 +134,7 @@ app.use("/api/instructor/users", instructorUserManagementRoutes);
 app.use("/api/instructor/marketing", instructorMarketingRoutes);
 app.use("/api/instructor/ilt", instructorILTRoutes);
 app.use("/api/instructor/batches", instructorBatchRoutes);
+app.use("/api/instructor/group-projects", require("./routes/trainer/group_project_routes"));
 app.use("/api/admin/instructors", adminInstructorRoutes);
 app.use("/api/admin/students", adminStudentRoutes);
 app.use("/api/admin/events", adminEventRoutes);
@@ -143,6 +144,7 @@ app.use("/api/admin/mentorship/sessions", adminSessionRoutes);
 app.use("/api/admin/profile", require("./routes/admin/profile_route"));
 app.use("/api/admin/courses", require("./routes/admin/course_route"));
 app.use("/api/admin/catalog", require("./routes/admin/catalog_routes"));
+app.use("/api/admin/group-projects", require("./routes/admin/group_project_routes"));
 app.use("/api/admin/dashboard", adminDashboardRoutes);
 app.use("/api/admin/settings", adminSettingsRoutes);
 app.use("/api/admin/users", adminUserManagementRoutes);
@@ -168,6 +170,7 @@ app.use("/api/super-admin/ilt", superAdminILTRoutes);
 app.use("/api/super-admin/reports", superAdminReportRoutes);
 app.use("/api/super-admin/content", superAdminLessonRoutes);
 app.use("/api/super-admin/catalog", require("./routes/super_admin/catalog_routes"));
+app.use("/api/super-admin/group-projects", require("./routes/super_admin/group_project_routes"));
 
 // Serve uploaded files (e.g., profile pictures)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
