@@ -2487,6 +2487,59 @@ class AdminCourseService {
       throw error;
     }
   }
+
+  // Get single lesson by ID
+  async getLessonById(courseId, lessonId) {
+    console.log("getLessonById called with courseId:", courseId, "lessonId:", lessonId);
+
+    try {
+      // Get lesson details
+      const [lessons] = await promisePool.query(
+        `SELECT l.*, s.title as section_title
+        FROM course_lesson l
+        LEFT JOIN course_section s ON l.section_id = s.id
+        WHERE l.id = ? AND l.course_id = ?`,
+        [lessonId, courseId]
+      );
+
+      if (lessons.length === 0) {
+        throw new Error("Lesson not found");
+      }
+
+      const lesson = lessons[0];
+
+      // Map database columns to expected format
+      return {
+        id: lesson.id,
+        title: lesson.title,
+        sectionId: lesson.section_id,
+        sectionTitle: lesson.section_title,
+        lessonOrder: lesson.lesson_order,
+        lessonType: lesson.lesson_type,
+        contentType: lesson.lesson_content_type,
+        lessonContentDocument: lesson.lesson_content_document,
+        lesson_content_scorm: lesson.lesson_content_scorm,
+        lesson_content_mp4: lesson.lesson_content_mp4,
+        lesson_content_url: lesson.lesson_content_url,
+        lessonDuration: lesson.lesson_duration,
+        duration: lesson.lesson_duration,
+        description: lesson.description,
+        skills: lesson.skills ? JSON.parse(lesson.skills) : [],
+        // ILTS fields
+        iltsType: lesson.ilts_type,
+        iltsUrl: lesson.ilts_url,
+        startDate: lesson.start_date,
+        startTime: lesson.start_time,
+        endDate: lesson.end_date,
+        endTime: lesson.end_time,
+        eventVenue: lesson.event_venue,
+        meetUrl: lesson.meet_url,
+      };
+    } catch (error) {
+      console.error("Error in getLessonById:", error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new AdminCourseService();

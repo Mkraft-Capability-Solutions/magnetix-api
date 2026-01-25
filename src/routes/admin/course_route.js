@@ -59,6 +59,10 @@ router.delete(
   "/:courseId/lessons/:lessonId",
   adminCourseController.deleteLesson
 );
+router.get(
+  "/:courseId/lessons/:lessonId",
+  adminCourseController.getLessonById
+);
 
 // ============================================================================
 // INDIVIDUAL SECTION UPDATE ENDPOINTS (for editing)
