@@ -507,6 +507,24 @@ exports.getLessonById = async (req, res, next) => {
   }
 };
 
+exports.getAllInstructors = async (req, res, next) => {
+  try {
+    const instructors = await AdminCourseService.getAllInstructors();
+
+    res.json({
+      success: true,
+      data: instructors,
+    });
+  } catch (error) {
+    console.error("Error in getAllInstructors:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch instructors",
+      error: error.message,
+    });
+  }
+};
+
 // ============================================================================
 // INDIVIDUAL SECTION UPDATE ENDPOINTS (for editing)
 // ============================================================================

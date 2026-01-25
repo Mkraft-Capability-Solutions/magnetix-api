@@ -95,12 +95,13 @@ router.get(
 );
 
 // ============================================================================
-// METADATA (Categories, Subcategories, Languages)
+// METADATA (Categories, Subcategories, Languages, Instructors)
 // ============================================================================
 
 router.get("/metadata/categories", adminCourseController.getCategories);
 router.get("/metadata/subcategories", adminCourseController.getSubCategories);
 router.get("/metadata/languages", adminCourseController.getLanguages);
+router.get("/metadata/instructors", adminCourseController.getAllInstructors);
 router.post("/metadata/categories", adminCourseController.addCategory);
 router.post("/metadata/subcategories", adminCourseController.addSubCategory);
 

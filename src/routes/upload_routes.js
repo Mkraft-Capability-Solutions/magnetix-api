@@ -24,31 +24,31 @@ const upload = multer({
 });
 
 // Course uploads
-router.post('/course/thumbnail', 
+router.post('/course/thumbnail',
   authenticate,
-  authorize(2,3), // Instructor only
+  authorize(2,3,4), // Instructor, Admin, Super Admin
   upload.single('thumbnail'),
   uploadController.uploadCourseThumbnail
 );
 
-router.post('/course/overview/video', 
+router.post('/course/overview/video',
   authenticate,
-  authorize(2,3),
+  authorize(2,3,4), // Instructor, Admin, Super Admin
   upload.single('video'),
   uploadController.uploadCourseOverviewVideo
 );
 
-router.post('/course/overview/scorm', 
+router.post('/course/overview/scorm',
   authenticate,
-  authorize(2,3),
+  authorize(2,3,4), // Instructor, Admin, Super Admin
   upload.single('scorm'),
   uploadController.uploadCourseOverviewScorm
 );
 
 // Event uploads
-router.post('/event/thumbnail', 
+router.post('/event/thumbnail',
   authenticate,
-  authorize(2,3),
+  authorize(2,3,4), // Instructor, Admin, Super Admin
   upload.single('thumbnail'),
   uploadController.uploadEventThumbnail
 );
@@ -61,9 +61,9 @@ router.post('/user/profile',
 );
 
 // Lesson uploads
-router.post('/lesson/scorm', 
+router.post('/lesson/scorm',
   authenticate,
-  authorize(2,3),
+  authorize(2,3,4), // Instructor, Admin, Super Admin
   (req, res, next) => {
     console.log('SCORM upload route - Request received');
     console.log('Headers:', req.headers);
@@ -80,16 +80,16 @@ router.post('/lesson/scorm',
   uploadController.uploadLessonScorm
 );
 
-router.post('/lesson/document', 
+router.post('/lesson/document',
   authenticate,
-  authorize(2,3),
+  authorize(2,3,4), // Instructor, Admin, Super Admin
   upload.single('document'),
   uploadController.uploadLessonDocument
 );
 
 router.post('/lesson/mp4',
   authenticate,
-  authorize(2,3),
+  authorize(2,3,4), // Instructor, Admin, Super Admin
   upload.single('video'),
   uploadController.uploadLessonMp4
 );

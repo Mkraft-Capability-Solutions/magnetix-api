@@ -2540,6 +2540,38 @@ class AdminCourseService {
       throw error;
     }
   }
+
+  // Get all instructors (role_id = 2) for instructor selection
+  async getAllInstructors() {
+    console.log("getAllInstructors called");
+
+    try {
+      const [instructors] = await promisePool.query(
+        `SELECT
+          i.user_id,
+          i.first_name,
+          i.last_name,
+          u.email,
+          i.dp as profile_image
+        FROM instructors i
+        INNER JOIN users u ON i.user_id = u.uuid
+        WHERE u.role_id = 2 AND u.is_deleted = 0
+        ORDER BY i.first_name ASC, i.last_name ASC`
+      );
+
+      return instructors.map(instructor => ({
+        userId: instructor.user_id,
+        firstName: instructor.first_name,
+        lastName: instructor.last_name,
+        fullName: `${instructor.first_name} ${instructor.last_name}`,
+        email: instructor.email,
+        profileImage: instructor.profile_image
+      }));
+    } catch (error) {
+      console.error("Error in getAllInstructors:", error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new AdminCourseService();
