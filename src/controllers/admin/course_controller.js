@@ -483,6 +483,48 @@ exports.deleteLesson = async (req, res, next) => {
   }
 };
 
+exports.getLessonById = async (req, res, next) => {
+  try {
+    const { courseId, lessonId } = req.params;
+    const lesson = await AdminCourseService.getLessonById(
+      courseId,
+      lessonId
+    );
+
+    res.json({
+      success: true,
+      data: lesson,
+    });
+  } catch (error) {
+    console.error("Error in getLessonById:", error);
+    if (error.message === "Lesson not found") {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    next(error);
+  }
+};
+
+exports.getAllInstructors = async (req, res, next) => {
+  try {
+    const instructors = await AdminCourseService.getAllInstructors();
+
+    res.json({
+      success: true,
+      data: instructors,
+    });
+  } catch (error) {
+    console.error("Error in getAllInstructors:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch instructors",
+      error: error.message,
+    });
+  }
+};
+
 // ============================================================================
 // INDIVIDUAL SECTION UPDATE ENDPOINTS (for editing)
 // ============================================================================

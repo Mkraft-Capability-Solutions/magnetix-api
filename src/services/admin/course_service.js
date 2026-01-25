@@ -179,7 +179,9 @@ class AdminCourseService {
                 break;
               case 'scorm':
                 dbContentType = 'scorm';
-                scormFile = typeof (lesson.scormPackage || lesson.file) === 'string' ? (lesson.scormPackage || lesson.file) : null;
+                // IMPORTANT: Never set scormFile here - it must remain NULL
+                // SCORM uploads happen separately via the upload service which extracts the ZIP
+                scormFile = null;
                 break;
               case 'url':
               case 'content_url':
@@ -343,8 +345,9 @@ class AdminCourseService {
                   break;
                 case 'scorm':
                   dbContentType = 'scorm';
-                  // If file is a string (filename), use it; if it's a File object, it will be handled after lesson creation
-                  scormFile = typeof (lesson.scormPackage || lesson.file) === 'string' ? (lesson.scormPackage || lesson.file) : null;
+                  // IMPORTANT: Never set scormFile here - it must remain NULL
+                  // SCORM uploads happen separately via the upload service which extracts the ZIP
+                  scormFile = null;
                   break;
                 case 'url':
                 case 'content_url':
@@ -1595,8 +1598,10 @@ class AdminCourseService {
             break;
           case 'scorm':
             dbContentType = 'scorm';
-            scormFile = isValidFile(lessonData.scormPackage) ? lessonData.scormPackage :
-                       isValidFile(lessonData.file) ? lessonData.file : null;
+            // IMPORTANT: Never set scormFile here - it must remain NULL
+            // The SCORM file will be uploaded AFTER lesson creation via upload service
+            // The upload service will extract the ZIP and update lesson_content_scorm with folder name
+            scormFile = null;
             break;
           case 'url':
             dbContentType = 'url';
@@ -1743,6 +1748,8 @@ class AdminCourseService {
       await connection.rollback();
       console.error("Error in addLesson:", error);
       throw error;
+    } finally {
+      connection.release();
     }
   }
 
@@ -2484,6 +2491,91 @@ class AdminCourseService {
       return result[0][0];
     } catch (error) {
       console.error('Error deleting course session:', error);
+      throw error;
+    }
+  }
+
+  // Get single lesson by ID
+  async getLessonById(courseId, lessonId) {
+    console.log("getLessonById called with courseId:", courseId, "lessonId:", lessonId);
+
+    try {
+      // Get lesson details
+      const [lessons] = await promisePool.query(
+        `SELECT l.*, s.title as section_title
+        FROM course_lesson l
+        LEFT JOIN course_section s ON l.section_id = s.id
+        WHERE l.id = ? AND l.course_id = ?`,
+        [lessonId, courseId]
+      );
+
+      if (lessons.length === 0) {
+        throw new Error("Lesson not found");
+      }
+
+      const lesson = lessons[0];
+
+      // Map database columns to expected format
+      return {
+        id: lesson.id,
+        title: lesson.title,
+        sectionId: lesson.section_id,
+        sectionTitle: lesson.section_title,
+        lessonOrder: lesson.lesson_order,
+        lessonType: lesson.lesson_type,
+        contentType: lesson.lesson_content_type,
+        lessonContentDocument: lesson.lesson_content_document,
+        lesson_content_scorm: lesson.lesson_content_scorm,
+        lesson_content_mp4: lesson.lesson_content_mp4,
+        lesson_content_url: lesson.lesson_content_url,
+        lessonDuration: lesson.lesson_duration,
+        duration: lesson.lesson_duration,
+        description: lesson.description,
+        skills: lesson.skills ? JSON.parse(lesson.skills) : [],
+        // ILTS fields
+        iltsType: lesson.ilts_type,
+        iltsUrl: lesson.ilts_url,
+        startDate: lesson.start_date,
+        startTime: lesson.start_time,
+        endDate: lesson.end_date,
+        endTime: lesson.end_time,
+        eventVenue: lesson.event_venue,
+        meetUrl: lesson.meet_url,
+      };
+    } catch (error) {
+      console.error("Error in getLessonById:", error);
+      throw error;
+    }
+  }
+
+  // Get all instructors (role_id = 2) for instructor selection
+  async getAllInstructors() {
+    console.log("getAllInstructors called");
+
+    try {
+      const [instructors] = await promisePool.query(
+        `SELECT
+          i.user_id,
+          i.first_name,
+          i.last_name,
+          u.email,
+          i.dp as profile_image
+        FROM instructors i
+        INNER JOIN users u ON i.user_id = u.uuid
+        WHERE u.role_id = 2 AND u.is_deleted = 0
+        ORDER BY i.first_name ASC, i.last_name ASC`
+      );
+
+      return instructors.map(instructor => ({
+        userId: instructor.user_id,
+        firstName: instructor.first_name,
+        lastName: instructor.last_name,
+        fullName: `${instructor.first_name} ${instructor.last_name}`,
+        email: instructor.email,
+        profileImage: instructor.profile_image
+      }));
+    } catch (error) {
+      console.error("Error in getAllInstructors:", error);
       throw error;
     }
   }

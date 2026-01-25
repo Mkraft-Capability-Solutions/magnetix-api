@@ -10,28 +10,28 @@ router.use(authorize(3, 4)); // Role 3 = Admin, Role 4 = Super Admin
 // COURSE CRUD OPERATIONS
 // ============================================================================
 
-router.post("/courses", adminCourseController.addCourse);
-router.put("/courses/:courseId", adminCourseController.updateCourse);
-router.delete("/courses/:courseId", adminCourseController.deleteCourse);
+router.post("/", adminCourseController.addCourse);
+router.put("/:courseId", adminCourseController.updateCourse);
+router.delete("/:courseId", adminCourseController.deleteCourse);
 
 // ============================================================================
 // COURSE UPDATE OPERATIONS (Requirements, Outcomes, FAQs, Meta)
 // ============================================================================
 
 router.put(
-  "/courses/:courseId/requirements",
+  "/:courseId/requirements",
   adminCourseController.addCourseRequirements
 );
 router.put(
-  "/courses/:courseId/outcomes",
+  "/:courseId/outcomes",
   adminCourseController.addCourseOutcomes
 );
 router.put(
-  "/courses/:courseId/faqs",
+  "/:courseId/faqs",
   adminCourseController.addCourseFAQs
 );
 router.put(
-  "/courses/:courseId/meta",
+  "/:courseId/meta",
   adminCourseController.updateMetaKeywords
 );
 
@@ -40,24 +40,28 @@ router.put(
 // ============================================================================
 
 router.post(
-  "/courses/:courseId/sections",
+  "/:courseId/sections",
   adminCourseController.addSection
 );
 router.get(
-  "/courses/:courseId/sections",
+  "/:courseId/sections",
   adminCourseController.getSectionsByCourseId
 );
 router.post(
-  "/courses/:courseId/lessons",
+  "/:courseId/lessons",
   adminCourseController.addLesson
 );
 router.put(
-  "/courses/:courseId/lessons/:lessonId",
+  "/:courseId/lessons/:lessonId",
   adminCourseController.updateLesson
 );
 router.delete(
-  "/courses/:courseId/lessons/:lessonId",
+  "/:courseId/lessons/:lessonId",
   adminCourseController.deleteLesson
+);
+router.get(
+  "/:courseId/lessons/:lessonId",
+  adminCourseController.getLessonById
 );
 
 // ============================================================================
@@ -65,15 +69,15 @@ router.delete(
 // ============================================================================
 
 router.put(
-  "/courses/:courseId/basic",
+  "/:courseId/basic",
   adminCourseController.updateCourseBasicInfo
 );
 router.put(
-  "/courses/:courseId/details",
+  "/:courseId/details",
   adminCourseController.updateCourseDetails
 );
 router.put(
-  "/courses/:courseId/media",
+  "/:courseId/media",
   adminCourseController.updateCourseMedia
 );
 
@@ -82,21 +86,22 @@ router.put(
 // ============================================================================
 
 router.get(
-  "/courses/admin/active",
+  "/admin/active",
   adminCourseController.getAdminActiveCourses
 );
 router.get(
-  "/courses/admin/pending",
+  "/admin/pending",
   adminCourseController.getAdminPendingCourses
 );
 
 // ============================================================================
-// METADATA (Categories, Subcategories, Languages)
+// METADATA (Categories, Subcategories, Languages, Instructors)
 // ============================================================================
 
 router.get("/metadata/categories", adminCourseController.getCategories);
 router.get("/metadata/subcategories", adminCourseController.getSubCategories);
 router.get("/metadata/languages", adminCourseController.getLanguages);
+router.get("/metadata/instructors", adminCourseController.getAllInstructors);
 router.post("/metadata/categories", adminCourseController.addCategory);
 router.post("/metadata/subcategories", adminCourseController.addSubCategory);
 
@@ -105,19 +110,19 @@ router.post("/metadata/subcategories", adminCourseController.addSubCategory);
 // ============================================================================
 
 router.get(
-  "/courses/:courseId/students",
+  "/:courseId/students",
   adminCourseController.getEnrolledStudents
 );
 router.get(
-  "/courses/:courseId/enrollments/progress",
+  "/:courseId/enrollments/progress",
   adminCourseController.getEnrolledStudentsWithProgress
 );
 router.get(
-  "/courses/:courseId/analytics",
+  "/:courseId/analytics",
   adminCourseController.getCourseAnalytics
 );
 router.get(
-  "/courses/:courseId/batches",
+  "/:courseId/batches",
   adminCourseController.getCourseBatches
 );
 
@@ -125,8 +130,8 @@ router.get(
 // ADMIN-SPECIFIC OPERATIONS
 // ============================================================================
 
-router.patch("/courses/:courseId/approve", adminCourseController.approveCourse);
-router.patch("/courses/:courseId/reject", adminCourseController.rejectCourse);
+router.patch("/:courseId/approve", adminCourseController.approveCourse);
+router.patch("/:courseId/reject", adminCourseController.rejectCourse);
 
 // ============================================================================
 // COURSE OFFERINGS & SESSIONS
@@ -134,11 +139,11 @@ router.patch("/courses/:courseId/reject", adminCourseController.rejectCourse);
 
 // Course Offerings
 router.post(
-  "/courses/:courseId/offerings",
+  "/:courseId/offerings",
   adminCourseController.createCourseOffering
 );
 router.get(
-  "/courses/:courseId/offerings",
+  "/:courseId/offerings",
   adminCourseController.getCourseOfferings
 );
 router.put(
@@ -152,11 +157,11 @@ router.delete(
 
 // Course Sessions
 router.post(
-  "/courses/:courseId/sessions",
+  "/:courseId/sessions",
   adminCourseController.createCourseSession
 );
 router.get(
-  "/courses/:courseId/sessions",
+  "/:courseId/sessions",
   adminCourseController.getCourseSessions
 );
 router.put(
@@ -173,6 +178,6 @@ router.delete(
 // Get course details by ID should be at the end
 // ============================================================================
 
-router.get("/courses/:courseId", adminCourseController.getCourseDetailsById);
+router.get("/:courseId", adminCourseController.getCourseDetailsById);
 
 module.exports = router;
