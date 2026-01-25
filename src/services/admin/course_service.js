@@ -179,7 +179,9 @@ class AdminCourseService {
                 break;
               case 'scorm':
                 dbContentType = 'scorm';
-                scormFile = typeof (lesson.scormPackage || lesson.file) === 'string' ? (lesson.scormPackage || lesson.file) : null;
+                // IMPORTANT: Never set scormFile here - it must remain NULL
+                // SCORM uploads happen separately via the upload service which extracts the ZIP
+                scormFile = null;
                 break;
               case 'url':
               case 'content_url':
@@ -343,8 +345,9 @@ class AdminCourseService {
                   break;
                 case 'scorm':
                   dbContentType = 'scorm';
-                  // If file is a string (filename), use it; if it's a File object, it will be handled after lesson creation
-                  scormFile = typeof (lesson.scormPackage || lesson.file) === 'string' ? (lesson.scormPackage || lesson.file) : null;
+                  // IMPORTANT: Never set scormFile here - it must remain NULL
+                  // SCORM uploads happen separately via the upload service which extracts the ZIP
+                  scormFile = null;
                   break;
                 case 'url':
                 case 'content_url':
@@ -1595,8 +1598,10 @@ class AdminCourseService {
             break;
           case 'scorm':
             dbContentType = 'scorm';
-            scormFile = isValidFile(lessonData.scormPackage) ? lessonData.scormPackage :
-                       isValidFile(lessonData.file) ? lessonData.file : null;
+            // IMPORTANT: Never set scormFile here - it must remain NULL
+            // The SCORM file will be uploaded AFTER lesson creation via upload service
+            // The upload service will extract the ZIP and update lesson_content_scorm with folder name
+            scormFile = null;
             break;
           case 'url':
             dbContentType = 'url';
@@ -1743,6 +1748,8 @@ class AdminCourseService {
       await connection.rollback();
       console.error("Error in addLesson:", error);
       throw error;
+    } finally {
+      connection.release();
     }
   }
 
