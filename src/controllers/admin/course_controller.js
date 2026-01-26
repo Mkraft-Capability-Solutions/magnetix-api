@@ -12,6 +12,10 @@ const courseSchema = Joi.object({
   creator_id: Joi.string().optional().allow(""),
   title: Joi.string().required(),
   instructor: Joi.string().optional().allow(""),
+  instructorId: Joi.alternatives()
+    .try(Joi.number(), Joi.string())
+    .optional()
+    .allow(null, ""),
   shortDescription: Joi.string().allow("").optional(),
   description: Joi.string().allow("").optional(),
   languageId: Joi.number().integer().min(1).required(),

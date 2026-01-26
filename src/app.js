@@ -173,6 +173,9 @@ app.use("/api/super-admin/group-projects", require("./routes/super_admin/group_p
 // Serve uploaded files (e.g., profile pictures)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
+  // Also serve uploads through /socket/uploads path for compatibility
+  app.use("/socket/uploads", express.static(path.join(__dirname, "../uploads")));
+
 // Global error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);

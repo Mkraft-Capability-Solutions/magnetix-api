@@ -2579,6 +2579,56 @@ class AdminCourseService {
       throw error;
     }
   }
+
+  // ============================================================================
+  // COURSE APPROVAL/REJECTION
+  // ============================================================================
+
+  async approveCourse(courseId) {
+    console.log("approveCourse called with courseId:", courseId);
+
+    const connection = await promisePool.getConnection();
+    try {
+      const [result] = await connection.query(
+        "UPDATE course SET status = 'active', last_updated = NOW() WHERE id = ?",
+        [courseId]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error("Course not found");
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error("Error in approveCourse:", error);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async rejectCourse(courseId) {
+    console.log("rejectCourse called with courseId:", courseId);
+
+    const connection = await promisePool.getConnection();
+    try {
+      const [result] = await connection.query(
+        "UPDATE course SET status = 'rejected', last_updated = NOW() WHERE id = ?",
+        [courseId]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error("Course not found");
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error("Error in rejectCourse:", error);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
 }
 
 module.exports = new AdminCourseService();
