@@ -93,6 +93,14 @@ router.get(
   "/admin/pending",
   adminCourseController.getAdminPendingCourses
 );
+router.get(
+  "/admin/all",
+  adminCourseController.getAdminAllCourses
+);
+router.get(
+  "/admin/stats",
+  adminCourseController.getAdminCourseStats
+);
 
 // ============================================================================
 // METADATA (Categories, Subcategories, Languages, Instructors)
@@ -132,6 +140,7 @@ router.get(
 
 router.patch("/:courseId/approve", adminCourseController.approveCourse);
 router.patch("/:courseId/reject", adminCourseController.rejectCourse);
+router.patch("/:courseId/status", adminCourseController.updateCourseStatus);
 
 // ============================================================================
 // COURSE OFFERINGS & SESSIONS

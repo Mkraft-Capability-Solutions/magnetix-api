@@ -29,6 +29,13 @@ class CourseDTO {
         this.instructorAbout = data.instructorAbout || data.instructor_about || data.about;
         this.instructorSocialLinks = data.instructorSocialLinks || data.social_links;
         this.instructorExpertise = data.instructorExpertise || data.expertise;
+
+        // Statistics fields for course list
+        this.enrollmentCount = data.enrollmentCount || 0;
+        this.lessonCount = data.lessonCount || 0;
+        this.avgRating = data.avgRating ? parseFloat(data.avgRating) : 0;
+        this.totalRatings = data.totalRatings || 0;
+        this.avgCompletion = data.avgCompletion ? parseFloat(data.avgCompletion) : 0;
     }
 
     static fromDatabase(data) {
@@ -65,6 +72,11 @@ class CourseDTO {
             instructorAbout: data.instructorAbout || data.about,
             instructorSocialLinks: data.instructorSocialLinks || data.social_links,
             instructorExpertise: data.instructorExpertise || data.expertise,
+            enrollmentCount: data.enrollmentCount,
+            lessonCount: data.lessonCount,
+            avgRating: data.avgRating,
+            totalRatings: data.totalRatings,
+            avgCompletion: data.avgCompletion,
         });
     }
 

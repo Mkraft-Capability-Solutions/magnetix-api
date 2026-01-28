@@ -29,9 +29,31 @@ class CourseService {
 
   async exploreCourses(studentId) {
     try {
-      const [result] = await promisePool.query('CALL get_explore_courses(?)', [studentId]);
-      const courses = result[0].map(course => new CourseDTO(course));
-      return new ServiceResponseDTO(true, courses);
+      // Direct SQL query instead of stored procedure for better control
+      const query = `
+        SELECT
+          c.id,
+          c.title,
+          c.short_description as shortDescription,
+          c.thumbnail,
+          c.level,
+          c.course_duration as duration,
+          cat.name as category,
+          c.created_at as publishedDate,
+          (SELECT COUNT(*) FROM enrol e WHERE e.course_id = c.id) as enrollmentCount,
+          (SELECT COUNT(*) FROM course_lesson cl WHERE cl.course_id = c.id) as lessonCount,
+          EXISTS(SELECT 1 FROM saved_courses sc WHERE sc.user_id = ? AND sc.course_id = c.id) as isSaved
+        FROM course c
+        LEFT JOIN course_category cat ON c.category_id = cat.id
+        WHERE c.status = 'active'
+          AND c.is_deleted = 0
+          AND NOT EXISTS (SELECT 1 FROM enrol e WHERE e.user_id = ? AND e.course_id = c.id)
+        ORDER BY c.created_at DESC
+      `;
+
+      const [courses] = await promisePool.query(query, [studentId, studentId]);
+      const courseDTOs = courses.map(course => new CourseDTO(course));
+      return new ServiceResponseDTO(true, courseDTOs);
     } catch (error) {
       return new ErrorResponseDTO(error);
     }
