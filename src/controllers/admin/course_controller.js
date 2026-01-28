@@ -674,6 +674,34 @@ exports.getAdminPendingCourses = async (req, res) => {
   }
 };
 
+exports.getAdminAllCourses = async (req, res) => {
+  try {
+    const courses = await AdminCourseService.getAdminAllCourses();
+    res.json({ success: true, data: courses });
+  } catch (error) {
+    console.error("Error fetching all courses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get courses",
+      error: error.message,
+    });
+  }
+};
+
+exports.getAdminCourseStats = async (req, res) => {
+  try {
+    const stats = await AdminCourseService.getAdminCourseStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    console.error("Error fetching course stats:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get course stats",
+      error: error.message,
+    });
+  }
+};
+
 // ============================================================================
 // METADATA (Categories, Subcategories, Languages)
 // ============================================================================
@@ -889,6 +917,27 @@ exports.rejectCourse = async (req, res) => {
     res.json({
       success: true,
       message: "Course rejected successfully",
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateCourseStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required",
+      });
+    }
+
+    await AdminCourseService.updateCourseStatus(req.params.courseId, status);
+    res.json({
+      success: true,
+      message: "Course status updated successfully",
     });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });

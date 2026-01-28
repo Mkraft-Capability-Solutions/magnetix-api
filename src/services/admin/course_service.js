@@ -801,9 +801,19 @@ class AdminCourseService {
   // Get ALL active courses - no creator_id filter
   async getAdminActiveCourses() {
     const [rows] = await promisePool.query(
-      `SELECT * FROM course
-            WHERE status = 'active' AND is_deleted = 0
-            ORDER BY last_updated DESC`
+      `SELECT
+        c.*,
+        COUNT(DISTINCT e.user_id) as enrollmentCount,
+        COUNT(DISTINCT l.id) as lessonCount,
+        COALESCE(AVG(r.rating), 0) as avgRating,
+        COUNT(DISTINCT r.id) as totalRatings
+      FROM course c
+      LEFT JOIN enrol e ON c.id = e.course_id
+      LEFT JOIN course_lesson l ON c.id = l.course_id
+      LEFT JOIN course_rating r ON c.id = r.course_id
+      WHERE c.status = 'active' AND c.is_deleted = 0
+      GROUP BY c.id
+      ORDER BY c.last_updated DESC`
     );
     return rows.map(CourseDTO.courseToDTO);
   }
@@ -811,11 +821,67 @@ class AdminCourseService {
   // Get ALL pending courses - no creator_id filter
   async getAdminPendingCourses() {
     const [rows] = await promisePool.query(
-      `SELECT * FROM course
-            WHERE status = 'pending' AND is_deleted = 0
-            ORDER BY last_updated DESC`
+      `SELECT
+        c.*,
+        COUNT(DISTINCT e.user_id) as enrollmentCount,
+        COUNT(DISTINCT l.id) as lessonCount,
+        COALESCE(AVG(r.rating), 0) as avgRating,
+        COUNT(DISTINCT r.id) as totalRatings
+      FROM course c
+      LEFT JOIN enrol e ON c.id = e.course_id
+      LEFT JOIN course_lesson l ON c.id = l.course_id
+      LEFT JOIN course_rating r ON c.id = r.course_id
+      WHERE c.status = 'pending' AND c.is_deleted = 0
+      GROUP BY c.id
+      ORDER BY c.last_updated DESC`
     );
     return rows.map(CourseDTO.courseToDTO);
+  }
+
+  // Get ALL courses (is_deleted = 0) - for course list page
+  async getAdminAllCourses() {
+    const [rows] = await promisePool.query(
+      `SELECT
+        c.*,
+        COUNT(DISTINCT e.user_id) as enrollmentCount,
+        COUNT(DISTINCT l.id) as lessonCount,
+        COALESCE(AVG(r.rating), 0) as avgRating,
+        COUNT(DISTINCT r.id) as totalRatings
+      FROM course c
+      LEFT JOIN enrol e ON c.id = e.course_id
+      LEFT JOIN course_lesson l ON c.id = l.course_id
+      LEFT JOIN course_rating r ON c.id = r.course_id
+      WHERE c.is_deleted = 0
+      GROUP BY c.id
+      ORDER BY c.last_updated DESC`
+    );
+    return rows.map(CourseDTO.courseToDTO);
+  }
+
+  // Get stats for admin course list stats cards
+  async getAdminCourseStats() {
+    const [stats] = await promisePool.query(
+      `SELECT
+        COUNT(DISTINCT CASE WHEN c.status = 'active' AND c.is_deleted = 0 THEN c.id END) as activeCourses,
+        COUNT(DISTINCT CASE WHEN c.status IN ('active', 'pending') AND c.is_deleted = 0 THEN e.user_id END) as totalLearners,
+        COALESCE(AVG(r.rating), 0) as avgRating,
+        COUNT(DISTINCT r.id) as totalRatings,
+        COALESCE(AVG(completion_data.completion_percentage), 0) as avgCompletion
+      FROM course c
+      LEFT JOIN enrol e ON c.id = e.course_id
+      LEFT JOIN course_rating r ON c.id = r.course_id
+      LEFT JOIN (
+        SELECT
+          enr.course_id,
+          ROUND((SUM(cp.lesson_completed) * 100.0 / NULLIF(COUNT(*), 0)), 2) as completion_percentage
+        FROM course_progress cp
+        INNER JOIN enrol enr ON cp.enroll_id = enr.id
+        GROUP BY cp.enroll_id, enr.course_id
+      ) completion_data ON c.id = completion_data.course_id
+      WHERE c.is_deleted = 0`
+    );
+
+    return stats[0];
   }
 
   async getCategories() {
@@ -2624,6 +2690,35 @@ class AdminCourseService {
       return { success: true };
     } catch (error) {
       console.error("Error in rejectCourse:", error);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateCourseStatus(courseId, status) {
+    console.log("updateCourseStatus called with courseId:", courseId, "status:", status);
+
+    // Validate status - only allow active, inactive, pending
+    const allowedStatuses = ['active', 'inactive', 'pending'];
+    if (!allowedStatuses.includes(status.toLowerCase())) {
+      throw new Error(`Invalid status. Allowed values are: ${allowedStatuses.join(', ')}`);
+    }
+
+    const connection = await promisePool.getConnection();
+    try {
+      const [result] = await connection.query(
+        "UPDATE course SET status = ?, last_updated = NOW() WHERE id = ? AND is_deleted = 0",
+        [status.toLowerCase(), courseId]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error("Course not found or already deleted");
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error("Error in updateCourseStatus:", error);
       throw error;
     } finally {
       connection.release();
