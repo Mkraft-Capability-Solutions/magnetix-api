@@ -6,17 +6,37 @@ const dashboardService = require('../../services/admin/dashboard_service');
  */
 
 /**
- * Get dashboard statistics
- * GET /api/admin/dashboard/stats
+ * Calculate and save daily dashboard statistics
+ * POST /api/admin/dashboard/stats/calculate
+ */
+exports.calculateDailyStats = async (req, res) => {
+  try {
+    const result = await dashboardService.calculateAndSaveDailyStats();
+
+    res.json({
+      success: true,
+      message: result.message,
+      data: result.data
+    });
+  } catch (error) {
+    console.error('Dashboard Controller - calculateDailyStats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to calculate daily statistics',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get dashboard statistics for a specific date
+ * GET /api/admin/dashboard/stats?date=YYYY-MM-DD
  */
 exports.getStats = async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
+    const { date } = req.query;
 
-    const stats = await dashboardService.getStats(
-      startDate || null,
-      endDate || null
-    );
+    const stats = await dashboardService.getStats(date || null);
 
     res.json({
       success: true,
