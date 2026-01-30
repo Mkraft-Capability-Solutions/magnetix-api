@@ -8,9 +8,16 @@ router.use(authenticate);
 router.use(authorize(3, 4)); // Role 3 = Admin, Role 4 = Super Admin
 
 /**
+ * POST /api/admin/dashboard/stats/calculate
+ * Calculate and save daily dashboard statistics
+ * This endpoint should be called daily (via cron job or manually)
+ */
+router.post('/stats/calculate', dashboardController.calculateDailyStats);
+
+/**
  * GET /api/admin/dashboard/stats
- * Get dashboard statistics
- * Query params: startDate, endDate
+ * Get dashboard statistics for a specific date
+ * Query params: date (YYYY-MM-DD format, defaults to today)
  */
 router.get('/stats', dashboardController.getStats);
 
