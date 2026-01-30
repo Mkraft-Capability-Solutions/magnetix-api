@@ -24,8 +24,27 @@ class TranscriptService {
    */
   async getTranscriptCourses(userId) {
     try {
-      const [result] = await promisePool.query('CALL get_student_subscribed_courses(?)', [userId]);
-      const courses = result[0];
+      // Direct SQL query to get enrolled courses - same as dashboard My Courses
+      const query = `
+        SELECT
+          c.id,
+          c.title,
+          c.short_description as shortDescription,
+          c.thumbnail,
+          c.level,
+          c.course_duration as duration,
+          cat.name as category,
+          e.enrolled_date as enrolledAt,
+          (SELECT COUNT(*) FROM course_lesson WHERE course_id = c.id) as totalLessons,
+          (SELECT COUNT(*) FROM lesson_progress WHERE course_id = c.id AND user_id = ? AND completed = 1) as completedLessons
+        FROM enrol e
+        INNER JOIN course c ON e.course_id = c.id
+        LEFT JOIN course_category cat ON c.category_id = cat.id
+        WHERE e.user_id = ? AND c.is_deleted = 0 AND c.status = 'active'
+        ORDER BY e.enrolled_date DESC
+      `;
+
+      const [courses] = await promisePool.query(query, [userId, userId]);
 
       return new ServiceResponseDTO(true, courses, 'Transcript courses retrieved successfully');
     } catch (error) {
