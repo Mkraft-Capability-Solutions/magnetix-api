@@ -19,9 +19,29 @@ const achievementsService = require('./achievements_service');
 class CourseService {
   async getSubscribedCourses(studentId) {
     try {
-      const [result] = await promisePool.query('CALL get_student_subscribed_courses(?)', [studentId]);
-      const courses = result[0].map(course => new CourseDTO(course));
-      return new ServiceResponseDTO(true, courses);
+      // Direct SQL query to filter only active courses
+      const query = `
+        SELECT
+          c.id,
+          c.title,
+          c.short_description as shortDescription,
+          c.thumbnail,
+          c.level,
+          c.course_duration as duration,
+          cat.name as category,
+          e.enrolled_date as enrolledAt,
+          (SELECT COUNT(*) FROM course_lesson WHERE course_id = c.id) as totalLessons,
+          (SELECT COUNT(*) FROM lesson_progress WHERE course_id = c.id AND user_id = ? AND completed = 1) as completedLessons
+        FROM enrol e
+        INNER JOIN course c ON e.course_id = c.id
+        LEFT JOIN course_category cat ON c.category_id = cat.id
+        WHERE e.user_id = ? AND c.is_deleted = 0 AND c.status = 'active'
+        ORDER BY e.enrolled_date DESC
+      `;
+
+      const [courses] = await promisePool.query(query, [studentId, studentId]);
+      const courseDTOs = courses.map(course => new CourseDTO(course));
+      return new ServiceResponseDTO(true, courseDTOs);
     } catch (error) {
       return new ErrorResponseDTO(error);
     }
@@ -300,13 +320,30 @@ class CourseService {
         throw new Error('Invalid user UUID format');
       }
 
-      const [result] = await promisePool.query(
-        'CALL get_saved_courses(?)',
-        [userId]
-      );
-      
-      const savedCourses = result[0].map(course => new CourseDTO(course));
-      return new ServiceResponseDTO(true, savedCourses);
+      // Direct SQL query to filter only active courses
+      const query = `
+        SELECT
+          c.id,
+          c.title,
+          c.short_description as shortDescription,
+          c.thumbnail,
+          c.level,
+          c.course_duration as duration,
+          cat.name as category,
+          sc.saved_date as savedAt,
+          (SELECT COUNT(*) FROM enrol WHERE course_id = c.id) as enrollmentCount,
+          (SELECT COUNT(*) FROM course_lesson WHERE course_id = c.id) as lessonCount,
+          EXISTS(SELECT 1 FROM enrol WHERE user_id = ? AND course_id = c.id) as isEnrolled
+        FROM saved_courses sc
+        INNER JOIN course c ON sc.course_id = c.id
+        LEFT JOIN course_category cat ON c.category_id = cat.id
+        WHERE sc.user_id = ? AND sc.course_saved = 1 AND c.is_deleted = 0 AND c.status = 'active'
+        ORDER BY sc.saved_date DESC
+      `;
+
+      const [savedCourses] = await promisePool.query(query, [userId, userId]);
+      const courseDTOs = savedCourses.map(course => new CourseDTO(course));
+      return new ServiceResponseDTO(true, courseDTOs);
     } catch (error) {
       return new ErrorResponseDTO(error);
     }
