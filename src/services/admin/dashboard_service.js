@@ -88,93 +88,78 @@ const calculateAndSaveDailyStats = async (date = null) => {
 };
 
 /**
- * Get dashboard statistics for a specific date
- * @param {Date|string} date - Date to retrieve stats for (defaults to today)
+ * Get dashboard statistics in real-time (no longer uses admin_dashboard_stats table)
+ * @param {Date|string} date - Date parameter (currently unused, always returns current stats)
  * @returns {Promise<Array>} Array of stat objects with increase percentages
  */
 const getStats = async (date = null) => {
   try {
-    // Set default to today if no date provided
-    if (!date) {
-      date = new Date();
-    }
+    // Get current stats directly from database
 
-    // Convert to YYYY-MM-DD format
-    const statDate = typeof date === 'string'
-      ? date
-      : date.toISOString().split('T')[0];
-
-    // Get stats for the selected date
-    const [[currentStats]] = await pool.query(
-      `SELECT
-        active_learners,
-        courses_in_progress,
-        overdue_assignments,
-        pending_approvals,
-        stat_date
-       FROM admin_dashboard_stats
-       WHERE stat_date = ?`,
-      [statDate]
+    // Active Learners: users with role_id=1, status='active', is_deleted=0
+    const [[{ active_learners }]] = await pool.query(
+      `SELECT COUNT(DISTINCT u.uuid) as active_learners
+       FROM users u
+       WHERE u.role_id = 1
+         AND u.status = 'active'
+         AND u.is_deleted = 0`
     );
 
-    // If no stats found for this date, return empty result
-    if (!currentStats) {
-      return [];
-    }
-
-    // Get stats from 7 days ago for comparison
-    const prevDate = new Date(statDate);
-    prevDate.setDate(prevDate.getDate() - 7);
-    const prevDateStr = prevDate.toISOString().split('T')[0];
-
-    const [[prevStats]] = await pool.query(
-      `SELECT
-        active_learners,
-        courses_in_progress,
-        overdue_assignments,
-        pending_approvals
-       FROM admin_dashboard_stats
-       WHERE stat_date = ?`,
-      [prevDateStr]
+    // Courses in Progress: courses with status='active' and is_deleted=0
+    const [[{ courses_in_progress }]] = await pool.query(
+      `SELECT COUNT(*) as courses_in_progress
+       FROM course
+       WHERE status = 'active'
+         AND is_deleted = 0`
     );
 
-    // Calculate increase percentage
-    const calculateIncrease = (current, previous) => {
-      if (!previous || previous === 0) return current > 0 ? '100%' : '0%';
-      const increase = Math.round(Math.abs((current - previous) / previous) * 100);
-      return `${increase}%`;
+    // Overdue Assignments: tasks past due date
+    const [[{ overdue_assignments }]] = await pool.query(
+      `SELECT COUNT(*) as overdue_assignments
+       FROM admin_tasks
+       WHERE status IN ('Pending', 'Urgent')
+         AND due_date < NOW()`
+    );
+
+    // Pending Approvals: approval type tasks that are pending
+    const [[{ pending_approvals }]] = await pool.query(
+      `SELECT COUNT(*) as pending_approvals
+       FROM admin_tasks
+       WHERE task_type = 'Approval'
+         AND status IN ('Pending', 'Urgent')`
+    );
+
+    // Calculate increase percentage - using a simple default for now
+    // Since we're getting real-time data, we show current values
+    const calculateIncrease = (current) => {
+      // You can enhance this later to compare with yesterday's snapshot if needed
+      return '0%';
     };
 
-    // Default previous values to 0 if not found
-    const prevActiveLearners = prevStats?.active_learners || 0;
-    const prevCoursesInProgress = prevStats?.courses_in_progress || 0;
-    const prevOverdueAssignments = prevStats?.overdue_assignments || 0;
-    const prevPendingApprovals = prevStats?.pending_approvals || 0;
-
-    // Return results
+    // Return results with real-time data
     return [
       {
         title: 'Active Learners',
-        value: currentStats.active_learners || 0,
-        increase: calculateIncrease(currentStats.active_learners, prevActiveLearners),
+        value: active_learners || 0,
+        increase: calculateIncrease(active_learners),
         iconType: 'users'
       },
       {
         title: 'Course in Progress',
-        value: currentStats.courses_in_progress || 0,
-        increase: calculateIncrease(currentStats.courses_in_progress, prevCoursesInProgress),
+        value: courses_in_progress || 0,
+        increase: calculateIncrease(courses_in_progress),
         iconType: 'book'
       },
       {
         title: 'Overdue Assignments',
-        value: currentStats.overdue_assignments || 0,
-        increase: calculateIncrease(currentStats.overdue_assignments, prevOverdueAssignments),
+        value: overdue_assignments || 0,
+        increase: calculateIncrease(overdue_assignments),
         iconType: 'alert'
       },
       {
         title: 'Pending Approvals',
-        value: currentStats.pending_approvals || 0,
-        increase: calculateIncrease(currentStats.pending_approvals, prevPendingApprovals),
+        value: pending_approvals || 0,
+        increase: calculateIncrease(pending_approvals),
         iconType: 'check'
       }
     ];
