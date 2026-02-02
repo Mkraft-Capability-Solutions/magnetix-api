@@ -25,11 +25,8 @@ BEGIN
     (SELECT COUNT(*)
      FROM ai_learning_path_modules
      WHERE learning_path_id = lp.id
-       AND status = 'completed') as completed_count,
-    CONCAT(s.first_name, ' ', s.last_name) as shared_by_name,
-    s.dp as shared_by_dp
+       AND status = 'completed') as completed_count
   FROM ai_learning_paths lp
-  LEFT JOIN students s ON lp.shared_by_user_id = s.user_id
   WHERE lp.user_id = p_user_id
     AND lp.status != 'archived'
   ORDER BY lp.last_accessed DESC, lp.created_at DESC;
@@ -403,9 +400,7 @@ BEGIN
     progress,
     status,
     estimated_duration_weeks,
-    time_spent_hours,
-    shared_by_user_id,
-    original_path_id
+    time_spent_hours
   )
   SELECT
     p_to_user_id,
@@ -418,9 +413,7 @@ BEGIN
     0.00,  -- Reset progress for new user
     'not_started',  -- Reset status
     estimated_duration_weeks,
-    0.00,  -- Reset time_spent
-    p_from_user_id,  -- Set who shared it
-    p_path_id  -- Reference to original path
+    0.00  -- Reset time_spent
   FROM ai_learning_paths
   WHERE id = p_path_id;
 
@@ -468,13 +461,9 @@ BEGIN
     AND new_m.module_order = old_m.module_order
   WHERE old_m.learning_path_id = p_path_id;
 
-  -- Return the new learning path with sharer info
-  SELECT
-    lp.*,
-    CONCAT(s.first_name, ' ', s.last_name) as shared_by_name,
-    s.dp as shared_by_dp
+  -- Return the new learning path
+  SELECT lp.*
   FROM ai_learning_paths lp
-  LEFT JOIN students s ON lp.shared_by_user_id = s.user_id
   WHERE lp.id = v_new_path_id;
 END$$
 
