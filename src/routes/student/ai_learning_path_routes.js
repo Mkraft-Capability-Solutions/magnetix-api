@@ -28,6 +28,20 @@ router.get('/progress', authenticate, authorize(1), aiLearningPathController.get
 router.get('/statistics', authenticate, authorize(1), aiLearningPathController.getStatisticsData);
 
 /**
+ * Generate a learning path using AI (Gemini)
+ * POST /api/student/ai-learning-path/generate
+ * Body: { prompt: string }
+ */
+router.post('/generate', authenticate, authorize(1), aiLearningPathController.generateLearningPath);
+
+/**
+ * Save a generated learning path to database
+ * POST /api/student/ai-learning-path/save
+ * Body: { learningPath: GeneratedLearningPath }
+ */
+router.post('/save', authenticate, authorize(1), aiLearningPathController.saveLearningPath);
+
+/**
  * Add a new skill to track
  * POST /api/student/ai-learning-path/skills
  */
@@ -57,5 +71,12 @@ router.get('/trainees/search', authenticate, authorize(1), aiLearningPathControl
  * Body: { toUserId: string }
  */
 router.post('/learning-paths/:pathId/share', authenticate, authorize(1), aiLearningPathController.shareLearningPath);
+
+/**
+ * Mark a module as complete
+ * POST /api/student/ai-learning-path/learning-paths/:pathId/modules/:moduleId/complete
+ * Body: { score?: number }
+ */
+router.post('/learning-paths/:pathId/modules/:moduleId/complete', authenticate, authorize(1), aiLearningPathController.markModuleComplete);
 
 module.exports = router;

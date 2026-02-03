@@ -314,6 +314,199 @@ class AILearningPathService {
       });
     }
   }
+
+  /**
+   * Mark a module as complete and award XP
+   * @param {number} pathId - Learning path ID
+   * @param {number} moduleId - Module ID to mark complete
+   * @param {string} userId - User UUID
+   * @param {number|null} score - Optional completion score
+   * @returns {ServiceResponseDTO} Completion result with XP awarded
+   */
+  async markModuleComplete(pathId, moduleId, userId, score = null) {
+    try {
+      // First verify the user owns this learning path and module exists
+      const [verifyResult] = await promisePool.query(
+        `SELECT
+          lp.id as path_id,
+          lpm.id as module_id,
+          lpm.status as current_status,
+          lpm.module_order,
+          (SELECT COUNT(*) FROM ai_learning_path_modules WHERE learning_path_id = lp.id) as total_modules,
+          (SELECT COUNT(*) FROM ai_learning_path_modules WHERE learning_path_id = lp.id AND status = 'completed') as completed_modules
+        FROM ai_learning_paths lp
+        JOIN ai_learning_path_modules lpm ON lpm.learning_path_id = lp.id
+        WHERE lp.id = ? AND lpm.id = ? AND lp.user_id = ?`,
+        [pathId, moduleId, userId]
+      );
+
+      if (verifyResult.length === 0) {
+        return new ErrorResponseDTO({
+          message: 'Module not found or you do not have permission',
+          code: 'MODULE_NOT_FOUND',
+          status: 404
+        });
+      }
+
+      const moduleInfo = verifyResult[0];
+
+      // Check if already completed
+      if (moduleInfo.current_status === 'completed') {
+        return new ErrorResponseDTO({
+          message: 'This module is already completed',
+          code: 'ALREADY_COMPLETED',
+          status: 400
+        });
+      }
+
+      // Check if module is locked
+      if (moduleInfo.current_status === 'locked') {
+        return new ErrorResponseDTO({
+          message: 'Complete the previous modules first to unlock this one',
+          code: 'MODULE_LOCKED',
+          status: 400
+        });
+      }
+
+      // Calculate XP reward
+      const baseXP = 50;
+      const isFirstModule = moduleInfo.completed_modules === 0;
+      const firstModuleBonus = isFirstModule ? 25 : 0;
+
+      // Check if this completion reaches a checkpoint (every 3 modules)
+      const newCompletedCount = moduleInfo.completed_modules + 1;
+      const isCheckpoint = newCompletedCount % 3 === 0;
+      const checkpointBonus = isCheckpoint ? 100 : 0;
+
+      // Check if this completes the entire path
+      const isPathComplete = newCompletedCount === moduleInfo.total_modules;
+      const pathCompleteBonus = isPathComplete ? 500 : 0;
+
+      const totalXP = baseXP + firstModuleBonus + checkpointBonus + pathCompleteBonus;
+
+      // Update module status to completed
+      await promisePool.query(
+        `UPDATE ai_learning_path_modules
+         SET status = 'completed',
+             score = ?,
+             progress = 100,
+             updated_at = NOW()
+         WHERE id = ?`,
+        [score || 100, moduleId]
+      );
+
+      // Unlock the next module if exists
+      const [nextModuleResult] = await promisePool.query(
+        `UPDATE ai_learning_path_modules
+         SET status = 'unlocked', updated_at = NOW()
+         WHERE learning_path_id = ?
+           AND module_order = ?
+           AND status = 'locked'`,
+        [pathId, moduleInfo.module_order + 1]
+      );
+      const nextModuleUnlocked = nextModuleResult.affectedRows > 0;
+
+      // Update learning path progress
+      const newProgress = Math.round((newCompletedCount / moduleInfo.total_modules) * 100);
+      const newStatus = isPathComplete ? 'completed' : 'in_progress';
+
+      await promisePool.query(
+        `UPDATE ai_learning_paths
+         SET progress = ?,
+             status = ?,
+             completed_modules = ?,
+             updated_at = NOW()
+         WHERE id = ?`,
+        [newProgress, newStatus, newCompletedCount, pathId]
+      );
+
+      // Award XP using gamification system if available
+      let levelUp = false;
+      let achievementsUnlocked = [];
+
+      try {
+        // Try to award points through gamification system
+        const [xpResult] = await promisePool.query(
+          'CALL award_points(?, ?, ?, ?)',
+          [userId, totalXP, Math.floor(totalXP / 2), 'module_completion']
+        );
+
+        if (xpResult[0] && xpResult[0][0]) {
+          levelUp = xpResult[0][0].level_up || false;
+        }
+      } catch (gamificationError) {
+        // Gamification system not set up - continue without XP
+        console.log('Gamification not available:', gamificationError.message);
+      }
+
+      // Get updated module info
+      const [updatedModule] = await promisePool.query(
+        `SELECT * FROM ai_learning_path_modules WHERE id = ?`,
+        [moduleId]
+      );
+
+      return new ServiceResponseDTO(true, {
+        module: updatedModule[0],
+        xpAwarded: totalXP,
+        bonuses: {
+          base: baseXP,
+          firstModule: firstModuleBonus,
+          checkpoint: checkpointBonus,
+          pathComplete: pathCompleteBonus
+        },
+        levelUp,
+        achievementsUnlocked,
+        nextModuleUnlocked,
+        isCheckpoint,
+        isPathComplete,
+        newProgress
+      }, 'Module completed successfully!');
+    } catch (error) {
+      console.error('Mark Module Complete Error:', error);
+      return new ErrorResponseDTO({
+        message: error.message || 'Failed to mark module as complete',
+        code: 'COMPLETE_MODULE_ERROR'
+      });
+    }
+  }
+
+  /**
+   * Save a generated learning path to the database
+   * @param {string} userId - User UUID
+   * @param {object} learningPath - Generated learning path data
+   * @returns {ServiceResponseDTO} Created learning path
+   */
+  async saveGeneratedLearningPath(userId, learningPath) {
+    try {
+      const { title, description, difficulty_level, estimated_duration_weeks, modules } = learningPath;
+
+      // Convert modules to JSON string for the stored procedure
+      const modulesJson = JSON.stringify(modules);
+
+      const [result] = await promisePool.query(
+        'CALL save_generated_learning_path(?, ?, ?, ?, ?, ?)',
+        [userId, title, description, difficulty_level, estimated_duration_weeks, modulesJson]
+      );
+
+      const savedPath = result[0][0];
+
+      if (!savedPath) {
+        return new ErrorResponseDTO({
+          message: 'Failed to save learning path',
+          code: 'SAVE_FAILED',
+          status: 500
+        });
+      }
+
+      return new ServiceResponseDTO(true, savedPath, 'Learning path saved successfully');
+    } catch (error) {
+      console.error('Save Learning Path Error:', error);
+      return new ErrorResponseDTO({
+        message: error.message || 'Failed to save learning path',
+        code: 'SAVE_PATH_ERROR'
+      });
+    }
+  }
 }
 
 module.exports = new AILearningPathService();

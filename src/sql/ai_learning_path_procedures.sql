@@ -467,6 +467,132 @@ BEGIN
   WHERE lp.id = v_new_path_id;
 END$$
 
+-- ========================================
+-- PROCEDURE 10: Save Generated Learning Path
+-- ========================================
+-- Saves an AI-generated learning path with
+-- all its modules and topics
+-- ========================================
+DROP PROCEDURE IF EXISTS `save_generated_learning_path`$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `save_generated_learning_path` (
+  IN `p_user_id` VARCHAR(36),
+  IN `p_title` VARCHAR(255),
+  IN `p_description` TEXT,
+  IN `p_difficulty_level` VARCHAR(20),
+  IN `p_estimated_duration_weeks` INT,
+  IN `p_modules_json` JSON
+)
+BEGIN
+  DECLARE v_path_id INT;
+  DECLARE v_module_id INT;
+  DECLARE v_module_count INT DEFAULT 0;
+  DECLARE i INT DEFAULT 0;
+  DECLARE v_module JSON;
+  DECLARE v_topic_count INT;
+  DECLARE j INT;
+
+  -- Start transaction
+  START TRANSACTION;
+
+  -- Insert learning path
+  INSERT INTO ai_learning_paths (
+    user_id,
+    title,
+    description,
+    type,
+    difficulty_level,
+    total_modules,
+    completed_modules,
+    progress,
+    status,
+    estimated_duration_weeks,
+    time_spent_hours
+  ) VALUES (
+    p_user_id,
+    p_title,
+    p_description,
+    'ai_generated',
+    p_difficulty_level,
+    JSON_LENGTH(p_modules_json),
+    0,
+    0.00,
+    'not_started',
+    p_estimated_duration_weeks,
+    0.00
+  );
+
+  SET v_path_id = LAST_INSERT_ID();
+  SET v_module_count = JSON_LENGTH(p_modules_json);
+
+  -- Insert modules
+  WHILE i < v_module_count DO
+    SET v_module = JSON_EXTRACT(p_modules_json, CONCAT('$[', i, ']'));
+
+    INSERT INTO ai_learning_path_modules (
+      learning_path_id,
+      module_order,
+      title,
+      description,
+      duration_weeks,
+      status,
+      score,
+      progress
+    ) VALUES (
+      v_path_id,
+      JSON_UNQUOTE(JSON_EXTRACT(v_module, '$.module_order')),
+      JSON_UNQUOTE(JSON_EXTRACT(v_module, '$.title')),
+      JSON_UNQUOTE(JSON_EXTRACT(v_module, '$.description')),
+      JSON_EXTRACT(v_module, '$.duration_weeks'),
+      CASE WHEN i = 0 THEN 'unlocked' ELSE 'locked' END,
+      NULL,
+      0.00
+    );
+
+    SET v_module_id = LAST_INSERT_ID();
+
+    -- Insert topics for this module
+    SET v_topic_count = JSON_LENGTH(JSON_EXTRACT(v_module, '$.topics'));
+    SET j = 0;
+
+    WHILE j < v_topic_count DO
+      INSERT INTO ai_learning_path_module_topics (
+        module_id,
+        topic_name,
+        topic_order,
+        is_completed
+      ) VALUES (
+        v_module_id,
+        JSON_UNQUOTE(JSON_EXTRACT(v_module, CONCAT('$.topics[', j, ']'))),
+        j + 1,
+        FALSE
+      );
+      SET j = j + 1;
+    END WHILE;
+
+    SET i = i + 1;
+  END WHILE;
+
+  COMMIT;
+
+  -- Return the created learning path
+  SELECT
+    lp.id,
+    lp.title,
+    lp.description,
+    lp.type,
+    lp.difficulty_level,
+    lp.total_modules,
+    lp.completed_modules,
+    lp.progress,
+    lp.status,
+    lp.estimated_duration_weeks,
+    lp.time_spent_hours,
+    lp.created_at
+  FROM ai_learning_paths lp
+  WHERE lp.id = v_path_id;
+END$$
+
 DELIMITER ;
 
 SELECT 'AI Learning Paths stored procedures created successfully!' AS status;
