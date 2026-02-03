@@ -35,6 +35,9 @@ router.get("/certifications/expiry-renewals", certificationController.getExpiryR
 // Enroll student in certification
 router.post("/certifications/enroll", certificationController.enrollStudent);
 
+// Auto-check certifications when course completed (system call)
+router.post("/certifications/auto-check", certificationController.autoCheckCertifications);
+
 // ============================================================================
 // CERTIFICATION CRUD OPERATIONS
 // ============================================================================

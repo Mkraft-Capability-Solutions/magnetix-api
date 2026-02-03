@@ -797,6 +797,315 @@ class CertificationService {
       throw error;
     }
   }
+
+  // ============================================================================
+  // AUTO-ENROLL IN CERTIFICATIONS (WHEN STUDENT ENROLLS IN A COURSE)
+  // ============================================================================
+
+  async autoEnrollInCertifications(userId, courseId) {
+    try {
+      console.log(`[AutoEnroll] Checking certifications for user ${userId} after enrolling in course ${courseId}`);
+
+      // Find all active certifications that include this course
+      const [certifications] = await promisePool.query(
+        `SELECT DISTINCT c.id as certification_id, c.certification_name
+        FROM certifications c
+        INNER JOIN certification_course_requirements ccr ON c.id = ccr.certification_id
+        WHERE ccr.course_id = ? AND c.status = 'active'`,
+        [courseId]
+      );
+
+      if (certifications.length === 0) {
+        console.log(`[AutoEnroll] No active certifications require course ${courseId}`);
+        return {
+          success: true,
+          message: "No certifications require this course",
+          certificationsEnrolled: 0,
+        };
+      }
+
+      console.log(`[AutoEnroll] Found ${certifications.length} certification(s) that require this course`);
+
+      let certificationsEnrolled = 0;
+      const enrolledCertifications = [];
+
+      for (const cert of certifications) {
+        // Check if user is already enrolled in this certification
+        const [existing] = await promisePool.query(
+          `SELECT id, status FROM student_certification_enrollments
+          WHERE user_id = ? AND certification_id = ?`,
+          [userId, cert.certification_id]
+        );
+
+        if (existing.length === 0) {
+          // Auto-enroll user in this certification
+          console.log(`[AutoEnroll] Auto-enrolling user ${userId} in certification ${cert.certification_id} (${cert.certification_name})`);
+
+          const [enrollResult] = await promisePool.query(
+            `INSERT INTO student_certification_enrollments
+            (user_id, certification_id, enrolled_by, status)
+            VALUES (?, ?, 'system', 'in_progress')`,
+            [userId, cert.certification_id]
+          );
+
+          certificationsEnrolled++;
+          enrolledCertifications.push({
+            certificationId: cert.certification_id,
+            certificationName: cert.certification_name,
+            enrollmentId: enrollResult.insertId,
+          });
+
+          console.log(`[AutoEnroll] Successfully enrolled in ${cert.certification_name}`);
+        } else {
+          console.log(`[AutoEnroll] User ${userId} is already enrolled in certification ${cert.certification_id} (status: ${existing[0].status})`);
+        }
+      }
+
+      return {
+        success: true,
+        certificationsFound: certifications.length,
+        certificationsEnrolled,
+        enrolledCertifications,
+        message: certificationsEnrolled > 0
+          ? `Auto-enrolled in ${certificationsEnrolled} certification(s) successfully`
+          : "Already enrolled in all relevant certifications",
+      };
+    } catch (error) {
+      console.error("Error in autoEnrollInCertifications:", error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // AUTO-CHECK CERTIFICATIONS FOR A USER (WHEN COURSE COMPLETED)
+  // ============================================================================
+
+  async autoCheckCertificationsForUser(userId, completedCourseId) {
+    try {
+      console.log(`[AutoCheck] Checking certifications for user ${userId} after completing course ${completedCourseId}`);
+
+      // Find all certifications that include this course
+      const [certifications] = await promisePool.query(
+        `SELECT DISTINCT c.id as certification_id, c.certification_name
+        FROM certifications c
+        INNER JOIN certification_course_requirements ccr ON c.id = ccr.certification_id
+        WHERE ccr.course_id = ? AND c.status = 'active'`,
+        [completedCourseId]
+      );
+
+      if (certifications.length === 0) {
+        console.log(`[AutoCheck] No active certifications require course ${completedCourseId}`);
+        return {
+          success: true,
+          message: "No certifications require this course",
+          certificationsChecked: 0,
+        };
+      }
+
+      console.log(`[AutoCheck] Found ${certifications.length} certification(s) that require this course`);
+
+      let certificationsIssued = 0;
+      const issuedCertifications = [];
+
+      for (const cert of certifications) {
+        // Check if user is enrolled in this certification
+        const [enrollment] = await promisePool.query(
+          `SELECT id, status FROM student_certification_enrollments
+          WHERE user_id = ? AND certification_id = ? AND status = 'in_progress'`,
+          [userId, cert.certification_id]
+        );
+
+        if (enrollment.length === 0) {
+          // Auto-enroll user in this certification since they're taking a required course
+          console.log(`[AutoCheck] Auto-enrolling user ${userId} in certification ${cert.certification_id}`);
+          const [enrollResult] = await promisePool.query(
+            `INSERT INTO student_certification_enrollments
+            (user_id, certification_id, enrolled_by, status)
+            VALUES (?, ?, 'system', 'in_progress')`,
+            [userId, cert.certification_id]
+          );
+          enrollment.push({ id: enrollResult.insertId, status: 'in_progress' });
+        }
+
+        const enrollmentId = enrollment[0].id;
+
+        // Get all required courses for this certification
+        const [requiredCourses] = await promisePool.query(
+          `SELECT course_id FROM certification_course_requirements
+          WHERE certification_id = ?`,
+          [cert.certification_id]
+        );
+
+        const requiredCourseIds = requiredCourses.map(rc => rc.course_id);
+
+        // Get completed courses for this user
+        const [completedCourses] = await promisePool.query(
+          `SELECT DISTINCT e.course_id
+          FROM enrol e
+          INNER JOIN course_progress cp ON e.id = cp.enroll_id
+          WHERE e.user_id COLLATE utf8mb4_general_ci = ? COLLATE utf8mb4_general_ci
+          AND e.course_id IN (?)
+          GROUP BY e.course_id
+          HAVING AVG(cp.lesson_completed) = 1`,
+          [userId, requiredCourseIds]
+        );
+
+        const completedCourseIds = completedCourses.map(cc => cc.course_id);
+
+        // Check if ALL required courses are completed
+        const allCompleted = requiredCourseIds.every(id => completedCourseIds.includes(id));
+
+        if (allCompleted) {
+          console.log(`[AutoCheck] User ${userId} completed all courses for certification ${cert.certification_id}. Issuing certificate...`);
+
+          // Issue certificate
+          const certificateFilePath = `/certificates/${userId}_${cert.certification_id}_${Date.now()}.pdf`;
+
+          await promisePool.query(
+            `UPDATE student_certification_enrollments
+            SET
+              completion_date = NOW(),
+              certificate_issued_date = NOW(),
+              certificate_file_path = ?,
+              status = 'completed'
+            WHERE id = ?`,
+            [certificateFilePath, enrollmentId]
+          );
+
+          certificationsIssued++;
+          issuedCertifications.push({
+            certificationId: cert.certification_id,
+            certificationName: cert.certification_name,
+            certificateFilePath,
+          });
+
+          console.log(`[AutoCheck] Certificate issued for ${cert.certification_name}`);
+        } else {
+          console.log(`[AutoCheck] User ${userId} has completed ${completedCourseIds.length}/${requiredCourseIds.length} courses for ${cert.certification_name}`);
+        }
+      }
+
+      return {
+        success: true,
+        certificationsChecked: certifications.length,
+        certificationsIssued,
+        issuedCertifications,
+        message: certificationsIssued > 0
+          ? `Issued ${certificationsIssued} certificate(s) successfully`
+          : "No certifications ready to be issued yet",
+      };
+    } catch (error) {
+      console.error("Error in autoCheckCertificationsForUser:", error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // DEBUG: GET CERTIFICATIONS FOR A SPECIFIC COURSE
+  // ============================================================================
+
+  async getCertificationsForCourse(courseId) {
+    try {
+      const [certifications] = await promisePool.query(
+        `SELECT
+          c.id as certification_id,
+          c.certification_name,
+          c.description,
+          c.status,
+          c.validity_type,
+          c.validity_period,
+          COUNT(DISTINCT ccr2.course_id) as total_required_courses
+        FROM certifications c
+        INNER JOIN certification_course_requirements ccr ON c.id = ccr.certification_id
+        LEFT JOIN certification_course_requirements ccr2 ON c.id = ccr2.certification_id
+        WHERE ccr.course_id = ?
+        GROUP BY c.id`,
+        [courseId]
+      );
+
+      return {
+        success: true,
+        certificationsFound: certifications.length,
+        certifications,
+        message: certifications.length > 0
+          ? `Found ${certifications.length} certification(s) that require this course`
+          : "No certifications require this course",
+      };
+    } catch (error) {
+      console.error("Error in getCertificationsForCourse:", error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // GET CERTIFICATION ENROLLMENTS FOR A USER
+  // ============================================================================
+
+  async getUserCertificationEnrollments(userId) {
+    try {
+      const [enrollments] = await promisePool.query(
+        `SELECT
+          sce.id as enrollment_id,
+          sce.certification_id,
+          c.certification_name,
+          c.description,
+          c.validity_type,
+          c.validity_period,
+          sce.enrollment_date,
+          sce.completion_date,
+          sce.certificate_issued_date,
+          sce.certificate_file_path,
+          sce.status,
+
+          -- Calculate required courses
+          (SELECT COUNT(DISTINCT course_id)
+           FROM certification_course_requirements
+           WHERE certification_id = sce.certification_id) AS total_required_courses,
+
+          -- Calculate completed courses
+          (SELECT COUNT(DISTINCT ccr.course_id)
+           FROM certification_course_requirements ccr
+           INNER JOIN enrol e ON ccr.course_id = e.course_id AND e.user_id COLLATE utf8mb4_general_ci = sce.user_id COLLATE utf8mb4_general_ci
+           INNER JOIN course_progress cp ON e.id = cp.enroll_id
+           WHERE ccr.certification_id = sce.certification_id
+           GROUP BY ccr.certification_id
+           HAVING AVG(cp.lesson_completed) = 1) AS completed_courses,
+
+          -- Calculate expiry date
+          CASE
+            WHEN c.validity_type = 'limited' AND sce.certificate_issued_date IS NOT NULL
+            THEN DATE_ADD(sce.certificate_issued_date, INTERVAL c.validity_period DAY)
+            ELSE NULL
+          END AS expiry_date
+
+        FROM student_certification_enrollments sce
+        INNER JOIN certifications c ON sce.certification_id = c.id
+        WHERE sce.user_id = ?
+        ORDER BY sce.enrollment_date DESC`,
+        [userId]
+      );
+
+      // Calculate progress percentage
+      const enrollmentsWithProgress = enrollments.map(enrollment => {
+        const total = enrollment.total_required_courses || 0;
+        const completed = enrollment.completed_courses || 0;
+        const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+        return {
+          ...enrollment,
+          progress_percentage: progress,
+        };
+      });
+
+      return {
+        success: true,
+        data: enrollmentsWithProgress,
+      };
+    } catch (error) {
+      console.error("Error in getUserCertificationEnrollments:", error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new CertificationService();

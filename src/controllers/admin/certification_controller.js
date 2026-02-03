@@ -432,3 +432,29 @@ exports.issueCertificate = async (req, res, next) => {
     next(error);
   }
 };
+
+// ============================================================================
+// AUTO-CHECK CERTIFICATIONS FOR USER (WHEN COURSE COMPLETED)
+// ============================================================================
+
+exports.autoCheckCertifications = async (req, res, next) => {
+  try {
+    const { userId, courseId } = req.body;
+
+    console.log("autoCheckCertifications called for user:", userId, "course:", courseId);
+
+    if (!userId || !courseId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and courseId are required",
+      });
+    }
+
+    const result = await certificationService.autoCheckCertificationsForUser(userId, courseId);
+
+    res.json(result);
+  } catch (error) {
+    console.error("Error in autoCheckCertifications controller:", error);
+    next(error);
+  }
+};

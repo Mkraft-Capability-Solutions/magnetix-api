@@ -15,6 +15,7 @@ const {
 } = require('../../dto/course_dto');
 const { ServiceResponseDTO, ErrorResponseDTO } = require('../../dto/response_dto');
 const achievementsService = require('./achievements_service');
+const certificationService = require('../admin/certification_service');
 
 class CourseService {
   async getSubscribedCourses(studentId) {
@@ -309,6 +310,15 @@ class CourseService {
             courseId,
             `Enrolled in course ID: ${courseId}`
         );
+
+        // Auto-enroll in certifications that include this course
+        try {
+            const certEnrollmentResult = await certificationService.autoEnrollInCertifications(normalizedStudentId, courseId);
+            console.log('✅ Certification auto-enrollment result:', certEnrollmentResult);
+        } catch (certError) {
+            console.error('❌ Error auto-enrolling in certifications:', certError);
+            // Don't fail the course enrollment if certification enrollment fails
+        }
 
         return new ServiceResponseDTO(
             true,
@@ -804,6 +814,15 @@ async markLessonCompleted(userId, lessonId, courseId) {
                 courseId,
                 `Completed course ID: ${courseId}`
             );
+
+            // Check for certification completion and auto-issue certificates
+            try {
+                const certCheckResult = await certificationService.autoCheckCertificationsForUser(userId, courseId);
+                console.log('✅ Certification completion check result:', certCheckResult);
+            } catch (certError) {
+                console.error('❌ Error checking certifications for completion:', certError);
+                // Don't fail the lesson completion if certification check fails
+            }
         }
 
         return new ServiceResponseDTO(true, {
