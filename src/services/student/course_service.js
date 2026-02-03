@@ -31,7 +31,7 @@ class CourseService {
           COALESCE(cat.category_name, '') as category_name,
           e.enrolled_date,
           (SELECT COUNT(*) FROM course_lesson WHERE course_id = c.id) as total_lessons,
-          (SELECT COUNT(*) FROM lesson_progress WHERE course_id = c.id AND user_id = ? AND completed = 1) as completedLessons
+          (SELECT COUNT(*) FROM course_progress cp WHERE cp.enroll_id = e.id AND cp.lesson_completed = 1) as completedLessons
         FROM enrol e
         INNER JOIN course c ON e.course_id = c.id
         LEFT JOIN category cat ON c.category_id = cat.id
@@ -39,7 +39,7 @@ class CourseService {
         ORDER BY e.enrolled_date DESC
       `;
 
-      const [courses] = await promisePool.query(query, [studentId, studentId]);
+      const [courses] = await promisePool.query(query, [studentId]);
 
       // For each course, calculate total duration from lessons
       const coursesWithDuration = await Promise.all(courses.map(async (course) => {
