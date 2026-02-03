@@ -126,3 +126,51 @@ exports.deleteCertificate = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Get issued certificates for student (both course-based and admin-issued)
+ * GET /api/student/certificates/issued
+ */
+exports.getIssuedCertificates = async (req, res, next) => {
+  try {
+    const response = await certificatesService.getIssuedCertificates(req.user.uuid);
+
+    if (!response.success) {
+      return res.status(response.error?.status || 500).json(response);
+    }
+
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get specific issued certificate details
+ * GET /api/student/certificates/issued/:id
+ */
+exports.getIssuedCertificateById = async (req, res, next) => {
+  try {
+    const certificateId = req.params.id;
+
+    if (!certificateId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Certificate ID is required'
+      });
+    }
+
+    const response = await certificatesService.getIssuedCertificateById(
+      req.user.uuid,
+      certificateId
+    );
+
+    if (!response.success) {
+      return res.status(response.error?.status || 500).json(response);
+    }
+
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};

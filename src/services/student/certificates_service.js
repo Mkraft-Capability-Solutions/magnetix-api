@@ -150,6 +150,116 @@ class CertificatesService {
       });
     }
   }
+
+  /**
+   * Get issued certificates for a student (both course-based and admin-issued)
+   */
+  async getIssuedCertificates(userId) {
+    const connection = await promisePool.getConnection();
+    try {
+      // Get admin-issued certificates for this student
+      const [adminCertificates] = await connection.query(
+        `SELECT
+          aic.id,
+          aic.certificate_number,
+          aic.certificate_name as name,
+          aic.description,
+          aic.issue_date as issueDate,
+          aic.expiry_date as expiryDate,
+          aic.status,
+          ct.template_name,
+          CONCAT(COALESCE(issuer_s.first_name, issuer_i.first_name, issuer_a.first_name), ' ',
+                 COALESCE(issuer_s.last_name, issuer_i.last_name, issuer_a.last_name)) as issuedBy,
+          'admin-issued' as certificate_type
+         FROM admin_issued_certificates aic
+         LEFT JOIN certificate_templates ct ON aic.template_id = ct.id
+         LEFT JOIN users issuer ON aic.issued_by = issuer.uuid
+         LEFT JOIN students issuer_s ON issuer.uuid = issuer_s.user_id AND issuer.role_id = 1
+         LEFT JOIN instructors issuer_i ON issuer.uuid = issuer_i.user_id AND issuer.role_id = 2
+         LEFT JOIN admins issuer_a ON issuer.uuid = issuer_a.user_id AND issuer.role_id IN (3, 4)
+         WHERE aic.user_id = ? AND aic.status = 'active'
+         ORDER BY aic.issue_date DESC`,
+        [userId]
+      );
+
+      // TODO: Add course-based certificates query here when course certification is implemented
+      // For now, we'll just return admin-issued certificates
+      const allCertificates = adminCertificates;
+
+      connection.release();
+
+      return new ServiceResponseDTO(
+        true,
+        allCertificates,
+        'Issued certificates retrieved successfully'
+      );
+    } catch (error) {
+      connection.release();
+      return new ErrorResponseDTO({
+        message: error.message || 'Failed to retrieve issued certificates',
+        code: 'ISSUED_CERTIFICATES_FETCH_ERROR'
+      });
+    }
+  }
+
+  /**
+   * Get specific issued certificate details by ID
+   */
+  async getIssuedCertificateById(userId, certificateId) {
+    const connection = await promisePool.getConnection();
+    try {
+      const [certificates] = await connection.query(
+        `SELECT
+          aic.id,
+          aic.certificate_number,
+          aic.certificate_name,
+          aic.description,
+          aic.issue_date,
+          aic.expiry_date,
+          aic.status,
+          aic.created_at,
+          u.email,
+          COALESCE(s.first_name, i.first_name) as first_name,
+          COALESCE(s.last_name, i.last_name) as last_name,
+          ct.template_name,
+          CONCAT(COALESCE(issuer_s.first_name, issuer_i.first_name, issuer_a.first_name), ' ',
+                 COALESCE(issuer_s.last_name, issuer_i.last_name, issuer_a.last_name)) as issued_by_name
+         FROM admin_issued_certificates aic
+         LEFT JOIN users u ON aic.user_id = u.uuid
+         LEFT JOIN students s ON u.uuid = s.user_id AND u.role_id = 1
+         LEFT JOIN instructors i ON u.uuid = i.user_id AND u.role_id = 2
+         LEFT JOIN certificate_templates ct ON aic.template_id = ct.id
+         LEFT JOIN users issuer ON aic.issued_by = issuer.uuid
+         LEFT JOIN students issuer_s ON issuer.uuid = issuer_s.user_id AND issuer.role_id = 1
+         LEFT JOIN instructors issuer_i ON issuer.uuid = issuer_i.user_id AND issuer.role_id = 2
+         LEFT JOIN admins issuer_a ON issuer.uuid = issuer_a.user_id AND issuer.role_id IN (3, 4)
+         WHERE aic.id = ? AND aic.user_id = ? AND aic.status = 'active'`,
+        [certificateId, userId]
+      );
+
+      connection.release();
+
+      if (certificates.length === 0) {
+        return new ErrorResponseDTO({
+          message: 'Certificate not found or you do not have access to it',
+          code: 'CERTIFICATE_NOT_FOUND',
+          status: 404
+        });
+      }
+
+      return new ServiceResponseDTO(
+        true,
+        certificates[0],
+        'Certificate details retrieved successfully'
+      );
+    } catch (error) {
+      connection.release();
+      return new ErrorResponseDTO({
+        message: error.message || 'Failed to retrieve certificate details',
+        code: 'CERTIFICATE_FETCH_ERROR'
+      });
+    }
+  }
 }
 
 module.exports = new CertificatesService();
