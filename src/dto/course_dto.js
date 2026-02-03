@@ -34,6 +34,7 @@ class CourseDTO {
     this.avg_rating = parseFloat(courseData.avg_rating) || 0;
     this.enrolled_date = courseData.enrolled_date || null;
     this.is_enrolled = !!courseData.enrolled_date;
+    this.completedLessons = courseData.completedLessons || 0;
     this.keyword_match_count = courseData.keyword_match_count || 0;
     this.similarity_score = courseData.similarity_score || 0;
     this.recommendation_type = courseData.recommendation_type || '';
