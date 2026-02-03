@@ -11,6 +11,7 @@ exports.issueCertificateToUser = async (certificateData, issuedBy) => {
     await connection.beginTransaction();
 
     const {
+      certificate_title,
       certificate_name,
       user_id,
       description,
@@ -38,11 +39,12 @@ exports.issueCertificateToUser = async (certificateData, issuedBy) => {
     // Insert certificate
     const [result] = await connection.query(
       `INSERT INTO admin_issued_certificates
-       (certificate_number, certificate_name, user_id, description, issue_date,
+       (certificate_number, certificate_title, certificate_name, user_id, description, issue_date,
         expiry_date, template_id, issued_by, status, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
       [
         certificateNumber,
+        certificate_title || 'Certificate of Achievement',
         certificate_name,
         user_id,
         description || null,

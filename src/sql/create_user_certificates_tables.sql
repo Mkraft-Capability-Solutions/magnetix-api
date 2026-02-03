@@ -96,3 +96,7 @@ SELECT
 WHERE @sample_user_uuid IS NOT NULL AND @admin_uuid IS NOT NULL;
 
 SELECT 'User certificates tables created successfully!' AS status;
+
+
+ ALTER TABLE admin_issued_certificates
+  ADD COLUMN `certificate_title` VARCHAR(255) DEFAULT 'Certificate of Achievement' AFTER certificate_number;

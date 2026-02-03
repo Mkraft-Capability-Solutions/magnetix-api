@@ -6,11 +6,12 @@ const Joi = require("joi");
 // ============================================================================
 
 const issueCertificateSchema = Joi.object({
+  certificate_title: Joi.string().required().min(3).max(255),
   certificate_name: Joi.string().required().min(3).max(255),
   user_id: Joi.string().required(),
   description: Joi.string().allow("", null).optional(),
   issue_date: Joi.date().optional(),
-  expiry_date: Joi.date().allow(null).optional(),
+  expiry_date: Joi.date().allow(null, "").optional(),
   template_id: Joi.number().integer().allow(null).optional(),
   notes: Joi.string().allow("", null).optional(),
 });
