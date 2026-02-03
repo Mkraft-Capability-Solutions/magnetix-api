@@ -27,4 +27,16 @@ router.post('/', authenticate, authorize(1), certificatesController.createCertif
  */
 router.delete('/:id', authenticate, authorize(1), certificatesController.deleteCertificate);
 
+/**
+ * Get issued certificates for authenticated student (both course-based and admin-issued)
+ * GET /api/student/certificates/issued
+ */
+router.get('/issued', authenticate, authorize(1), certificatesController.getIssuedCertificates);
+
+/**
+ * Get specific issued certificate details
+ * GET /api/student/certificates/issued/:id
+ */
+router.get('/issued/:id', authenticate, authorize(1), certificatesController.getIssuedCertificateById);
+
 module.exports = router;
