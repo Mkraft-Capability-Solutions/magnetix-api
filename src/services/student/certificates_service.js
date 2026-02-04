@@ -247,7 +247,8 @@ class CertificatesService {
   async getIssuedCertificateById(userId, certificateId) {
     const connection = await promisePool.getConnection();
     try {
-      const [certificates] = await connection.query(
+      // First try admin-issued certificates
+      const [adminCertificates] = await connection.query(
         `SELECT
           aic.id,
           aic.certificate_number,
@@ -262,7 +263,8 @@ class CertificatesService {
           COALESCE(s.last_name, i.last_name) as last_name,
           ct.template_name,
           CONCAT(COALESCE(issuer_s.first_name, issuer_i.first_name, issuer_a.first_name), ' ',
-                 COALESCE(issuer_s.last_name, issuer_i.last_name, issuer_a.last_name)) as issued_by_name
+                 COALESCE(issuer_s.last_name, issuer_i.last_name, issuer_a.last_name)) as issued_by_name,
+          'admin-issued' as certificate_type
          FROM admin_issued_certificates aic
          LEFT JOIN users u ON aic.user_id = u.uuid
          LEFT JOIN students s ON u.uuid = s.user_id AND u.role_id = 1
@@ -276,9 +278,51 @@ class CertificatesService {
         [certificateId, userId]
       );
 
+      if (adminCertificates.length > 0) {
+        connection.release();
+        return new ServiceResponseDTO(
+          true,
+          adminCertificates[0],
+          'Certificate details retrieved successfully'
+        );
+      }
+
+      // If not found in admin-issued, try course-based certificates
+      const [courseCertificates] = await connection.query(
+        `SELECT
+          sce.id,
+          CONCAT('CERT-', sce.certification_id, '-', sce.id) as certificate_number,
+          c.certification_name as certificate_name,
+          c.description,
+          sce.certificate_issued_date as issue_date,
+          CASE
+            WHEN c.validity_type = 'limited' AND sce.certificate_issued_date IS NOT NULL
+            THEN DATE_ADD(sce.certificate_issued_date, INTERVAL c.validity_period DAY)
+            ELSE NULL
+          END as expiry_date,
+          'active' as status,
+          sce.completion_date as created_at,
+          u.email,
+          s.first_name,
+          s.last_name,
+          c.template_file_path as template_name,
+          'System' as issued_by_name,
+          'course-based' as certificate_type,
+          sce.certificate_file_path,
+          (SELECT COUNT(DISTINCT course_id)
+           FROM certification_course_requirements
+           WHERE certification_id = c.id) as courses_completed
+         FROM student_certification_enrollments sce
+         INNER JOIN certifications c ON sce.certification_id = c.id
+         INNER JOIN users u ON sce.user_id COLLATE utf8mb4_general_ci = u.uuid COLLATE utf8mb4_general_ci
+         INNER JOIN students s ON u.uuid COLLATE utf8mb4_general_ci = s.user_id COLLATE utf8mb4_general_ci
+         WHERE sce.id = ? AND sce.user_id COLLATE utf8mb4_general_ci = ? COLLATE utf8mb4_general_ci AND sce.status = 'completed' AND sce.certificate_issued_date IS NOT NULL`,
+        [certificateId, userId]
+      );
+
       connection.release();
 
-      if (certificates.length === 0) {
+      if (courseCertificates.length === 0) {
         return new ErrorResponseDTO({
           message: 'Certificate not found or you do not have access to it',
           code: 'CERTIFICATE_NOT_FOUND',
@@ -288,7 +332,7 @@ class CertificatesService {
 
       return new ServiceResponseDTO(
         true,
-        certificates[0],
+        courseCertificates[0],
         'Certificate details retrieved successfully'
       );
     } catch (error) {
