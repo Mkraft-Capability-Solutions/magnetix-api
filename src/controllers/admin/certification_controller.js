@@ -432,3 +432,173 @@ exports.issueCertificate = async (req, res, next) => {
     next(error);
   }
 };
+
+// ============================================================================
+// AUTO-CHECK CERTIFICATIONS FOR USER (WHEN COURSE COMPLETED)
+// ============================================================================
+
+exports.autoCheckCertifications = async (req, res, next) => {
+  try {
+    const { userId, courseId } = req.body;
+
+    console.log("autoCheckCertifications called for user:", userId, "course:", courseId);
+
+    if (!userId || !courseId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and courseId are required",
+      });
+    }
+
+    const result = await certificationService.autoCheckCertificationsForUser(userId, courseId);
+
+    res.json(result);
+  } catch (error) {
+    console.error("Error in autoCheckCertifications controller:", error);
+    next(error);
+  }
+};
+
+// ============================================================================
+// DOWNLOAD CERTIFICATE
+// ============================================================================
+
+exports.downloadCertificate = async (req, res, next) => {
+  try {
+    const enrollmentId = req.params.enrollmentId;
+
+    console.log("downloadCertificate called for enrollment ID:", enrollmentId);
+
+    // Get enrollment details including certificate path
+    const [enrollment] = await require("../../config/db").promisePool.query(
+      `SELECT
+        sce.id,
+        sce.user_id,
+        sce.certificate_file_path,
+        sce.status,
+        c.certification_name,
+        CONCAT(s.first_name, ' ', s.last_name) AS student_name
+      FROM student_certification_enrollments sce
+      INNER JOIN certifications c ON sce.certification_id = c.id
+      INNER JOIN students s ON sce.user_id COLLATE utf8mb4_general_ci = s.user_id COLLATE utf8mb4_general_ci
+      WHERE sce.id = ?`,
+      [enrollmentId]
+    );
+
+    if (enrollment.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Enrollment not found",
+      });
+    }
+
+    const enrollmentData = enrollment[0];
+
+    if (enrollmentData.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: "Certificate not available. Certification must be completed first.",
+      });
+    }
+
+    if (!enrollmentData.certificate_file_path) {
+      return res.status(404).json({
+        success: false,
+        message: "Certificate file not found. Please contact administrator.",
+      });
+    }
+
+    // Construct file path
+    const path = require('path');
+    const filePath = path.join(__dirname, '../../../', enrollmentData.certificate_file_path);
+    const fs = require('fs');
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        message: "Certificate file does not exist. Please regenerate the certificate.",
+      });
+    }
+
+    // Set headers for PDF download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Certificate_${enrollmentData.student_name.replace(/\s+/g, '_')}_${enrollmentData.certification_name.replace(/\s+/g, '_')}.pdf"`);
+
+    // Stream the file
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+  } catch (error) {
+    console.error("Error in downloadCertificate controller:", error);
+    next(error);
+  }
+};
+
+// ============================================================================
+// VIEW CERTIFICATE (INLINE)
+// ============================================================================
+
+exports.viewCertificate = async (req, res, next) => {
+  try {
+    const enrollmentId = req.params.enrollmentId;
+
+    console.log("viewCertificate called for enrollment ID:", enrollmentId);
+
+    // Get enrollment details including certificate path
+    const [enrollment] = await require("../../config/db").promisePool.query(
+      `SELECT
+        sce.id,
+        sce.user_id,
+        sce.certificate_file_path,
+        sce.status
+      FROM student_certification_enrollments sce
+      WHERE sce.id = ?`,
+      [enrollmentId]
+    );
+
+    if (enrollment.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Enrollment not found",
+      });
+    }
+
+    const enrollmentData = enrollment[0];
+
+    if (enrollmentData.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: "Certificate not available. Certification must be completed first.",
+      });
+    }
+
+    if (!enrollmentData.certificate_file_path) {
+      return res.status(404).json({
+        success: false,
+        message: "Certificate file not found.",
+      });
+    }
+
+    // Construct file path
+    const path = require('path');
+    const filePath = path.join(__dirname, '../../../', enrollmentData.certificate_file_path);
+    const fs = require('fs');
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        message: "Certificate file does not exist.",
+      });
+    }
+
+    // Set headers for inline PDF viewing
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline');
+
+    // Stream the file
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+  } catch (error) {
+    console.error("Error in viewCertificate controller:", error);
+    next(error);
+  }
+};

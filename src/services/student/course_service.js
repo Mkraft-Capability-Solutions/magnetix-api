@@ -15,6 +15,7 @@ const {
 } = require('../../dto/course_dto');
 const { ServiceResponseDTO, ErrorResponseDTO } = require('../../dto/response_dto');
 const achievementsService = require('./achievements_service');
+const certificationService = require('../admin/certification_service');
 
 class CourseService {
   async getSubscribedCourses(studentId) {
@@ -309,6 +310,15 @@ class CourseService {
             courseId,
             `Enrolled in course ID: ${courseId}`
         );
+
+        // Auto-enroll in certifications that include this course
+        try {
+            const certEnrollmentResult = await certificationService.autoEnrollInCertifications(normalizedStudentId, courseId);
+            console.log('✅ Certification auto-enrollment result:', certEnrollmentResult);
+        } catch (certError) {
+            console.error('❌ Error auto-enrolling in certifications:', certError);
+            // Don't fail the course enrollment if certification enrollment fails
+        }
 
         return new ServiceResponseDTO(
             true,
@@ -804,6 +814,48 @@ async markLessonCompleted(userId, lessonId, courseId) {
                 courseId,
                 `Completed course ID: ${courseId}`
             );
+
+            // Check for certification completion and auto-issue certificates
+            try {
+                const certCheckResult = await certificationService.autoCheckCertificationsForUser(userId, courseId);
+                console.log('✅ Certification completion check result:', certCheckResult);
+            } catch (certError) {
+                console.error('❌ Error checking certifications for completion:', certError);
+                // Don't fail the lesson completion if certification check fails
+            }
+        }
+
+        // Update progress for all certifications the user is enrolled in
+        try {
+            // Get all in_progress certifications for this user that include courses from this lesson
+            const [userCertEnrollments] = await promisePool.query(
+                `SELECT DISTINCT sce.id as enrollment_id, sce.user_id, sce.certification_id
+                 FROM student_certification_enrollments sce
+                 INNER JOIN certification_course_requirements ccr ON sce.certification_id = ccr.certification_id
+                 WHERE sce.user_id = ?
+                   AND ccr.course_id = ?
+                   AND sce.status = 'in_progress'`,
+                [userId, courseId]
+            );
+
+            console.log(`[LessonComplete] Found ${userCertEnrollments.length} certification(s) to update progress for`);
+
+            for (const enrollment of userCertEnrollments) {
+                const progressResult = await certificationService.updateCertificationProgress(
+                    enrollment.enrollment_id,
+                    enrollment.user_id,
+                    enrollment.certification_id
+                );
+
+                if (progressResult.completed) {
+                    console.log(`🎉 Certification ${enrollment.certification_id} completed!`, progressResult);
+                } else {
+                    console.log(`📊 Certification ${enrollment.certification_id} progress: ${progressResult.progressPercentage}%`);
+                }
+            }
+        } catch (certProgressError) {
+            console.error('❌ Error updating certification progress:', certProgressError);
+            // Don't fail the lesson completion if certification progress update fails
         }
 
         return new ServiceResponseDTO(true, {

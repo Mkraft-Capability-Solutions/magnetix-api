@@ -182,9 +182,48 @@ class CertificatesService {
         [userId]
       );
 
-      // TODO: Add course-based certificates query here when course certification is implemented
-      // For now, we'll just return admin-issued certificates
-      const allCertificates = adminCertificates;
+      // Get course-based certificates (from certification completions)
+      const [courseCertificates] = await connection.query(
+        `SELECT
+          sce.id,
+          CONCAT('CERT-', sce.certification_id, '-', sce.id) as certificate_number,
+          c.certification_name as name,
+          c.description,
+          sce.certificate_issued_date as issueDate,
+          CASE
+            WHEN c.validity_type = 'limited' AND sce.certificate_issued_date IS NOT NULL
+            THEN DATE_ADD(sce.certificate_issued_date, INTERVAL c.validity_period DAY)
+            ELSE NULL
+          END as expiryDate,
+          'active' as status,
+          c.template_file_path as template_name,
+          'System' as issuedBy,
+          'course-based' as certificate_type,
+          c.validity_type,
+          c.validity_period,
+          sce.certificate_file_path,
+          (SELECT COUNT(DISTINCT course_id)
+           FROM certification_course_requirements
+           WHERE certification_id = c.id) as courses_completed
+         FROM student_certification_enrollments sce
+         INNER JOIN certifications c ON sce.certification_id = c.id
+         WHERE sce.user_id = ? AND sce.status = 'completed' AND sce.certificate_issued_date IS NOT NULL
+         ORDER BY sce.certificate_issued_date DESC`,
+        [userId]
+      );
+
+      // Combine both types of certificates
+      const allCertificates = [
+        ...adminCertificates,
+        ...courseCertificates
+      ];
+
+      // Sort by issue date (most recent first)
+      allCertificates.sort((a, b) => {
+        const dateA = new Date(a.issueDate);
+        const dateB = new Date(b.issueDate);
+        return dateB - dateA;
+      });
 
       connection.release();
 

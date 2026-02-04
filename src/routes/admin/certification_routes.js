@@ -35,6 +35,19 @@ router.get("/certifications/expiry-renewals", certificationController.getExpiryR
 // Enroll student in certification
 router.post("/certifications/enroll", certificationController.enrollStudent);
 
+// Auto-check certifications when course completed (system call)
+router.post("/certifications/auto-check", certificationController.autoCheckCertifications);
+
+// ============================================================================
+// CERTIFICATE VIEWING & DOWNLOADING (Must be before :certificationId)
+// ============================================================================
+
+// Download certificate as PDF
+router.get("/certifications/enrollment/:enrollmentId/certificate/download", certificationController.downloadCertificate);
+
+// View certificate inline
+router.get("/certifications/enrollment/:enrollmentId/certificate/view", certificationController.viewCertificate);
+
 // ============================================================================
 // CERTIFICATION CRUD OPERATIONS
 // ============================================================================
