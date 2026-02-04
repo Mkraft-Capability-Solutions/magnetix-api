@@ -39,6 +39,16 @@ router.post("/certifications/enroll", certificationController.enrollStudent);
 router.post("/certifications/auto-check", certificationController.autoCheckCertifications);
 
 // ============================================================================
+// CERTIFICATE VIEWING & DOWNLOADING (Must be before :certificationId)
+// ============================================================================
+
+// Download certificate as PDF
+router.get("/certifications/enrollment/:enrollmentId/certificate/download", certificationController.downloadCertificate);
+
+// View certificate inline
+router.get("/certifications/enrollment/:enrollmentId/certificate/view", certificationController.viewCertificate);
+
+// ============================================================================
 // CERTIFICATION CRUD OPERATIONS
 // ============================================================================
 

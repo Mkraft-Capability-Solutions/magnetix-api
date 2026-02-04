@@ -825,6 +825,39 @@ async markLessonCompleted(userId, lessonId, courseId) {
             }
         }
 
+        // Update progress for all certifications the user is enrolled in
+        try {
+            // Get all in_progress certifications for this user that include courses from this lesson
+            const [userCertEnrollments] = await promisePool.query(
+                `SELECT DISTINCT sce.id as enrollment_id, sce.user_id, sce.certification_id
+                 FROM student_certification_enrollments sce
+                 INNER JOIN certification_course_requirements ccr ON sce.certification_id = ccr.certification_id
+                 WHERE sce.user_id = ?
+                   AND ccr.course_id = ?
+                   AND sce.status = 'in_progress'`,
+                [userId, courseId]
+            );
+
+            console.log(`[LessonComplete] Found ${userCertEnrollments.length} certification(s) to update progress for`);
+
+            for (const enrollment of userCertEnrollments) {
+                const progressResult = await certificationService.updateCertificationProgress(
+                    enrollment.enrollment_id,
+                    enrollment.user_id,
+                    enrollment.certification_id
+                );
+
+                if (progressResult.completed) {
+                    console.log(`🎉 Certification ${enrollment.certification_id} completed!`, progressResult);
+                } else {
+                    console.log(`📊 Certification ${enrollment.certification_id} progress: ${progressResult.progressPercentage}%`);
+                }
+            }
+        } catch (certProgressError) {
+            console.error('❌ Error updating certification progress:', certProgressError);
+            // Don't fail the lesson completion if certification progress update fails
+        }
+
         return new ServiceResponseDTO(true, {
             message: result[0][0].message,
             nextLessonUnlocked: result[1] ? result[1][0] : null

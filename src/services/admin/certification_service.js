@@ -1,4 +1,5 @@
 const { promisePool } = require("../../config/db");
+const certificateGenerator = require("../certificate_generator_service");
 
 class CertificationService {
   // ============================================================================
@@ -515,6 +516,7 @@ class CertificationService {
           sce.enrollment_date,
           sce.completion_date,
           sce.certificate_issued_date,
+          sce.certificate_file_path,
           sce.status,
 
           -- Student info
@@ -527,14 +529,29 @@ class CertificationService {
            FROM certification_course_requirements
            WHERE certification_id = sce.certification_id) AS total_required_courses,
 
-          -- Calculate completed courses
-          (SELECT COUNT(DISTINCT ccr.course_id)
+          -- Calculate completed courses (for backward compatibility)
+          IFNULL((SELECT COUNT(DISTINCT ccr.course_id)
            FROM certification_course_requirements ccr
            INNER JOIN enrol e ON ccr.course_id = e.course_id AND e.user_id COLLATE utf8mb4_general_ci = sce.user_id COLLATE utf8mb4_general_ci
            INNER JOIN course_progress cp ON e.id = cp.enroll_id
            WHERE ccr.certification_id = sce.certification_id
            GROUP BY ccr.certification_id
-           HAVING AVG(cp.lesson_completed) = 1) AS completed_courses,
+           HAVING AVG(cp.lesson_completed) = 1), 0) AS completed_courses,
+
+          -- Calculate total lessons across all required courses
+          (SELECT COUNT(DISTINCT cl.id)
+           FROM certification_course_requirements ccr
+           INNER JOIN course_lesson cl ON ccr.course_id = cl.course_id
+           WHERE ccr.certification_id = sce.certification_id) AS total_lessons,
+
+          -- Calculate completed lessons across all required courses
+          (SELECT COUNT(DISTINCT cp.lesson_id)
+           FROM certification_course_requirements ccr
+           INNER JOIN enrol e ON ccr.course_id = e.course_id AND e.user_id COLLATE utf8mb4_general_ci = sce.user_id COLLATE utf8mb4_general_ci
+           INNER JOIN course_progress cp ON e.id = cp.enroll_id
+           INNER JOIN course_lesson cl ON cp.lesson_id = cl.id
+           WHERE ccr.certification_id = sce.certification_id
+           AND cp.lesson_completed = 1) AS completed_lessons,
 
           -- Calculate expiry date
           CASE
@@ -562,11 +579,13 @@ class CertificationService {
         [...params, limit, offset]
       );
 
-      // Calculate progress percentage for each learner
+      // Calculate progress percentage for each learner based on lesson completion
       const learnersWithProgress = learners.map(learner => {
-        const total = learner.total_required_courses || 0;
-        const completed = learner.completed_courses || 0;
-        const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+        const totalLessons = learner.total_lessons || 0;
+        const completedLessons = learner.completed_lessons || 0;
+
+        // Calculate progress based on lesson completion
+        const progress = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
 
         return {
           ...learner,
@@ -877,6 +896,114 @@ class CertificationService {
   }
 
   // ============================================================================
+  // UPDATE CERTIFICATION PROGRESS AND AUTO-COMPLETE IF 100%
+  // ============================================================================
+
+  async updateCertificationProgress(enrollmentId, userId, certificationId) {
+    try {
+      // Calculate total and completed lessons
+      const [progressData] = await promisePool.query(
+        `SELECT
+          -- Total lessons across all required courses
+          (SELECT COUNT(DISTINCT cl.id)
+           FROM certification_course_requirements ccr
+           INNER JOIN course_lesson cl ON ccr.course_id = cl.course_id
+           WHERE ccr.certification_id = ?) AS total_lessons,
+
+          -- Completed lessons
+          (SELECT COUNT(DISTINCT cp.lesson_id)
+           FROM certification_course_requirements ccr
+           INNER JOIN enrol e ON ccr.course_id = e.course_id
+             AND e.user_id COLLATE utf8mb4_general_ci = ? COLLATE utf8mb4_general_ci
+           INNER JOIN course_progress cp ON e.id = cp.enroll_id
+           INNER JOIN course_lesson cl ON cp.lesson_id = cl.id
+           WHERE ccr.certification_id = ?
+           AND cp.lesson_completed = 1) AS completed_lessons
+        `,
+        [certificationId, userId, certificationId]
+      );
+
+      const totalLessons = progressData[0].total_lessons || 0;
+      const completedLessons = progressData[0].completed_lessons || 0;
+      const progressPercentage = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
+
+      console.log(`[UpdateProgress] Certification ${certificationId} - Progress: ${progressPercentage}% (${completedLessons}/${totalLessons} lessons)`);
+
+      // Update progress in database
+      await promisePool.query(
+        `UPDATE student_certification_enrollments
+         SET progress_percentage = ?,
+             updated_at = NOW()
+         WHERE id = ?`,
+        [progressPercentage, enrollmentId]
+      );
+
+      // If progress is 100%, auto-complete the certification
+      if (progressPercentage === 100) {
+        console.log(`[UpdateProgress] Progress reached 100%! Auto-completing certification ${certificationId}...`);
+
+        // Get certification details
+        const [certDetails] = await promisePool.query(
+          `SELECT certification_name FROM certifications WHERE id = ?`,
+          [certificationId]
+        );
+
+        // Check if already completed
+        const [enrollmentCheck] = await promisePool.query(
+          `SELECT status, completion_date FROM student_certification_enrollments WHERE id = ?`,
+          [enrollmentId]
+        );
+
+        if (enrollmentCheck[0].status === 'in_progress' && !enrollmentCheck[0].completion_date) {
+          // Update status to completed and set dates (certificate_file_path will be set by generator)
+          await promisePool.query(
+            `UPDATE student_certification_enrollments
+             SET status = 'completed',
+                 completion_date = NOW(),
+                 certificate_issued_date = NOW(),
+                 updated_at = NOW()
+             WHERE id = ?`,
+            [enrollmentId]
+          );
+
+          console.log(`[UpdateProgress] ✅ Certification completed! Generating certificate...`);
+
+          // Generate the certificate PDF
+          let certificateFilePath = null;
+          try {
+            const certResult = await certificateGenerator.generateCertificateForEnrollment(enrollmentId);
+            certificateFilePath = certResult.certificatePath;
+            console.log(`[UpdateProgress] 📜 Certificate generated: ${certificateFilePath}`);
+          } catch (certError) {
+            console.error(`[UpdateProgress] ❌ Error generating certificate:`, certError);
+            // Continue even if certificate generation fails - can regenerate later
+          }
+
+          return {
+            success: true,
+            completed: true,
+            progressPercentage,
+            certificateFilePath,
+            certificationName: certDetails[0].certification_name,
+            message: 'Congratulations! Certification completed and certificate issued.',
+          };
+        }
+      }
+
+      return {
+        success: true,
+        completed: false,
+        progressPercentage,
+        totalLessons,
+        completedLessons,
+      };
+    } catch (error) {
+      console.error('Error in updateCertificationProgress:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
   // AUTO-CHECK CERTIFICATIONS FOR A USER (WHEN COURSE COMPLETED)
   // ============================================================================
 
@@ -1062,7 +1189,7 @@ class CertificationService {
            FROM certification_course_requirements
            WHERE certification_id = sce.certification_id) AS total_required_courses,
 
-          -- Calculate completed courses
+          -- Calculate completed courses (for backward compatibility)
           (SELECT COUNT(DISTINCT ccr.course_id)
            FROM certification_course_requirements ccr
            INNER JOIN enrol e ON ccr.course_id = e.course_id AND e.user_id COLLATE utf8mb4_general_ci = sce.user_id COLLATE utf8mb4_general_ci
@@ -1070,6 +1197,21 @@ class CertificationService {
            WHERE ccr.certification_id = sce.certification_id
            GROUP BY ccr.certification_id
            HAVING AVG(cp.lesson_completed) = 1) AS completed_courses,
+
+          -- Calculate total lessons across all required courses
+          (SELECT COUNT(DISTINCT cl.id)
+           FROM certification_course_requirements ccr
+           INNER JOIN course_lesson cl ON ccr.course_id = cl.course_id
+           WHERE ccr.certification_id = sce.certification_id) AS total_lessons,
+
+          -- Calculate completed lessons across all required courses
+          (SELECT COUNT(DISTINCT cp.lesson_id)
+           FROM certification_course_requirements ccr
+           INNER JOIN enrol e ON ccr.course_id = e.course_id AND e.user_id COLLATE utf8mb4_general_ci = sce.user_id COLLATE utf8mb4_general_ci
+           INNER JOIN course_progress cp ON e.id = cp.enroll_id
+           INNER JOIN course_lesson cl ON cp.lesson_id = cl.id
+           WHERE ccr.certification_id = sce.certification_id
+           AND cp.lesson_completed = 1) AS completed_lessons,
 
           -- Calculate expiry date
           CASE
@@ -1085,11 +1227,13 @@ class CertificationService {
         [userId]
       );
 
-      // Calculate progress percentage
+      // Calculate progress percentage based on lesson completion
       const enrollmentsWithProgress = enrollments.map(enrollment => {
-        const total = enrollment.total_required_courses || 0;
-        const completed = enrollment.completed_courses || 0;
-        const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+        const totalLessons = enrollment.total_lessons || 0;
+        const completedLessons = enrollment.completed_lessons || 0;
+
+        // Calculate progress based on lesson completion
+        const progress = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
 
         return {
           ...enrollment,
