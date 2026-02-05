@@ -1,5 +1,6 @@
 const { promisePool } = require("../../config/db");
 const certificateGenerator = require("../certificate_generator_service");
+const notificationService = require("../notification_service");
 
 class CertificationService {
   // ============================================================================
@@ -979,6 +980,27 @@ class CertificationService {
             // Continue even if certificate generation fails - can regenerate later
           }
 
+          // Create notification for the user
+          try {
+            await notificationService.createSystemNotification(
+              userId,
+              'Certificate Issued',
+              `Congratulations! You have completed the ${certDetails[0].certification_name} certification and earned your certificate!`,
+              'system',
+              '/workspace/certificates',
+              {
+                certification_id: certificationId,
+                certification_name: certDetails[0].certification_name,
+                certificate_file_path: certificateFilePath,
+                completion_date: new Date()
+              }
+            );
+            console.log(`[UpdateProgress] Notification created for user ${userId} for certification ${certDetails[0].certification_name}`);
+          } catch (notificationError) {
+            console.error('[UpdateProgress] Failed to create notification:', notificationError);
+            // Don't fail the certificate issuance if notification fails
+          }
+
           return {
             success: true,
             completed: true,
@@ -1098,6 +1120,27 @@ class CertificationService {
             WHERE id = ?`,
             [certificateFilePath, enrollmentId]
           );
+
+          // Create notification for the user
+          try {
+            await notificationService.createSystemNotification(
+              userId,
+              'Certificate Issued',
+              `Congratulations! You have completed the ${cert.certification_name} certification and earned your certificate!`,
+              'system',
+              '/workspace/certificates',
+              {
+                certification_id: cert.certification_id,
+                certification_name: cert.certification_name,
+                certificate_file_path: certificateFilePath,
+                completion_date: new Date()
+              }
+            );
+            console.log(`[AutoCheck] Notification created for user ${userId} for certification ${cert.certification_name}`);
+          } catch (notificationError) {
+            console.error('[AutoCheck] Failed to create notification:', notificationError);
+            // Don't fail the certificate issuance if notification fails
+          }
 
           certificationsIssued++;
           issuedCertifications.push({
