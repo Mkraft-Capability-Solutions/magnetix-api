@@ -146,6 +146,7 @@ app.use("/api/admin/catalog", require("./routes/admin/catalog_routes"));
 app.use("/api/admin/group-projects", require("./routes/admin/group_project_routes"));
 app.use("/api/admin", require("./routes/admin/certification_routes"));
 app.use("/api/admin", require("./routes/admin/user_certificate_routes"));
+app.use("/api/admin", require("./routes/admin/external_certificates_routes"));
 app.use("/api/admin/dashboard", adminDashboardRoutes);
 app.use("/api/admin/settings", adminSettingsRoutes);
 app.use("/api/admin/users", adminUserManagementRoutes);
