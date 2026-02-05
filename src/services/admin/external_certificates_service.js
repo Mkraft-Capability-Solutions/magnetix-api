@@ -1,6 +1,7 @@
 const { promisePool } = require('../../config/db');
 const { ServiceResponseDTO, ErrorResponseDTO } = require('../../dto/response_dto');
 const achievementsService = require('../student/achievements_service');
+const notificationService = require('../notification_service');
 
 class ExternalCertificatesService {
   /**
@@ -114,6 +115,28 @@ class ExternalCertificatesService {
           certificateId,
           `External certificate approved: ${certificate.certificate_name || 'Certificate'}`
         );
+
+        // Send notification to user
+        try {
+          await notificationService.createNotification({
+            title: 'Certificate Approved',
+            message: `Congratulations! Your certificate "${certificate.certificate_name}" has been approved and 150 XP & 75 coins have been awarded.`,
+            notification_type: 'system',
+            icon: 'check-circle',
+            recipient_id: certificate.user_id,
+            delivery_method: 'in-app',
+            metadata: JSON.stringify({
+              certificate_id: certificateId,
+              certificate_name: certificate.certificate_name,
+              action: 'approved',
+              xp_awarded: 150,
+              coins_awarded: 75
+            })
+          });
+        } catch (notifError) {
+          console.error('Failed to send approval notification:', notifError);
+          // Don't fail the approval if notification fails
+        }
       }
 
       return new ServiceResponseDTO(
@@ -140,6 +163,28 @@ class ExternalCertificatesService {
       );
 
       const certificate = result[0][0];
+
+      // Send notification to user
+      if (certificate && certificate.user_id) {
+        try {
+          await notificationService.createNotification({
+            title: 'Certificate Rejected',
+            message: `Your certificate "${certificate.certificate_name}" has been reviewed and could not be approved at this time. Please ensure the certificate details are correct and try again.`,
+            notification_type: 'system',
+            icon: 'x-circle',
+            recipient_id: certificate.user_id,
+            delivery_method: 'in-app',
+            metadata: JSON.stringify({
+              certificate_id: certificateId,
+              certificate_name: certificate.certificate_name,
+              action: 'rejected'
+            })
+          });
+        } catch (notifError) {
+          console.error('Failed to send rejection notification:', notifError);
+          // Don't fail the rejection if notification fails
+        }
+      }
 
       return new ServiceResponseDTO(
         true,
