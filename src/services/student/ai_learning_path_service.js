@@ -41,11 +41,17 @@ class AILearningPathService {
         });
       }
 
-      // Second result set: modules with topics (as JSON)
+      // Second result set: modules with topics, linked courses, and external resources (as JSON)
       const modules = result[1].map(module => ({
         ...module,
         topics: module.topics
           ? (typeof module.topics === 'string' ? JSON.parse(module.topics) : module.topics)
+          : [],
+        linked_courses: module.linked_courses
+          ? (typeof module.linked_courses === 'string' ? JSON.parse(module.linked_courses) : module.linked_courses)
+          : [],
+        external_resources: module.external_resources
+          ? (typeof module.external_resources === 'string' ? JSON.parse(module.external_resources) : module.external_resources)
           : []
       }));
 
@@ -466,6 +472,32 @@ class AILearningPathService {
       return new ErrorResponseDTO({
         message: error.message || 'Failed to mark module as complete',
         code: 'COMPLETE_MODULE_ERROR'
+      });
+    }
+  }
+
+  /**
+   * Search platform courses matching module topics
+   * @param {string[]} topics - Module topics to match against
+   * @param {string} moduleTitle - Module title for additional matching
+   * @param {string} difficultyLevel - Optional difficulty level filter
+   * @returns {ServiceResponseDTO} Array of matching courses with relevance scores
+   */
+  async searchPlatformCourses(topics, moduleTitle, difficultyLevel = null) {
+    try {
+      const topicsJson = JSON.stringify(topics);
+      const [result] = await promisePool.query(
+        'CALL search_courses_by_topics(?, ?, ?, ?)',
+        [topicsJson, moduleTitle, difficultyLevel, 10]
+      );
+
+      const courses = result[0] || [];
+      return new ServiceResponseDTO(true, courses, 'Platform courses found');
+    } catch (error) {
+      console.error('Search Platform Courses Error:', error);
+      return new ErrorResponseDTO({
+        message: error.message || 'Failed to search platform courses',
+        code: 'SEARCH_COURSES_ERROR'
       });
     }
   }

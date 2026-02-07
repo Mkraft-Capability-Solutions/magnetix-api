@@ -15,7 +15,7 @@ const generateLearningPathSchema = Joi.object({
     })
 });
 
-// Validation schema for save request
+// Validation schema for save request (extended with linked_courses and external_resources)
 const saveLearningPathSchema = Joi.object({
   learningPath: Joi.object({
     title: Joi.string().required(),
@@ -29,10 +29,40 @@ const saveLearningPathSchema = Joi.object({
         title: Joi.string().required(),
         description: Joi.string().allow(''),
         duration_weeks: Joi.number().integer().min(1).required(),
-        topics: Joi.array().items(Joi.string()).min(1).required()
+        topics: Joi.array().items(Joi.string()).min(1).required(),
+        linked_courses: Joi.array().items(
+          Joi.object({
+            course_id: Joi.number().integer().required()
+          })
+        ).optional().default([]),
+        external_resources: Joi.array().items(
+          Joi.object({
+            title: Joi.string().required(),
+            platform: Joi.string().required(),
+            url: Joi.string().uri().required(),
+            description: Joi.string().allow('').optional(),
+            estimated_duration: Joi.string().allow('').optional(),
+            is_free: Joi.boolean().optional().default(true)
+          })
+        ).optional().default([])
       })
     ).min(1).required()
   }).required()
+});
+
+// Validation schema for search platform courses
+const searchPlatformCoursesSchema = Joi.object({
+  topics: Joi.array().items(Joi.string()).min(1).required(),
+  module_title: Joi.string().required(),
+  difficulty_level: Joi.string().valid('beginner', 'intermediate', 'advanced').optional()
+});
+
+// Validation schema for suggest external courses
+const suggestExternalCoursesSchema = Joi.object({
+  topics: Joi.array().items(Joi.string()).min(1).required(),
+  module_title: Joi.string().required(),
+  module_description: Joi.string().allow('').optional(),
+  difficulty_level: Joi.string().valid('beginner', 'intermediate', 'advanced').required()
 });
 
 /**
@@ -372,5 +402,101 @@ exports.saveLearningPath = async (req, res, next) => {
   } catch (error) {
     console.error('Save Learning Path Error:', error);
     next(error);
+  }
+};
+
+/**
+ * Search platform courses matching module topics
+ * POST /api/student/ai-learning-path/search-platform-courses
+ * Body: { topics: string[], module_title: string, difficulty_level?: string }
+ */
+exports.searchPlatformCourses = async (req, res, next) => {
+  try {
+    const { error, value } = searchPlatformCoursesSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: error.details[0].message,
+          code: 'VALIDATION_ERROR'
+        }
+      });
+    }
+
+    const { topics, module_title, difficulty_level } = value;
+    const response = await aiLearningPathService.searchPlatformCourses(topics, module_title, difficulty_level);
+
+    if (!response.success) {
+      return res.status(response.error.status || 500).json(response);
+    }
+
+    res.json(response);
+  } catch (error) {
+    console.error('Search Platform Courses Error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Suggest external courses from the internet using AI
+ * POST /api/student/ai-learning-path/suggest-external-courses
+ * Body: { topics: string[], module_title: string, module_description?: string, difficulty_level: string }
+ */
+exports.suggestExternalCourses = async (req, res, next) => {
+  try {
+    const { error, value } = suggestExternalCoursesSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: error.details[0].message,
+          code: 'VALIDATION_ERROR'
+        }
+      });
+    }
+
+    const { topics, module_title, module_description, difficulty_level } = value;
+    const suggestions = await geminiAIService.suggestExternalCourses(
+      module_title,
+      module_description || '',
+      topics,
+      difficulty_level
+    );
+
+    res.json({
+      success: true,
+      data: suggestions,
+      message: 'External course suggestions generated successfully'
+    });
+  } catch (error) {
+    console.error('Suggest External Courses Error:', error);
+
+    if (error.message.startsWith('CONTENT_FILTERED:')) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: error.message.replace('CONTENT_FILTERED: ', ''),
+          code: 'CONTENT_FILTERED'
+        }
+      });
+    }
+
+    if (error.message.startsWith('PARSE_ERROR:')) {
+      return res.status(500).json({
+        success: false,
+        error: {
+          message: 'Failed to generate course suggestions. Please try again.',
+          code: 'PARSE_ERROR'
+        }
+      });
+    }
+
+    res.status(503).json({
+      success: false,
+      error: {
+        message: 'AI service temporarily unavailable. Please try again later.',
+        code: 'AI_SERVICE_ERROR'
+      }
+    });
   }
 };

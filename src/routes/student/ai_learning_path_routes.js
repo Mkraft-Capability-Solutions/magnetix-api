@@ -79,4 +79,18 @@ router.post('/learning-paths/:pathId/share', authenticate, authorize(1), aiLearn
  */
 router.post('/learning-paths/:pathId/modules/:moduleId/complete', authenticate, authorize(1), aiLearningPathController.markModuleComplete);
 
+/**
+ * Search platform courses matching module topics
+ * POST /api/student/ai-learning-path/search-platform-courses
+ * Body: { topics: string[], module_title: string, difficulty_level?: string }
+ */
+router.post('/search-platform-courses', authenticate, authorize(1), aiLearningPathController.searchPlatformCourses);
+
+/**
+ * Suggest external courses from the internet using AI
+ * POST /api/student/ai-learning-path/suggest-external-courses
+ * Body: { topics: string[], module_title: string, module_description?: string, difficulty_level: string }
+ */
+router.post('/suggest-external-courses', authenticate, authorize(1), aiLearningPathController.suggestExternalCourses);
+
 module.exports = router;

@@ -254,6 +254,87 @@ Generate the learning path now:`;
 
     return learningPath;
   }
+
+  /**
+   * Suggest external courses from the internet for a module
+   * @param {string} moduleTitle - Module title
+   * @param {string} moduleDescription - Module description
+   * @param {string[]} topics - Module topics
+   * @param {string} difficultyLevel - Difficulty level
+   * @returns {Promise<Array>} Array of external course suggestions
+   */
+  async suggestExternalCourses(moduleTitle, moduleDescription, topics, difficultyLevel) {
+    await this.ensureInitialized();
+
+    const prompt = `You are an expert educational resource curator. Given a learning module's details, suggest 5-8 real, well-known online courses from prominent educational platforms that would help a learner study this module's topics.
+
+Module Title: "${moduleTitle}"
+Module Description: "${moduleDescription}"
+Topics to Cover: ${JSON.stringify(topics)}
+Target Difficulty Level: "${difficultyLevel}"
+
+Generate a JSON response with this EXACT structure (no markdown, no code blocks, just pure JSON):
+{
+  "suggestions": [
+    {
+      "title": "Exact course name as it appears on the platform",
+      "platform": "Platform name (must be one of: Coursera, Udemy, edX, YouTube, Khan Academy, Pluralsight, LinkedIn Learning, freeCodeCamp, MIT OpenCourseWare, Codecademy)",
+      "url": "Direct URL to the course page (use real, plausible URLs)",
+      "description": "1-2 sentence description of what the course covers and why it matches",
+      "estimated_duration": "e.g., '4 hours', '2 weeks', '30 minutes'",
+      "difficulty_level": "beginner, intermediate, or advanced",
+      "is_free": true or false
+    }
+  ]
+}
+
+IMPORTANT Guidelines:
+1. Suggest REAL, well-known courses that actually exist on these platforms
+2. Include a mix of free and paid options
+3. Include at least one YouTube channel/playlist and one free option
+4. URLs should be realistic (e.g., https://www.coursera.org/learn/course-name, https://www.udemy.com/course/course-name)
+5. Prioritize courses with high ratings and good instructor reputation
+6. Match the difficulty level to the module's target level
+7. Each suggestion should cover at least some of the listed topics
+8. Return ONLY valid JSON - no explanations, no markdown formatting`;
+
+    try {
+      console.log('🌐 Suggesting external courses for:', moduleTitle);
+
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      let text = response.text();
+      text = this._extractJSON(text);
+
+      const parsed = JSON.parse(text);
+
+      if (!parsed.suggestions || !Array.isArray(parsed.suggestions)) {
+        throw new Error('PARSE_ERROR: Invalid suggestions format');
+      }
+
+      return parsed.suggestions.map(s => ({
+        title: s.title || 'Untitled Course',
+        platform: s.platform || 'Unknown',
+        url: s.url || '#',
+        description: s.description || '',
+        estimated_duration: s.estimated_duration || 'Unknown',
+        difficulty_level: s.difficulty_level || difficultyLevel,
+        is_free: typeof s.is_free === 'boolean' ? s.is_free : true
+      }));
+    } catch (error) {
+      console.error('❌ External course suggestion error:', error.message);
+
+      if (error.message.includes('SAFETY')) {
+        throw new Error('CONTENT_FILTERED: Unable to generate suggestions for this topic.');
+      }
+
+      if (error instanceof SyntaxError) {
+        throw new Error('PARSE_ERROR: Failed to parse AI suggestions. Please try again.');
+      }
+
+      throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
+    }
+  }
 }
 
 // Export singleton instance

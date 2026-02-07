@@ -50,7 +50,7 @@ BEGIN
   WHERE id = p_learning_path_id
     AND user_id = p_user_id;
 
-  -- Result Set 2: Modules with topics as JSON
+  -- Result Set 2: Modules with topics, linked courses, and external resources as JSON
   SELECT
     m.*,
     (SELECT JSON_ARRAYAGG(
@@ -62,7 +62,32 @@ BEGIN
      )
      FROM ai_learning_path_module_topics t
      WHERE t.module_id = m.id
-     ORDER BY t.topic_order) as topics
+     ORDER BY t.topic_order) as topics,
+    (SELECT JSON_ARRAYAGG(
+       JSON_OBJECT(
+         'id', lc.id,
+         'course_id', lc.course_id,
+         'title', c.title,
+         'thumbnail', c.thumbnail,
+         'level', c.level
+       )
+     )
+     FROM ai_learning_path_module_courses lc
+     JOIN course c ON lc.course_id = c.id
+     WHERE lc.module_id = m.id) as linked_courses,
+    (SELECT JSON_ARRAYAGG(
+       JSON_OBJECT(
+         'id', er.id,
+         'title', er.title,
+         'platform', er.platform,
+         'url', er.url,
+         'description', er.description,
+         'estimated_duration', er.estimated_duration,
+         'is_free', er.is_free
+       )
+     )
+     FROM ai_learning_path_module_external_resources er
+     WHERE er.module_id = m.id) as external_resources
   FROM ai_learning_path_modules m
   WHERE m.learning_path_id = p_learning_path_id
   ORDER BY m.module_order;
@@ -490,6 +515,8 @@ BEGIN
   DECLARE i INT DEFAULT 0;
   DECLARE v_module JSON;
   DECLARE v_topic_count INT;
+  DECLARE v_course_count INT;
+  DECLARE v_resource_count INT;
   DECLARE j INT;
 
   -- Start transaction
@@ -570,6 +597,42 @@ BEGIN
       SET j = j + 1;
     END WHILE;
 
+    -- Insert linked platform courses (if any)
+    IF JSON_EXTRACT(v_module, '$.linked_courses') IS NOT NULL
+       AND JSON_LENGTH(JSON_EXTRACT(v_module, '$.linked_courses')) > 0 THEN
+      SET v_course_count = JSON_LENGTH(JSON_EXTRACT(v_module, '$.linked_courses'));
+      SET j = 0;
+      WHILE j < v_course_count DO
+        INSERT INTO ai_learning_path_module_courses (module_id, course_id)
+        VALUES (
+          v_module_id,
+          JSON_EXTRACT(v_module, CONCAT('$.linked_courses[', j, '].course_id'))
+        );
+        SET j = j + 1;
+      END WHILE;
+    END IF;
+
+    -- Insert external resources (if any)
+    IF JSON_EXTRACT(v_module, '$.external_resources') IS NOT NULL
+       AND JSON_LENGTH(JSON_EXTRACT(v_module, '$.external_resources')) > 0 THEN
+      SET v_resource_count = JSON_LENGTH(JSON_EXTRACT(v_module, '$.external_resources'));
+      SET j = 0;
+      WHILE j < v_resource_count DO
+        INSERT INTO ai_learning_path_module_external_resources (
+          module_id, title, platform, url, description, estimated_duration, is_free
+        ) VALUES (
+          v_module_id,
+          JSON_UNQUOTE(JSON_EXTRACT(v_module, CONCAT('$.external_resources[', j, '].title'))),
+          JSON_UNQUOTE(JSON_EXTRACT(v_module, CONCAT('$.external_resources[', j, '].platform'))),
+          JSON_UNQUOTE(JSON_EXTRACT(v_module, CONCAT('$.external_resources[', j, '].url'))),
+          JSON_UNQUOTE(JSON_EXTRACT(v_module, CONCAT('$.external_resources[', j, '].description'))),
+          JSON_UNQUOTE(JSON_EXTRACT(v_module, CONCAT('$.external_resources[', j, '].estimated_duration'))),
+          JSON_EXTRACT(v_module, CONCAT('$.external_resources[', j, '].is_free'))
+        );
+        SET j = j + 1;
+      END WHILE;
+    END IF;
+
     SET i = i + 1;
   END WHILE;
 
@@ -591,6 +654,102 @@ BEGIN
     lp.created_at
   FROM ai_learning_paths lp
   WHERE lp.id = v_path_id;
+END$$
+
+-- ========================================
+-- PROCEDURE 11: Search Courses By Topics
+-- ========================================
+-- Searches platform courses matching module topics
+-- Returns relevance-scored results
+-- ========================================
+DROP PROCEDURE IF EXISTS `search_courses_by_topics`$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `search_courses_by_topics` (
+  IN `p_topics_json` JSON,
+  IN `p_module_title` VARCHAR(255),
+  IN `p_difficulty_level` VARCHAR(20),
+  IN `p_limit` INT
+)
+BEGIN
+  DECLARE i INT DEFAULT 0;
+  DECLARE v_topic_count INT;
+  DECLARE v_current_topic VARCHAR(255);
+  DECLARE v_limit INT;
+
+  SET v_topic_count = JSON_LENGTH(p_topics_json);
+  SET v_limit = COALESCE(p_limit, 10);
+
+  -- Create temp table to accumulate match scores
+  DROP TEMPORARY TABLE IF EXISTS tmp_course_matches;
+  CREATE TEMPORARY TABLE tmp_course_matches (
+    course_id INT,
+    match_count INT DEFAULT 0,
+    matched_topics TEXT,
+    PRIMARY KEY (course_id)
+  );
+
+  -- For each topic, find matching courses
+  WHILE i < v_topic_count DO
+    SET v_current_topic = JSON_UNQUOTE(JSON_EXTRACT(p_topics_json, CONCAT('$[', i, ']')));
+
+    INSERT INTO tmp_course_matches (course_id, match_count, matched_topics)
+    SELECT
+      c.id,
+      1,
+      v_current_topic
+    FROM course c
+    LEFT JOIN course_category cat ON c.category_id = cat.id
+    LEFT JOIN course_subcategory sc ON c.sub_category_id = sc.id
+    WHERE c.status = 'published'
+      AND c.is_deleted = 0
+      AND (
+        LOWER(c.title) LIKE CONCAT('%', LOWER(v_current_topic), '%')
+        OR LOWER(c.short_description) LIKE CONCAT('%', LOWER(v_current_topic), '%')
+        OR LOWER(COALESCE(c.meta_keywords, '')) LIKE CONCAT('%', LOWER(v_current_topic), '%')
+        OR LOWER(COALESCE(cat.name, '')) LIKE CONCAT('%', LOWER(v_current_topic), '%')
+        OR LOWER(COALESCE(sc.name, '')) LIKE CONCAT('%', LOWER(v_current_topic), '%')
+      )
+    ON DUPLICATE KEY UPDATE
+      match_count = match_count + 1,
+      matched_topics = CONCAT(matched_topics, ', ', v_current_topic);
+
+    SET i = i + 1;
+  END WHILE;
+
+  -- Also match using the module title
+  INSERT INTO tmp_course_matches (course_id, match_count, matched_topics)
+  SELECT
+    c.id,
+    1,
+    p_module_title
+  FROM course c
+  WHERE c.status = 'published'
+    AND c.is_deleted = 0
+    AND (
+      LOWER(c.title) LIKE CONCAT('%', LOWER(p_module_title), '%')
+      OR LOWER(COALESCE(c.meta_keywords, '')) LIKE CONCAT('%', LOWER(p_module_title), '%')
+    )
+  ON DUPLICATE KEY UPDATE
+    match_count = match_count + 1,
+    matched_topics = CONCAT(matched_topics, ', ', p_module_title);
+
+  -- Return aggregated results with course details
+  SELECT
+    c.id as course_id,
+    c.title,
+    c.short_description,
+    c.thumbnail,
+    c.level,
+    c.course_duration,
+    tm.match_count as total_matches,
+    ROUND(tm.match_count / (v_topic_count + 1), 2) as relevance_score,
+    tm.matched_topics as match_reason
+  FROM tmp_course_matches tm
+  JOIN course c ON tm.course_id = c.id
+  ORDER BY tm.match_count DESC, c.title ASC
+  LIMIT v_limit;
+
+  DROP TEMPORARY TABLE IF EXISTS tmp_course_matches;
 END$$
 
 DELIMITER ;
