@@ -122,8 +122,8 @@ const createForm = async (formData, userUuid) => {
     const [formResult] = await connection.query(`
       INSERT INTO feedback_forms
       (uuid, slug, name, description, type, status, expiry_date, max_responses,
-       one_per_browser, collect_name, collect_email, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       one_per_browser, collect_name, collect_email, show_correct_answers, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       uuid,
       slug,
@@ -136,6 +136,7 @@ const createForm = async (formData, userUuid) => {
       formData.onePerBrowser ? 1 : 0,
       formData.collectName ? 1 : 0,
       formData.collectEmail ? 1 : 0,
+      formData.showCorrectAnswers !== undefined ? (formData.showCorrectAnswers ? 1 : 0) : 1,
       userUuid
     ]);
 
@@ -200,7 +201,7 @@ const updateForm = async (formId, formData) => {
       UPDATE feedback_forms SET
         name = ?, description = ?, type = ?, status = ?,
         expiry_date = ?, max_responses = ?, one_per_browser = ?,
-        collect_name = ?, collect_email = ?
+        collect_name = ?, collect_email = ?, show_correct_answers = ?
       WHERE id = ? AND is_deleted = 0
     `, [
       formData.name,
@@ -212,6 +213,7 @@ const updateForm = async (formId, formData) => {
       formData.onePerBrowser ? 1 : 0,
       formData.collectName ? 1 : 0,
       formData.collectEmail ? 1 : 0,
+      formData.showCorrectAnswers !== undefined ? (formData.showCorrectAnswers ? 1 : 0) : 1,
       formId
     ]);
 
@@ -318,6 +320,7 @@ const getPublicFormBySlug = async (slug, browserFingerprint = null) => {
       type: form.type,
       collectName: form.collect_name === 1,
       collectEmail: form.collect_email === 1,
+      showCorrectAnswers: form.show_correct_answers === 1,
       questions: questions.map(q => ({
         ...q,
         options: q.options ? (typeof q.options === 'string' ? JSON.parse(q.options) : q.options) : null
@@ -401,10 +404,11 @@ const submitResponse = async (slug, responseData) => {
 
     // Get form details to check if it's an assessment
     const [formDetails] = await connection.query(
-      'SELECT type FROM feedback_forms WHERE id = ?',
+      'SELECT type, show_correct_answers FROM feedback_forms WHERE id = ?',
       [form.id]
     );
     const isAssessment = formDetails[0]?.type === 'assessment';
+    const showCorrectAnswers = formDetails[0]?.show_correct_answers === 1;
 
     // Calculate score for assessments
     let scoreData = null;
@@ -516,7 +520,9 @@ const submitResponse = async (slug, responseData) => {
         score: scoreData.score,
         maxScore: scoreData.maxScore,
         percentage: scoreData.percentage,
-        results: detailedResults,
+        showCorrectAnswers,
+        // Only include detailed results if admin enabled showing correct answers
+        ...(showCorrectAnswers && { results: detailedResults }),
         respondentName: responseData.respondentName || responseData.name || null,
         respondentEmail: responseData.respondentEmail || responseData.email || null
       })

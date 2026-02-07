@@ -1,4 +1,5 @@
 const feedbackService = require('../../services/admin/feedback_service');
+const geminiAIService = require('../../services/gemini/gemini_ai_service');
 
 // ===== ADMIN ENDPOINTS =====
 
@@ -166,6 +167,78 @@ exports.getFormResponses = async (req, res) => {
       success: false,
       message: 'Failed to fetch responses',
       error: error.message
+    });
+  }
+};
+
+/**
+ * Generate assessment questions using AI
+ * POST /api/admin/feedback/forms/ai-generate-questions
+ */
+exports.generateAssessmentQuestions = async (req, res) => {
+  try {
+    const { topic, numberOfQuestions, difficultyLevel } = req.body;
+
+    // Validate required fields
+    if (!topic || typeof topic !== 'string' || topic.trim().length < 3) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Topic is required and must be at least 3 characters', code: 'INVALID_INPUT' }
+      });
+    }
+
+    if (topic.trim().length > 500) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Topic must be less than 500 characters', code: 'INVALID_INPUT' }
+      });
+    }
+
+    const count = parseInt(numberOfQuestions) || 10;
+    if (count < 5 || count > 30) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Number of questions must be between 5 and 30', code: 'INVALID_INPUT' }
+      });
+    }
+
+    const validDifficulties = ['easy', 'medium', 'hard', 'mixed'];
+    const difficulty = validDifficulties.includes(difficultyLevel) ? difficultyLevel : 'medium';
+
+    const questions = await geminiAIService.generateAssessmentQuestions(topic.trim(), count, difficulty);
+
+    res.json({
+      success: true,
+      data: { questions },
+      message: `Generated ${questions.length} questions successfully`
+    });
+  } catch (error) {
+    console.error('Feedback Controller - generateAssessmentQuestions error:', error);
+
+    if (error.message.startsWith('CONTENT_FILTERED:')) {
+      return res.status(400).json({
+        success: false,
+        error: { message: error.message.replace('CONTENT_FILTERED: ', ''), code: 'CONTENT_FILTERED' }
+      });
+    }
+
+    if (error.message.startsWith('PARSE_ERROR:')) {
+      return res.status(500).json({
+        success: false,
+        error: { message: error.message.replace('PARSE_ERROR: ', ''), code: 'PARSE_ERROR' }
+      });
+    }
+
+    if (error.message.startsWith('AI_SERVICE_ERROR:')) {
+      return res.status(503).json({
+        success: false,
+        error: { message: 'AI service is temporarily unavailable. Please try again.', code: 'AI_SERVICE_ERROR' }
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: { message: 'Failed to generate questions. Please try again.', code: 'GENERATION_ERROR' }
     });
   }
 };

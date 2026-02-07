@@ -335,6 +335,112 @@ IMPORTANT Guidelines:
       throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
     }
   }
+  /**
+   * Generate assessment questions using AI
+   * @param {string} topic - The topic/subject for questions
+   * @param {number} numberOfQuestions - Number of questions to generate (5-30)
+   * @param {string} difficultyLevel - Difficulty level: easy, medium, hard, or mixed
+   * @returns {Promise<Array>} Array of generated questions
+   */
+  async generateAssessmentQuestions(topic, numberOfQuestions, difficultyLevel) {
+    await this.ensureInitialized();
+
+    const sanitizedTopic = topic
+      .replace(/<[^>]*>/g, '')
+      .replace(/[<>]/g, '')
+      .trim();
+
+    const difficultyInstruction = difficultyLevel === 'mixed'
+      ? 'Generate a mix of easy, medium, and hard questions. Distribute them roughly evenly.'
+      : `All questions should be "${difficultyLevel}" difficulty level.`;
+
+    const prompt = `You are an expert assessment creator and educator. Generate ${numberOfQuestions} high-quality assessment questions on the following topic.
+
+Topic: "${sanitizedTopic}"
+
+Difficulty: ${difficultyInstruction}
+
+Generate a JSON response with this EXACT structure (no markdown, no code blocks, just pure JSON):
+{
+  "questions": [
+    {
+      "type": "multiple_choice_single",
+      "text": "Clear, well-written question text",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctAnswers": [0],
+      "difficulty": "easy"
+    }
+  ]
+}
+
+IMPORTANT Guidelines:
+1. Generate exactly ${numberOfQuestions} questions
+2. Question types MUST be either "multiple_choice_single" (one correct answer) or "multiple_choice_multi" (2+ correct answers)
+3. Use mostly "multiple_choice_single" (about 80%), with some "multiple_choice_multi" (about 20%)
+4. For "multiple_choice_single": provide exactly 4 options, correctAnswers has exactly 1 index
+5. For "multiple_choice_multi": provide 4-5 options, correctAnswers has 2-3 indices
+6. correctAnswers is an array of zero-based indices pointing to the correct option(s)
+7. Each question must have a "difficulty" field: "easy", "medium", or "hard"
+8. Questions should be varied, testing different aspects of the topic
+9. Options should be plausible - avoid obviously wrong answers
+10. Question text should be clear and unambiguous
+11. Return ONLY valid JSON - no explanations, no markdown formatting`;
+
+    try {
+      console.log('🤖 Generating assessment questions for:', sanitizedTopic);
+
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      let text = response.text();
+      text = this._extractJSON(text);
+
+      const parsed = JSON.parse(text);
+
+      if (!parsed.questions || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+        throw new Error('PARSE_ERROR: No questions generated');
+      }
+
+      // Validate and normalize each question
+      const validatedQuestions = parsed.questions.map((q, index) => {
+        if (!q.text || !q.options || !Array.isArray(q.options) || q.options.length < 2) {
+          throw new Error(`PARSE_ERROR: Question ${index + 1} is missing required fields`);
+        }
+
+        if (!q.correctAnswers || !Array.isArray(q.correctAnswers) || q.correctAnswers.length === 0) {
+          throw new Error(`PARSE_ERROR: Question ${index + 1} has no correct answers marked`);
+        }
+
+        const type = q.type === 'multiple_choice_multi' ? 'multiple_choice_multi' : 'multiple_choice_single';
+        const validDifficulties = ['easy', 'medium', 'hard'];
+        const difficulty = validDifficulties.includes(q.difficulty?.toLowerCase())
+          ? q.difficulty.toLowerCase()
+          : difficultyLevel === 'mixed' ? 'medium' : difficultyLevel;
+
+        return {
+          type,
+          text: q.text.trim(),
+          options: q.options.map(o => String(o).trim()),
+          correctAnswers: q.correctAnswers.filter(i => typeof i === 'number' && i >= 0 && i < q.options.length),
+          difficulty
+        };
+      });
+
+      console.log(`✅ Generated ${validatedQuestions.length} assessment questions for "${sanitizedTopic}"`);
+      return validatedQuestions;
+    } catch (error) {
+      console.error('❌ Assessment question generation error:', error.message);
+
+      if (error.message.includes('SAFETY')) {
+        throw new Error('CONTENT_FILTERED: Unable to generate questions for this topic. Please try a different topic.');
+      }
+
+      if (error instanceof SyntaxError) {
+        throw new Error('PARSE_ERROR: Failed to parse AI response. Please try again.');
+      }
+
+      throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
+    }
+  }
 }
 
 // Export singleton instance

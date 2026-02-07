@@ -7,6 +7,9 @@ const { authenticate, authorize } = require('../../middleware/auth_middleware');
 router.use(authenticate);
 router.use(authorize(3, 4)); // Admin (3) and Super Admin (4)
 
+// AI Question Generation
+router.post('/forms/ai-generate-questions', feedbackController.generateAssessmentQuestions);
+
 // Form CRUD
 router.get('/forms', feedbackController.getAllForms);
 router.get('/forms/:id', feedbackController.getFormById);

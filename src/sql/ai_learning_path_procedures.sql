@@ -627,7 +627,7 @@ BEGIN
           JSON_UNQUOTE(JSON_EXTRACT(v_module, CONCAT('$.external_resources[', j, '].url'))),
           JSON_UNQUOTE(JSON_EXTRACT(v_module, CONCAT('$.external_resources[', j, '].description'))),
           JSON_UNQUOTE(JSON_EXTRACT(v_module, CONCAT('$.external_resources[', j, '].estimated_duration'))),
-          JSON_EXTRACT(v_module, CONCAT('$.external_resources[', j, '].is_free'))
+          CASE JSON_EXTRACT(v_module, CONCAT('$.external_resources[', j, '].is_free')) WHEN true THEN 1 ELSE 0 END
         );
         SET j = j + 1;
       END WHILE;
