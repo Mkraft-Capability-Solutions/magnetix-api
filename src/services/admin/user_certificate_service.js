@@ -1,4 +1,5 @@
 const { promisePool } = require("../../config/db");
+const notificationService = require("../notification_service");
 
 // ============================================================================
 // ISSUE CERTIFICATE TO USER
@@ -80,6 +81,27 @@ exports.issueCertificateToUser = async (certificateData, issuedBy) => {
        WHERE aic.id = ?`,
       [result.insertId]
     );
+
+    // Create notification for the user
+    try {
+      await notificationService.createSystemNotification(
+        user_id,
+        'Certificate Issued',
+        `Congratulations! You have been awarded a certificate: ${certificate_name}`,
+        'system',
+        '/workspace/certificates',
+        {
+          certificate_id: result.insertId,
+          certificate_number: certificateNumber,
+          certificate_name: certificate_name,
+          issue_date: issue_date || new Date()
+        }
+      );
+      console.log(`Notification created for user ${user_id} for certificate ${certificateNumber}`);
+    } catch (notificationError) {
+      console.error('Failed to create notification:', notificationError);
+      // Don't fail the certificate issuance if notification fails
+    }
 
     return {
       message: "Certificate issued successfully",
