@@ -74,39 +74,24 @@ class DashboardService {
       // Total certificates (certification completions + admin-issued)
       const totalCertificates = certificationCertificates + adminCertificates;
 
-      // Calculate learning streak (count distinct days with lesson completions in last 7 days)
-      const [streakResult] = await promisePool.query(
-        `SELECT COUNT(DISTINCT DATE(cp.last_access)) as streak_days
-         FROM course_progress cp
-         INNER JOIN enrol e ON cp.enroll_id = e.id
-         WHERE e.user_id = ?
-           AND cp.lesson_completed = 1
-           AND cp.last_access IS NOT NULL
-           AND DATE(cp.last_access) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)`,
+      // Calculate learning streak and total login days (same value, never breaks)
+      const [loginDaysResult] = await promisePool.query(
+        `SELECT COUNT(DISTINCT DATE(login_time)) as total_login_days
+         FROM user_login_log
+         WHERE user_uuid = ?
+           AND login_time IS NOT NULL`,
         [studentId]
       );
-      const learningStreak = streakResult[0].streak_days || 0;
+      const totalLoginDays = loginDaysResult[0].total_login_days || 0;
+      const learningStreak = totalLoginDays; // Streak = total unique login days
+      const currentLoginDays = totalLoginDays;
 
-      // Get current month's learning hours (if learner_hours_log table exists)
-      let currentMonthlyHours = 0;
-      try {
-        const [hoursResult] = await promisePool.query(
-          `SELECT COALESCE(SUM(hours_spent), 0) as hours
-           FROM learner_hours_log
-           WHERE user_id = ?
-             AND YEAR(log_date) = YEAR(CURDATE())
-             AND MONTH(log_date) = MONTH(CURDATE())`,
-          [studentId]
-        );
-        currentMonthlyHours = hoursResult[0].hours;
-      } catch (err) {
-        // Table might not exist, default to 0
-        currentMonthlyHours = 0;
-      }
+      // Calculate dynamic goal: starts at 20, then increases by 20 (20, 40, 60, 80, etc.)
+      // When user reaches current goal, the max moves to the next 20-day milestone
+      const goalDays = Math.max(20, Math.ceil(currentLoginDays / 20) * 20);
 
-      // Monthly goal settings
-      const monthlyGoalHours = 20.0;
-      const monthlyGoalPercentage = Math.min(100, Math.round((currentMonthlyHours / monthlyGoalHours) * 100));
+      // Calculate percentage for the current segment
+      const goalPercentage = Math.min(100, Math.round((currentLoginDays / goalDays) * 100));
 
       // Return stats object
       const stats = {
@@ -114,10 +99,10 @@ class DashboardService {
         completed_courses: completedCourses,
         courses_to_milestone: coursesToMilestone,
         total_certificates: totalCertificates,
-        learning_streak: learningStreak,
-        current_monthly_hours: parseFloat(currentMonthlyHours.toFixed(1)),
-        monthly_goal_hours: monthlyGoalHours,
-        monthly_goal_percentage: monthlyGoalPercentage
+        learning_streak: learningStreak,                    // Consecutive login days
+        current_monthly_hours: currentLoginDays,            // Total login days (renamed for compatibility)
+        monthly_goal_hours: goalDays,                       // Dynamic goal (20, 40, 60, etc.)
+        monthly_goal_percentage: goalPercentage             // Percentage of current goal segment
       };
 
       return new ServiceResponseDTO(true, stats, 'Dashboard stats retrieved successfully');
