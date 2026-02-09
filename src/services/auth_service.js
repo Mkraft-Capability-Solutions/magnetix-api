@@ -155,6 +155,18 @@ class AuthService {
       user.uuid,
     ]);
 
+    // Log user login activity for streak calculation
+    try {
+      await promisePool.query(
+        `INSERT INTO user_login_log (user_uuid, login_time)
+         VALUES (?, NOW())`,
+        [user.uuid]
+      );
+    } catch (loginLogError) {
+      // Don't fail login if logging fails, just log the error
+      console.error('Failed to log user login:', loginLogError);
+    }
+
     // Return user and tokens
     return {
       user: {
