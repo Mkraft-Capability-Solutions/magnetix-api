@@ -97,7 +97,7 @@ const validateUserRow = (row, rowIndex) => {
   const errors = [];
 
   // Required fields
-  const missing = validateRequiredFields(row, ['first_name', 'last_name', 'email', 'department', 'job_title']);
+  const missing = validateRequiredFields(row, ['first_name', 'last_name', 'email', 'role']);
   if (missing.length > 0) {
     errors.push({
       row: rowIndex,
@@ -112,6 +112,16 @@ const validateUserRow = (row, rowIndex) => {
       row: rowIndex,
       field: 'email',
       message: 'Invalid email format'
+    });
+  }
+
+  // Validate role value
+  const validRoles = ['student', 'admin', 'instructor', 'super_admin'];
+  if (!isEmpty(row.role) && !validRoles.includes(row.role.toLowerCase())) {
+    errors.push({
+      row: rowIndex,
+      field: 'role',
+      message: `Invalid role. Allowed: ${validRoles.join(', ')}`
     });
   }
 
