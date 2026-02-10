@@ -175,42 +175,52 @@ class MarketingService {
 
       for (const user of targetUsers) {
         try {
-          // Create notification in database
-          const notificationData = {
-            title: campaign.title,
-            message: campaign.message,
-            notification_type: 'marketing',
-            icon: 'megaphone',
-            recipient_id: user.uuid,
-            delivery_method: campaign.deliveryMethod,
-            campaign_id: campaign.id,
-            metadata: JSON.stringify({ campaignId: campaign.id, campaignUuid: campaign.uuid })
-          };
+          let notificationCreated = false;
+          let emailSent = false;
 
-          const notificationResult = await NotificationService.createNotification(notificationData);
+          // Create in-app notification if deliveryMethod is 'in-app' or 'both'
+          if (campaign.deliveryMethod === 'in-app' || campaign.deliveryMethod === 'both') {
+            const notificationData = {
+              title: campaign.title,
+              message: campaign.message,
+              notification_type: 'marketing',
+              icon: 'megaphone',
+              recipient_id: user.uuid,
+              delivery_method: campaign.deliveryMethod,
+              campaign_id: campaign.id,
+              metadata: JSON.stringify({ campaignId: campaign.id, campaignUuid: campaign.uuid })
+            };
 
-          // Send email if delivery method includes email
+            await NotificationService.createNotification(notificationData);
+            notificationCreated = true;
+          }
+
+          // Send email if deliveryMethod is 'email' or 'both'
           if (campaign.deliveryMethod === 'email' || campaign.deliveryMethod === 'both') {
             if (user.email) {
               await NotificationService.sendEmailNotification(
                 {
-                  uuid: notificationResult.uuid,
+                  uuid: user.uuid,
                   title: campaign.title,
                   message: campaign.message
                 },
                 user.email,
                 campaign.id,
-                notificationResult.id
+                null
               );
-              totalDelivered++;
+              emailSent = true;
             } else {
-              totalFailed++;
+              console.warn(`User ${user.uuid} has no email address, skipping email`);
             }
-          } else {
-            totalDelivered++;
           }
 
-          totalSent++;
+          // Count as delivered if at least one method succeeded
+          if (notificationCreated || emailSent) {
+            totalDelivered++;
+            totalSent++;
+          } else {
+            totalFailed++;
+          }
         } catch (error) {
           console.error(`Failed to send to user ${user.uuid}:`, error);
           totalFailed++;
