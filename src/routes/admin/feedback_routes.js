@@ -19,6 +19,8 @@ router.delete('/forms/:id', feedbackController.deleteForm);
 
 // Analytics & Responses
 router.get('/forms/:id/analytics', feedbackController.getFormAnalytics);
+router.get('/forms/:id/responses/paginated', feedbackController.getFormResponsesPaginated);
 router.get('/forms/:id/responses', feedbackController.getFormResponses);
+router.get('/responses/:id', feedbackController.getResponseById);
 
 module.exports = router;

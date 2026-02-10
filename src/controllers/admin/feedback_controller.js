@@ -172,6 +172,66 @@ exports.getFormResponses = async (req, res) => {
 };
 
 /**
+ * Get paginated form responses
+ * GET /api/admin/feedback/forms/:id/responses/paginated
+ */
+exports.getFormResponsesPaginated = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 20, search = '' } = req.query;
+
+    const result = await feedbackService.getFormResponsesPaginated(
+      id,
+      parseInt(page),
+      parseInt(limit),
+      search
+    );
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('Feedback Controller - getFormResponsesPaginated error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch responses',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get detailed response by ID
+ * GET /api/admin/feedback/responses/:id
+ */
+exports.getResponseById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const response = await feedbackService.getResponseById(id);
+
+    if (!response) {
+      return res.status(404).json({
+        success: false,
+        message: 'Response not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: response
+    });
+  } catch (error) {
+    console.error('Feedback Controller - getResponseById error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch response details',
+      error: error.message
+    });
+  }
+};
+
+/**
  * Generate assessment questions using AI
  * POST /api/admin/feedback/forms/ai-generate-questions
  */
