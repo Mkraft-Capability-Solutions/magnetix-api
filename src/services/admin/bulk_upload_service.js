@@ -121,6 +121,14 @@ exports.uploadUsers = async (fileBuffer) => {
     try {
       const defaultPassword = await bcrypt.hash('Welcome@123', 10);
 
+      // Role mapping
+      const roleMap = {
+        'student': 1,
+        'admin': 2,
+        'instructor': 3,
+        'super_admin': 4
+      };
+
       for (let i = 0; i < csvData.length; i++) {
         const row = csvData[i];
         const email = row.email.toLowerCase().trim();
@@ -138,36 +146,70 @@ exports.uploadUsers = async (fileBuffer) => {
           continue;
         }
 
+        // Get role_id from role name
+        const roleId = roleMap[row.role.toLowerCase()];
+        if (!roleId) {
+          warnings.push(`Row ${i + 2}: Invalid role: ${row.role}`);
+          skipped++;
+          continue;
+        }
+
         // Create user
         const userId = uuidv4();
 
         // Insert into users table
         await connection.query(
-          `INSERT INTO users (uuid, email, password, role_id, created_at, updated_at)
-           VALUES (?, ?, ?, 1, NOW(), NOW())`,
-          [userId, email, defaultPassword]
+          `INSERT INTO users (uuid, email, password, role_id, instance, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+          [userId, email, defaultPassword, roleId, 'default', 'active']
         );
 
-        // Insert into students table
-        await connection.query(
-          `INSERT INTO students (user_id, first_name, last_name, contact)
-           VALUES (?, ?, ?, ?)`,
-          [userId, row.first_name, row.last_name, row.phone || null]
-        );
+        // Insert into role-specific table
+        if (roleId === 1) {
+          // Student
+          await connection.query(
+            `INSERT INTO students (user_id, first_name, last_name, contact)
+             VALUES (?, ?, ?, ?)`,
+            [userId, row.first_name, row.last_name, row.phone || null]
+          );
 
-        // Insert into student_corporate_info table
-        await connection.query(
-          `INSERT INTO student_corporate_info
-           (user_id, designation, department, location, manager_email)
-           VALUES (?, ?, ?, ?, ?)`,
-          [
-            userId,
-            row.job_title,
-            row.department,
-            row.location || null,
-            row.manager_email || null
-          ]
-        );
+          // Insert into student_corporate_info table if job-related fields provided
+          if (row.job_title || row.department || row.location || row.manager_email) {
+            await connection.query(
+              `INSERT INTO student_corporate_info
+               (user_id, designation, department, location, manager_email)
+               VALUES (?, ?, ?, ?, ?)`,
+              [
+                userId,
+                row.job_title || null,
+                row.department || null,
+                row.location || null,
+                row.manager_email || null
+              ]
+            );
+          }
+        } else if (roleId === 2) {
+          // Admin
+          await connection.query(
+            `INSERT INTO admins (user_id, first_name, last_name, contact)
+             VALUES (?, ?, ?, ?)`,
+            [userId, row.first_name, row.last_name, row.phone || null]
+          );
+        } else if (roleId === 3) {
+          // Instructor
+          await connection.query(
+            `INSERT INTO instructors (user_id, first_name, last_name, contact)
+             VALUES (?, ?, ?, ?)`,
+            [userId, row.first_name, row.last_name, row.phone || null]
+          );
+        } else if (roleId === 4) {
+          // Super Admin
+          await connection.query(
+            `INSERT INTO super_admins (user_id, first_name, last_name, contact)
+             VALUES (?, ?, ?, ?)`,
+            [userId, row.first_name, row.last_name, row.phone || null]
+          );
+        }
 
         inserted++;
       }

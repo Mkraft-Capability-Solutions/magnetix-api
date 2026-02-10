@@ -633,6 +633,65 @@ const getFormAnalytics = async (formId) => {
 };
 
 /**
+ * Get paginated responses for a form with search
+ */
+const getFormResponsesPaginated = async (formId, page = 1, limit = 20, search = '') => {
+  const offset = (page - 1) * limit;
+
+  // Get form type to check if it's an assessment
+  const [formInfo] = await promisePool.query(
+    'SELECT type FROM feedback_forms WHERE id = ?',
+    [formId]
+  );
+  const isAssessment = formInfo[0]?.type === 'assessment';
+
+  // Build search condition
+  let searchCondition = '';
+  const params = [formId];
+
+  if (search) {
+    searchCondition = ' AND (fr.respondent_name LIKE ? OR fr.respondent_email LIKE ?)';
+    params.push(`%${search}%`, `%${search}%`);
+  }
+
+  // Get total count
+  const [countResult] = await promisePool.query(`
+    SELECT COUNT(*) as total
+    FROM feedback_responses fr
+    WHERE fr.form_id = ?${searchCondition}
+  `, params);
+
+  const total = countResult[0].total;
+
+  // Get paginated responses
+  const [responses] = await promisePool.query(`
+    SELECT
+      fr.id,
+      fr.respondent_name,
+      fr.respondent_email,
+      fr.submitted_at,
+      ${isAssessment ? 'fr.percentage,' : 'NULL as percentage,'}
+      ${isAssessment ? 'fr.score,' : 'NULL as score,'}
+      ${isAssessment ? 'fr.max_score' : 'NULL as max_score'}
+    FROM feedback_responses fr
+    WHERE fr.form_id = ?${searchCondition}
+    ORDER BY fr.submitted_at DESC
+    LIMIT ? OFFSET ?
+  `, [...params, limit, offset]);
+
+  return {
+    responses,
+    pagination: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    },
+    isAssessment
+  };
+};
+
+/**
  * Get all responses for a form (for export)
  */
 const getFormResponses = async (formId) => {
@@ -651,6 +710,118 @@ const getFormResponses = async (formId) => {
   return responses;
 };
 
+/**
+ * Get detailed response by ID with questions and answers
+ */
+const getResponseById = async (responseId) => {
+  // Get response basic info
+  const [responses] = await promisePool.query(`
+    SELECT
+      fr.id,
+      fr.form_id,
+      fr.respondent_name,
+      fr.respondent_email,
+      fr.submitted_at,
+      fr.score,
+      fr.max_score,
+      fr.percentage,
+      ff.name as form_name,
+      ff.type as form_type
+    FROM feedback_responses fr
+    JOIN feedback_forms ff ON fr.form_id = ff.id
+    WHERE fr.id = ?
+  `, [responseId]);
+
+  if (responses.length === 0) {
+    return null;
+  }
+
+  const response = responses[0];
+  const isAssessment = response.form_type === 'assessment';
+
+  // Get all questions for this form with answers
+  const [questionsWithAnswers] = await promisePool.query(`
+    SELECT
+      fq.id as question_id,
+      fq.question_order,
+      fq.question_type,
+      fq.question_text,
+      fq.options,
+      fq.correct_answers,
+      fq.is_required,
+      fa.answer_text,
+      fa.answer_options,
+      fa.answer_rating
+    FROM feedback_questions fq
+    LEFT JOIN feedback_answers fa ON fq.id = fa.question_id AND fa.response_id = ?
+    WHERE fq.form_id = ?
+    ORDER BY fq.question_order ASC
+  `, [responseId, response.form_id]);
+
+  // Process questions and answers
+  const questionsAndAnswers = questionsWithAnswers.map(q => {
+    const questionData = {
+      questionId: q.question_id,
+      questionOrder: q.question_order,
+      questionType: q.question_type,
+      questionText: q.question_text,
+      isRequired: q.is_required === 1,
+      options: q.options ? (typeof q.options === 'string' ? JSON.parse(q.options) : q.options) : null,
+      answerText: q.answer_text,
+      answerOptions: q.answer_options ? (typeof q.answer_options === 'string' ? JSON.parse(q.answer_options) : q.answer_options) : null,
+      answerRating: q.answer_rating
+    };
+
+    // For assessments, add correct/incorrect info
+    if (isAssessment && (q.question_type === 'multiple_choice_single' || q.question_type === 'multiple_choice_multi')) {
+      const correctAnswers = q.correct_answers
+        ? (typeof q.correct_answers === 'string' ? JSON.parse(q.correct_answers) : q.correct_answers)
+        : [];
+
+      // Get user's selected indices
+      let userSelectedIndices = [];
+      if (q.answer_options) {
+        const selectedOptions = typeof q.answer_options === 'string'
+          ? JSON.parse(q.answer_options)
+          : q.answer_options;
+
+        if (Array.isArray(selectedOptions) && questionData.options) {
+          userSelectedIndices = selectedOptions.map(selectedOpt =>
+            questionData.options.findIndex(opt => opt === selectedOpt)
+          ).filter(idx => idx !== -1);
+        }
+      }
+
+      // Check if correct
+      const correctAnswersSet = new Set(correctAnswers);
+      const userAnswersSet = new Set(userSelectedIndices);
+      const isCorrect = correctAnswers.length === userSelectedIndices.length &&
+                       correctAnswers.every(idx => userAnswersSet.has(idx)) &&
+                       userSelectedIndices.every(idx => correctAnswersSet.has(idx));
+
+      questionData.correctAnswers = correctAnswers;
+      questionData.userSelectedIndices = userSelectedIndices;
+      questionData.isCorrect = isCorrect;
+    }
+
+    return questionData;
+  });
+
+  return {
+    id: response.id,
+    formId: response.form_id,
+    formName: response.form_name,
+    formType: response.form_type,
+    respondentName: response.respondent_name,
+    respondentEmail: response.respondent_email,
+    submittedAt: response.submitted_at,
+    score: response.score,
+    maxScore: response.max_score,
+    percentage: response.percentage,
+    questionsAndAnswers
+  };
+};
+
 module.exports = {
   getAllForms,
   getFormById,
@@ -660,5 +831,7 @@ module.exports = {
   getPublicFormBySlug,
   submitResponse,
   getFormAnalytics,
-  getFormResponses
+  getFormResponses,
+  getFormResponsesPaginated,
+  getResponseById
 };

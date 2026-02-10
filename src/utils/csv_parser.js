@@ -46,7 +46,7 @@ const validateCSVHeaders = (actualHeaders, requiredHeaders) => {
  */
 const generateCSVTemplate = (type) => {
   const templates = {
-    users: 'first_name,last_name,email,department,job_title,manager_email,phone,location\n',
+    users: 'first_name,last_name,email,role,department,job_title,manager_email,phone,location\n',
     content: 'content_id,field,new_value\n',
     assignments: 'user_email,course_id,course_name,due_date,send_notification\n'
   };
@@ -61,7 +61,7 @@ const generateCSVTemplate = (type) => {
  */
 const getRequiredHeaders = (type) => {
   const headers = {
-    users: ['first_name', 'last_name', 'email', 'department', 'job_title'],
+    users: ['first_name', 'last_name', 'email', 'role'],
     content: ['content_id', 'field', 'new_value'],
     assignments: ['user_email']
   };
@@ -76,7 +76,7 @@ const getRequiredHeaders = (type) => {
  */
 const getAllHeaders = (type) => {
   const headers = {
-    users: ['first_name', 'last_name', 'email', 'department', 'job_title', 'manager_email', 'phone', 'location'],
+    users: ['first_name', 'last_name', 'email', 'role', 'department', 'job_title', 'manager_email', 'phone', 'location'],
     content: ['content_id', 'field', 'new_value'],
     assignments: ['user_email', 'course_id', 'course_name', 'due_date', 'send_notification']
   };
@@ -92,11 +92,12 @@ const getAllHeaders = (type) => {
 const generateSampleCSV = (type) => {
   const samples = {
     users:
-`first_name,last_name,email,department,job_title,manager_email,phone,location
-John,Doe,john.doe@company.com,Engineering,Software Engineer,jane.smith@company.com,9876543210,New York
-Jane,Smith,jane.smith@company.com,Engineering,Senior Developer,,9123456789,San Francisco
-Bob,Johnson,bob.johnson@company.com,Marketing,Marketing Manager,,8765432109,Chicago
-Alice,Williams,alice.williams@company.com,Sales,Sales Representative,bob.johnson@company.com,7654321098,Boston
+`first_name,last_name,email,role,department,job_title,manager_email,phone,location
+John,Doe,john.doe@company.com,student,Engineering,Software Engineer,jane.smith@company.com,9876543210,New York
+Jane,Smith,jane.smith@company.com,admin,Engineering,Senior Developer,,9123456789,San Francisco
+Bob,Johnson,bob.johnson@company.com,instructor,Marketing,Marketing Manager,,8765432109,Chicago
+Alice,Williams,alice.williams@company.com,student,Sales,Sales Representative,bob.johnson@company.com,7654321098,Boston
+Charlie,Brown,charlie.brown@company.com,super_admin,IT,System Administrator,,5551234567,Seattle
 `,
     content:
 `content_id,field,new_value
