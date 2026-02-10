@@ -76,9 +76,17 @@ class MarketingService {
           mc.scheduled_for as scheduledFor,
           mc.sent_at as sentAt,
           mc.created_at as createdAt,
-          CONCAT(u.first_name, ' ', u.last_name) as createdByName
+          CONCAT(
+            COALESCE(s.first_name, a.first_name, i.first_name, sa.first_name, 'Unknown'),
+            ' ',
+            COALESCE(s.last_name, a.last_name, i.last_name, sa.last_name, 'User')
+          ) as createdByName
         FROM marketing_campaigns mc
         LEFT JOIN users u ON mc.created_by = u.uuid
+        LEFT JOIN students s ON u.uuid = s.user_id AND u.role_id = 1
+        LEFT JOIN instructors i ON u.uuid = i.user_id AND u.role_id = 2
+        LEFT JOIN admins a ON u.uuid = a.user_id AND u.role_id = 3
+        LEFT JOIN super_admins sa ON u.uuid = sa.user_id AND u.role_id = 4
         WHERE mc.uuid = ? AND mc.is_deleted = 0
       `;
 
@@ -234,7 +242,17 @@ class MarketingService {
     return new Promise((resolve, reject) => {
       const { roles = [], departments = [], specificUsers = [] } = targetAudience;
 
-      let query = 'SELECT DISTINCT u.uuid, u.email, u.first_name, u.last_name FROM users u WHERE u.is_deleted = 0';
+      let query = `SELECT DISTINCT
+        u.uuid,
+        u.email,
+        COALESCE(s.first_name, i.first_name, a.first_name, sa.first_name, 'User') as first_name,
+        COALESCE(s.last_name, i.last_name, a.last_name, sa.last_name, '') as last_name
+      FROM users u
+      LEFT JOIN students s ON u.uuid = s.user_id AND u.role_id = 1
+      LEFT JOIN instructors i ON u.uuid = i.user_id AND u.role_id = 2
+      LEFT JOIN admins a ON u.uuid = a.user_id AND u.role_id = 3
+      LEFT JOIN super_admins sa ON u.uuid = sa.user_id AND u.role_id = 4
+      WHERE u.is_deleted = 0`;
       const params = [];
 
       // Add role filters
@@ -246,6 +264,14 @@ class MarketingService {
 
       // Add department filters (if student_corporate_info exists)
       if (departments && departments.length > 0) {
+        // Add LEFT JOIN for student_corporate_info if not already added
+        if (!query.includes('student_corporate_info')) {
+          query = query.replace(
+            'WHERE u.is_deleted = 0',
+            'LEFT JOIN student_corporate_info sci ON u.uuid = sci.student_uuid WHERE u.is_deleted = 0'
+          );
+        }
+
         const placeholders = departments.map(() => '?').join(',');
         if (roles && roles.length > 0) {
           query += ` OR sci.department IN (${placeholders})`;
@@ -253,24 +279,34 @@ class MarketingService {
           query += ` AND sci.department IN (${placeholders})`;
         }
         params.push(...departments);
-
-        // Add join for corporate info
-        query = query.replace('FROM users u', 'FROM users u LEFT JOIN student_corporate_info sci ON u.uuid = sci.student_uuid');
       }
 
-      // Add specific users
+      // Add specific users (support both UUIDs and email addresses)
       if (specificUsers && specificUsers.length > 0) {
         const placeholders = specificUsers.map(() => '?').join(',');
+        // Check if specificUsers are emails or UUIDs
+        const isEmail = specificUsers[0].includes('@');
+
         if (roles && roles.length > 0) {
-          query += ` OR u.uuid IN (${placeholders})`;
+          // Add OR condition inside the opened parenthesis
+          if (isEmail) {
+            query += ` OR u.email IN (${placeholders})`;
+          } else {
+            query += ` OR u.uuid IN (${placeholders})`;
+          }
         } else {
-          query += ` AND u.uuid IN (${placeholders})`;
+          // No roles selected, just add AND condition without opening parenthesis
+          if (isEmail) {
+            query += ` AND u.email IN (${placeholders})`;
+          } else {
+            query += ` AND u.uuid IN (${placeholders})`;
+          }
         }
         params.push(...specificUsers);
       }
 
-      // Close WHERE clause if needed
-      if ((roles && roles.length > 0) || (specificUsers && specificUsers.length > 0)) {
+      // Close WHERE clause ONLY if we opened a parenthesis (i.e., roles were selected)
+      if (roles && roles.length > 0) {
         query += ')';
       }
 
@@ -347,6 +383,47 @@ class MarketingService {
         } else {
           resolve(null);
         }
+      });
+    });
+  }
+
+  // Get audiences with real user counts
+  static async getAudiences() {
+    return new Promise((resolve, reject) => {
+      const query = `
+        SELECT
+          r.role_id,
+          r.role_detail,
+          COUNT(u.uuid) as user_count
+        FROM roles r
+        LEFT JOIN users u ON r.role_id = u.role_id AND u.is_deleted = 0
+        GROUP BY r.role_id, r.role_detail
+        ORDER BY r.role_id
+      `;
+
+      db.query(query, (error, results) => {
+        if (error) {
+          console.error('Get audiences error:', error);
+          return reject(error);
+        }
+
+        // Map role names to friendly display names
+        const roleNames = {
+          'student': 'All Students',
+          'instructor': 'All Instructors',
+          'admin': 'All Admins',
+          'super_admin': 'All Super Admins'
+        };
+
+        const audiences = results.map(row => ({
+          id: row.role_id.toString(),
+          name: roleNames[row.role_detail] || row.role_detail,
+          userCount: row.user_count,
+          role: row.role_id,
+          checked: false
+        }));
+
+        resolve(audiences);
       });
     });
   }

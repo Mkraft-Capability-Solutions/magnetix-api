@@ -185,6 +185,24 @@ class MarketingController {
       });
     }
   }
+
+  // Get audiences with real user counts
+  static async getAudiences(req, res) {
+    try {
+      const result = await MarketingService.getAudiences();
+
+      res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      console.error('Get audiences error:', error);
+      res.status(500).json({
+        success: false,
+        error: { message: error.message || 'Failed to fetch audiences' }
+      });
+    }
+  }
 }
 
 module.exports = MarketingController;
