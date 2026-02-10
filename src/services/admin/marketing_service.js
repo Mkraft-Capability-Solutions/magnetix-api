@@ -437,6 +437,42 @@ class MarketingService {
       });
     });
   }
+
+  // Validate email addresses against users table
+  static async validateEmails(emails) {
+    return new Promise((resolve, reject) => {
+      if (!emails || !Array.isArray(emails) || emails.length === 0) {
+        return resolve({ validEmails: [], invalidEmails: [] });
+      }
+
+      // Remove duplicates and trim emails
+      const uniqueEmails = [...new Set(emails.map(email => email.trim().toLowerCase()))];
+
+      const placeholders = uniqueEmails.map(() => '?').join(',');
+      const query = `
+        SELECT LOWER(email) as email
+        FROM users
+        WHERE LOWER(email) IN (${placeholders})
+          AND is_deleted = 0
+      `;
+
+      db.query(query, uniqueEmails, (error, results) => {
+        if (error) {
+          console.error('Validate emails error:', error);
+          return reject(error);
+        }
+
+        // Get emails that exist in database
+        const validEmailsSet = new Set(results.map(row => row.email));
+
+        // Separate emails into valid and invalid
+        const validEmails = uniqueEmails.filter(email => validEmailsSet.has(email));
+        const invalidEmails = uniqueEmails.filter(email => !validEmailsSet.has(email));
+
+        resolve({ validEmails, invalidEmails });
+      });
+    });
+  }
 }
 
 module.exports = MarketingService;

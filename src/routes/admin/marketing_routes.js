@@ -16,6 +16,9 @@ router.use(authorize(3, 4));
 // GET /api/admin/marketing/audiences - Get audiences with user counts
 router.get('/audiences', MarketingController.getAudiences);
 
+// POST /api/admin/marketing/validate-emails - Validate email addresses
+router.post('/validate-emails', MarketingController.validateEmails);
+
 // POST /api/admin/marketing/campaigns - Create new campaign
 router.post('/campaigns', MarketingController.createCampaign);
 
