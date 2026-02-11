@@ -173,18 +173,24 @@ BEGIN
   IF p_instructor_id IS NULL THEN
     -- Admin: Use certificate_name from student_certificates
     SELECT
-      COALESCE(sc.certificate_name, 'Other') as type,
-      ROUND(COUNT(*) * 100.0 / NULLIF((SELECT COUNT(*) FROM student_certificates), 0), 0) as percentage,
+      type,
+      percentage,
       CASE
-        WHEN ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) = 1 THEN '#10b981'
-        WHEN ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) = 2 THEN '#3b82f6'
-        WHEN ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) = 3 THEN '#a855f7'
+        WHEN row_num = 1 THEN '#10b981'
+        WHEN row_num = 2 THEN '#3b82f6'
+        WHEN row_num = 3 THEN '#a855f7'
         ELSE '#f59e0b'
       END as color
-    FROM student_certificates sc
-    GROUP BY COALESCE(sc.certificate_name, 'Other')
-    ORDER BY COUNT(*) DESC
-    LIMIT 5;
+    FROM (
+      SELECT
+        COALESCE(sc.certificate_name, 'Other') as type,
+        ROUND(COUNT(*) * 100.0 / NULLIF((SELECT COUNT(*) FROM student_certificates), 0), 0) as percentage,
+        ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) as row_num
+      FROM student_certificates sc
+      GROUP BY COALESCE(sc.certificate_name, 'Other')
+      ORDER BY COUNT(*) DESC
+      LIMIT 5
+    ) cert_data;
   ELSE
     -- Instructor: Use course level distribution
     SELECT

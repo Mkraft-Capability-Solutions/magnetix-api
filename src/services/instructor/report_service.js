@@ -60,8 +60,35 @@ const getCompletionTrends = async (instructorId) => {
  */
 const getCertificationDistribution = async (instructorId) => {
   try {
-    const [rows] = await pool.query('CALL sp_get_certification_distribution(?)', [instructorId]);
-    return rows[0] || [];
+    const query = `
+      SELECT
+        CASE
+          WHEN c.level = 'beginner' THEN 'Beginner'
+          WHEN c.level = 'intermediate' THEN 'Intermediate'
+          WHEN c.level = 'advance' THEN 'Advance'
+          ELSE 'Other'
+        END as type,
+        ROUND(COUNT(*) * 100.0 / NULLIF((
+          SELECT COUNT(*)
+          FROM student_certificates sc2
+          INNER JOIN course c2 ON sc2.course_id = c2.id
+          WHERE c2.creator_id = ? AND c2.is_deleted = 0
+        ), 0), 0) as percentage,
+        CASE
+          WHEN c.level = 'beginner' THEN '#fbbf24'
+          WHEN c.level = 'intermediate' THEN '#3b82f6'
+          WHEN c.level = 'advance' THEN '#10b981'
+          ELSE '#f59e0b'
+        END as color
+      FROM student_certificates sc
+      INNER JOIN course c ON sc.course_id = c.id
+      WHERE c.creator_id = ? AND c.is_deleted = 0
+      GROUP BY c.level
+      ORDER BY COUNT(*) DESC
+    `;
+
+    const [rows] = await pool.query(query, [instructorId, instructorId]);
+    return rows || [];
   } catch (error) {
     console.error('Instructor Report Service - getCertificationDistribution error:', error);
     throw error;
