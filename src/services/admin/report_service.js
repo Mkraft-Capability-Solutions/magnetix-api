@@ -55,8 +55,30 @@ const getCompletionTrends = async () => {
  */
 const getCertificationDistribution = async () => {
   try {
-    const [rows] = await pool.query('CALL sp_get_certification_distribution(?)', [null]);
-    return rows[0] || [];
+    const query = `
+      SELECT
+        type,
+        percentage,
+        CASE
+          WHEN row_num = 1 THEN '#10b981'
+          WHEN row_num = 2 THEN '#3b82f6'
+          WHEN row_num = 3 THEN '#a855f7'
+          ELSE '#f59e0b'
+        END as color
+      FROM (
+        SELECT
+          COALESCE(sc.certificate_name, 'Other') as type,
+          ROUND(COUNT(*) * 100.0 / NULLIF((SELECT COUNT(*) FROM student_certificates), 0), 0) as percentage,
+          ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) as row_num
+        FROM student_certificates sc
+        GROUP BY COALESCE(sc.certificate_name, 'Other')
+        ORDER BY COUNT(*) DESC
+        LIMIT 5
+      ) cert_data
+    `;
+
+    const [rows] = await pool.query(query);
+    return rows || [];
   } catch (error) {
     console.error('Report Service - getCertificationDistribution error:', error);
     throw error;

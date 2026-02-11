@@ -203,6 +203,41 @@ class MarketingController {
       });
     }
   }
+
+  // Validate email addresses against users table
+  static async validateEmails(req, res) {
+    try {
+      const { emails } = req.body;
+
+      // Validation
+      if (!emails || !Array.isArray(emails)) {
+        return res.status(400).json({
+          success: false,
+          error: { message: 'Invalid request: emails must be an array' }
+        });
+      }
+
+      if (emails.length === 0) {
+        return res.json({
+          success: true,
+          data: { validEmails: [], invalidEmails: [] }
+        });
+      }
+
+      const result = await MarketingService.validateEmails(emails);
+
+      res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      console.error('Validate emails error:', error);
+      res.status(500).json({
+        success: false,
+        error: { message: error.message || 'Failed to validate emails' }
+      });
+    }
+  }
 }
 
 module.exports = MarketingController;
