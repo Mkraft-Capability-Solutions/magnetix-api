@@ -20,6 +20,7 @@ router.post('/', userManagementController.createUser);
 // Dynamic routes with :id
 router.get('/:id', userManagementController.getUserById);
 router.get('/:id/learning-history', userManagementController.getUserLearningHistory);
+router.get('/:id/admin-logs', userManagementController.getAdminLogs);
 router.get('/:id/courses', userManagementController.getCoursesForEnrollment);
 router.post('/:id/enroll', userManagementController.enrollUserInCourse);
 router.delete('/:id/enroll/:courseId', userManagementController.unenrollUserFromCourse);

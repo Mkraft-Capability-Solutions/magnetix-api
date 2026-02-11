@@ -178,7 +178,7 @@ const updateUser = async (req, res) => {
       department,
       jobTitle,
       status
-    });
+    }, req.user.uuid);
 
     if (!result.success) {
       return res.status(400).json({
@@ -216,7 +216,7 @@ const changeUserStatus = async (req, res) => {
       });
     }
 
-    const result = await userManagementService.changeUserStatus(id, status);
+    const result = await userManagementService.changeUserStatus(id, status, req.user.uuid);
 
     if (!result.success) {
       return res.status(400).json({
@@ -254,7 +254,7 @@ const changeUserRole = async (req, res) => {
       });
     }
 
-    const result = await userManagementService.changeUserRole(id, role);
+    const result = await userManagementService.changeUserRole(id, role, req.user.uuid);
 
     if (!result.success) {
       return res.status(400).json({
@@ -284,7 +284,7 @@ const resetUserPassword = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const result = await userManagementService.resetUserPassword(id);
+    const result = await userManagementService.resetUserPassword(id, req.user.uuid);
 
     if (!result.success) {
       return res.status(400).json({
@@ -465,7 +465,7 @@ const enrollUserInCourse = async (req, res) => {
       });
     }
 
-    const result = await userManagementService.enrollUserInCourse(id, courseId);
+    const result = await userManagementService.enrollUserInCourse(id, courseId, req.user.uuid);
 
     if (!result.success) {
       return res.status(400).json({
@@ -495,7 +495,7 @@ const unenrollUserFromCourse = async (req, res) => {
   try {
     const { id, courseId } = req.params;
 
-    const result = await userManagementService.unenrollUserFromCourse(id, courseId);
+    const result = await userManagementService.unenrollUserFromCourse(id, courseId, req.user.uuid);
 
     if (!result.success) {
       return res.status(400).json({
@@ -513,6 +513,35 @@ const unenrollUserFromCourse = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to unenroll user',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get admin logs for a user
+ */
+const getAdminLogs = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+
+    const result = await userManagementService.getAdminLogs(
+      id,
+      parseInt(page),
+      parseInt(limit)
+    );
+
+    res.json({
+      success: true,
+      data: result.logs,
+      pagination: result.pagination
+    });
+  } catch (error) {
+    console.error('UserManagementController - getAdminLogs error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch admin logs',
       error: error.message
     });
   }
@@ -585,5 +614,6 @@ module.exports = {
   reactivateUser,
   getDeactivationLog,
   getDepartments,
+  getAdminLogs,
   bulkImportUsers
 };

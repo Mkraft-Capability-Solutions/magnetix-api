@@ -9,6 +9,34 @@ const bcrypt = require('bcryptjs');
  */
 
 /**
+ * Log admin action to admin_user_logs table
+ */
+const logAdminAction = async (logData) => {
+  try {
+    const {
+      userId,
+      adminId,
+      actionType,
+      actionDescription,
+      oldValue = null,
+      newValue = null,
+      additionalData = null
+    } = logData;
+
+    await pool.query(
+      `INSERT INTO admin_user_logs
+       (user_id, admin_id, action_type, action_description, old_value, new_value, additional_data)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [userId, adminId, actionType, actionDescription, oldValue, newValue,
+       additionalData ? JSON.stringify(additionalData) : null]
+    );
+  } catch (error) {
+    console.error('UserManagementService - logAdminAction error:', error);
+    // Don't throw error here to prevent logging from breaking the main operation
+  }
+};
+
+/**
  * Get all users with pagination and filtering
  */
 const getAllUsers = async (filters = {}) => {
@@ -324,7 +352,7 @@ const createUser = async (userData) => {
 /**
  * Update user
  */
-const updateUser = async (userId, userData) => {
+const updateUser = async (userId, userData, adminId) => {
   try {
     const { firstName, lastName, department, jobTitle, status } = userData;
 
@@ -334,6 +362,23 @@ const updateUser = async (userId, userData) => {
     );
 
     const result = rows[0]?.[0];
+
+    // Log admin action
+    if (result?.success === 1 && adminId) {
+      const changes = [];
+      if (firstName) changes.push(`firstName: ${firstName}`);
+      if (lastName) changes.push(`lastName: ${lastName}`);
+      if (department) changes.push(`department: ${department}`);
+      if (jobTitle) changes.push(`jobTitle: ${jobTitle}`);
+
+      await logAdminAction({
+        userId,
+        adminId,
+        actionType: 'update',
+        actionDescription: `Updated user profile: ${changes.join(', ')}`,
+        additionalData: { firstName, lastName, department, jobTitle }
+      });
+    }
 
     return {
       success: result?.success === 1,
@@ -348,7 +393,7 @@ const updateUser = async (userId, userData) => {
 /**
  * Change user status (direct SQL, no stored procedure)
  */
-const changeUserStatus = async (userId, status) => {
+const changeUserStatus = async (userId, status, adminId) => {
   try {
     // Convert status to lowercase for database
     const dbStatus = status.toLowerCase();
@@ -362,6 +407,13 @@ const changeUserStatus = async (userId, status) => {
       };
     }
 
+    // Get old status first
+    const [userRows] = await pool.query(
+      'SELECT status FROM users WHERE uuid = ? AND is_deleted = 0',
+      [userId]
+    );
+    const oldStatus = userRows[0]?.status || null;
+
     // Update user status directly
     const [result] = await pool.query(
       'UPDATE users SET status = ?, updated_at = NOW() WHERE uuid = ? AND is_deleted = 0',
@@ -373,6 +425,18 @@ const changeUserStatus = async (userId, status) => {
         success: false,
         message: 'User not found'
       };
+    }
+
+    // Log admin action
+    if (adminId) {
+      await logAdminAction({
+        userId,
+        adminId,
+        actionType: 'status_change',
+        actionDescription: `Changed user status from ${oldStatus} to ${status}`,
+        oldValue: oldStatus,
+        newValue: status
+      });
     }
 
     return {
@@ -388,7 +452,7 @@ const changeUserStatus = async (userId, status) => {
 /**
  * Change user role (migrates data between role tables)
  */
-const changeUserRole = async (userId, newRole) => {
+const changeUserRole = async (userId, newRole, adminId) => {
   const connection = await pool.getConnection();
 
   try {
@@ -410,6 +474,11 @@ const changeUserRole = async (userId, newRole) => {
 
     const currentRoleId = userRows[0].role_id;
     const newRoleId = newRole === 'admin' ? 3 : newRole === 'instructor' ? 2 : newRole === 'super_admin' ? 4 : 1;
+
+    // Get old role name for logging
+    const oldRole = currentRoleId === 1 ? 'student' :
+                    currentRoleId === 2 ? 'instructor' :
+                    currentRoleId === 3 ? 'admin' : 'super_admin';
 
     // If role is the same, no need to change
     if (currentRoleId === newRoleId) {
@@ -475,6 +544,18 @@ const changeUserRole = async (userId, newRole) => {
 
     await connection.commit();
 
+    // Log admin action
+    if (adminId) {
+      await logAdminAction({
+        userId,
+        adminId,
+        actionType: 'role_change',
+        actionDescription: `Changed user role from ${oldRole} to ${newRole}`,
+        oldValue: oldRole,
+        newValue: newRole
+      });
+    }
+
     return {
       success: true,
       message: `User role updated to ${newRole} successfully`
@@ -491,7 +572,7 @@ const changeUserRole = async (userId, newRole) => {
 /**
  * Reset user password
  */
-const resetUserPassword = async (userId) => {
+const resetUserPassword = async (userId, adminId) => {
   try {
     // Generate new random password
     const newPassword = crypto.randomBytes(8).toString('base64').slice(0, 12);
@@ -511,6 +592,16 @@ const resetUserPassword = async (userId) => {
         success: false,
         message: 'User not found'
       };
+    }
+
+    // Log admin action
+    if (adminId) {
+      await logAdminAction({
+        userId,
+        adminId,
+        actionType: 'password_reset',
+        actionDescription: 'Reset user password'
+      });
     }
 
     return {
@@ -742,7 +833,7 @@ const getCoursesForEnrollment = async (userId, filters = {}) => {
 /**
  * Enroll user in a course
  */
-const enrollUserInCourse = async (userId, courseId) => {
+const enrollUserInCourse = async (userId, courseId, adminId) => {
   try {
     // Check if already enrolled
     const [existing] = await pool.query(
@@ -757,11 +848,29 @@ const enrollUserInCourse = async (userId, courseId) => {
       };
     }
 
+    // Get course name for logging
+    const [courseRows] = await pool.query(
+      'SELECT title FROM course WHERE id = ?',
+      [courseId]
+    );
+    const courseName = courseRows[0]?.title || `Course ID: ${courseId}`;
+
     // Enroll user
     await pool.query(
       'INSERT INTO enrol (user_id, course_id, enrolled_date) VALUES (?, ?, NOW())',
       [userId, courseId]
     );
+
+    // Log admin action
+    if (adminId) {
+      await logAdminAction({
+        userId,
+        adminId,
+        actionType: 'enroll',
+        actionDescription: `Enrolled user in course: ${courseName}`,
+        additionalData: { courseId, courseName }
+      });
+    }
 
     return {
       success: true,
@@ -776,7 +885,7 @@ const enrollUserInCourse = async (userId, courseId) => {
 /**
  * Unenroll user from a course
  */
-const unenrollUserFromCourse = async (userId, courseId) => {
+const unenrollUserFromCourse = async (userId, courseId, adminId) => {
   try {
     // Check if enrolled
     const [existing] = await pool.query(
@@ -791,6 +900,13 @@ const unenrollUserFromCourse = async (userId, courseId) => {
       };
     }
 
+    // Get course name for logging
+    const [courseRows] = await pool.query(
+      'SELECT title FROM course WHERE id = ?',
+      [courseId]
+    );
+    const courseName = courseRows[0]?.title || `Course ID: ${courseId}`;
+
     // Delete enrollment
     await pool.query(
       'DELETE FROM enrol WHERE user_id = ? AND course_id = ?',
@@ -802,6 +918,17 @@ const unenrollUserFromCourse = async (userId, courseId) => {
       'DELETE cp FROM course_progress cp INNER JOIN enrol e ON cp.enroll_id = e.id WHERE e.user_id = ? AND e.course_id = ?',
       [userId, courseId]
     );
+
+    // Log admin action
+    if (adminId) {
+      await logAdminAction({
+        userId,
+        adminId,
+        actionType: 'unenroll',
+        actionDescription: `Unenrolled user from course: ${courseName}`,
+        additionalData: { courseId, courseName }
+      });
+    }
 
     return {
       success: true,
@@ -892,6 +1019,63 @@ const bulkImportUsers = async (usersData, instance = 'default') => {
   }
 };
 
+/**
+ * Get admin logs for a specific user with pagination
+ */
+const getAdminLogs = async (userId, page = 1, limit = 10) => {
+  try {
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get total count
+    const [countResult] = await pool.query(
+      'SELECT COUNT(*) as total_count FROM admin_user_logs WHERE user_id = ?',
+      [userId]
+    );
+    const totalCount = countResult[0]?.total_count || 0;
+
+    // Get paginated logs with admin details
+    const logsQuery = `
+      SELECT
+        aul.id,
+        aul.action_type as actionType,
+        aul.action_description as actionDescription,
+        aul.old_value as oldValue,
+        aul.new_value as newValue,
+        aul.additional_data as additionalData,
+        aul.created_at as createdAt,
+        CONCAT(admin_profile.first_name, ' ', admin_profile.last_name) as adminName
+      FROM admin_user_logs aul
+      LEFT JOIN (
+        SELECT user_id, first_name, last_name FROM students
+        UNION ALL
+        SELECT user_id, first_name, last_name FROM instructors
+        UNION ALL
+        SELECT user_id, first_name, last_name FROM admins
+        UNION ALL
+        SELECT user_id, first_name, last_name FROM super_admins
+      ) admin_profile ON aul.admin_id = admin_profile.user_id
+      WHERE aul.user_id = ?
+      ORDER BY aul.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const [logs] = await pool.query(logsQuery, [userId, parseInt(limit), offset]);
+
+    return {
+      logs,
+      pagination: {
+        total: totalCount,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(totalCount / parseInt(limit))
+      }
+    };
+  } catch (error) {
+    console.error('UserManagementService - getAdminLogs error:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   getAllUsers,
   getUserStats,
@@ -909,5 +1093,6 @@ module.exports = {
   reactivateUser,
   getDeactivationLog,
   getDepartments,
-  bulkImportUsers
+  bulkImportUsers,
+  getAdminLogs
 };
