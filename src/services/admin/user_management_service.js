@@ -13,15 +13,124 @@ const crypto = require('crypto');
 const getAllUsers = async (filters = {}) => {
   try {
     const { search, status, department, role, page = 1, limit = 10 } = filters;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    const [countResult] = await pool.query(
-      'CALL sp_get_all_users(?, ?, ?, ?, ?, ?)',
-      [search || null, status || null, department || null, role || null, page, limit]
-    );
+    // Build WHERE clauses
+    let whereConditions = ['u.is_deleted = 0'];
+    let queryParams = [];
 
-    // First result set is the count, second is the data
-    const totalCount = countResult[0]?.[0]?.total_count || 0;
-    const users = countResult[1] || [];
+    // Search filter
+    if (search && search !== '') {
+      whereConditions.push(`(CONCAT(profile.first_name, ' ', profile.last_name) LIKE ? OR u.email LIKE ?)`);
+      queryParams.push(`%${search}%`, `%${search}%`);
+    }
+
+    // Status filter
+    if (status && status !== '' && status !== 'All Status') {
+      whereConditions.push('u.status = ?');
+      queryParams.push(status.toLowerCase());
+    }
+
+    // Department filter
+    if (department && department !== '' && department !== 'All Department') {
+      whereConditions.push('sci.department = ?');
+      queryParams.push(department);
+    }
+
+    // Role filter
+    if (role && role !== '' && role !== 'All Roles') {
+      if (role === 'student') whereConditions.push('u.role_id = 1');
+      else if (role === 'instructor') whereConditions.push('u.role_id = 2');
+      else if (role === 'admin') whereConditions.push('u.role_id = 3');
+    }
+
+    const whereClause = whereConditions.join(' AND ');
+
+    // Get total count
+    const countQuery = `
+      SELECT COUNT(*) as total_count
+      FROM users u
+      LEFT JOIN (
+        SELECT user_id, first_name, last_name FROM students
+        UNION ALL
+        SELECT user_id, first_name, last_name FROM instructors
+        UNION ALL
+        SELECT user_id, first_name, last_name FROM admins
+      ) profile ON u.uuid = profile.user_id
+      LEFT JOIN student_corporate_info sci ON u.uuid = sci.user_id
+      WHERE ${whereClause}
+    `;
+
+    const [countResult] = await pool.query(countQuery, queryParams);
+    const totalCount = countResult[0]?.total_count || 0;
+
+    // Get paginated users
+    const usersQuery = `
+      SELECT
+        u.uuid as id,
+        CONCAT(profile.first_name, ' ', profile.last_name) as name,
+        UPPER(CONCAT(LEFT(profile.first_name, 1), LEFT(profile.last_name, 1))) as initials,
+        u.email,
+        CASE u.role_id
+          WHEN 1 THEN 'student'
+          WHEN 2 THEN 'instructor'
+          WHEN 3 THEN 'admin'
+        END as role,
+        COALESCE(sci.department, 'N/A') as department,
+        COALESCE(sci.designation, sci.job_profile, 'N/A') as jobTitle,
+        CASE
+          WHEN u.status = 'active' THEN 'Active'
+          ELSE 'Inactive'
+        END as status,
+        u.updated_at as lastLogin,
+        COALESCE(active_courses.count, 0) as coursesActive,
+        COALESCE(completed_courses.count, 0) as coursesCompleted,
+        u.created_at as createdAt,
+        profile.dp as avatar,
+        profile.contact as phone,
+        profile.city as location,
+        sci.manager_name as manager
+      FROM users u
+      LEFT JOIN (
+        SELECT user_id, first_name, last_name, dp, contact, city FROM students
+        UNION ALL
+        SELECT user_id, first_name, last_name, dp, contact, city FROM instructors
+        UNION ALL
+        SELECT user_id, first_name, last_name, dp, contact, city FROM admins
+      ) profile ON u.uuid = profile.user_id
+      LEFT JOIN student_corporate_info sci ON u.uuid = sci.user_id
+      LEFT JOIN (
+        SELECT e.user_id, COUNT(DISTINCT e.course_id) as count
+        FROM enrol e
+        LEFT JOIN (
+          SELECT cp.enroll_id,
+                 SUM(cp.lesson_completed) as completed_lessons,
+                 COUNT(*) as total_lessons
+          FROM course_progress cp
+          GROUP BY cp.enroll_id
+        ) progress ON e.id = progress.enroll_id
+        WHERE progress.completed_lessons IS NULL OR progress.completed_lessons < progress.total_lessons
+        GROUP BY e.user_id
+      ) active_courses ON u.uuid = active_courses.user_id
+      LEFT JOIN (
+        SELECT e.user_id, COUNT(DISTINCT e.course_id) as count
+        FROM enrol e
+        INNER JOIN (
+          SELECT cp.enroll_id,
+                 SUM(cp.lesson_completed) as completed_lessons,
+                 COUNT(*) as total_lessons
+          FROM course_progress cp
+          GROUP BY cp.enroll_id
+          HAVING SUM(cp.lesson_completed) = COUNT(*)
+        ) progress ON e.id = progress.enroll_id
+        GROUP BY e.user_id
+      ) completed_courses ON u.uuid = completed_courses.user_id
+      WHERE ${whereClause}
+      ORDER BY u.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const [users] = await pool.query(usersQuery, [...queryParams, parseInt(limit), offset]);
 
     return {
       users,
@@ -29,7 +138,7 @@ const getAllUsers = async (filters = {}) => {
         total: totalCount,
         page: parseInt(page),
         limit: parseInt(limit),
-        totalPages: Math.ceil(totalCount / limit)
+        totalPages: Math.ceil(totalCount / parseInt(limit))
       }
     };
   } catch (error) {
@@ -43,8 +152,16 @@ const getAllUsers = async (filters = {}) => {
  */
 const getUserStats = async () => {
   try {
-    const [rows] = await pool.query('CALL sp_get_user_stats()');
-    const stats = rows[0]?.[0] || {};
+    const statsQuery = `
+      SELECT
+        (SELECT COUNT(*) FROM users WHERE is_deleted = 0) as totalUsers,
+        (SELECT COUNT(*) FROM users WHERE is_deleted = 0 AND status = 'active') as activeUsers,
+        (SELECT COUNT(*) FROM users WHERE is_deleted = 0 AND status != 'active') as inactiveUsers,
+        (SELECT COUNT(*) FROM users WHERE is_deleted = 0 AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as newThisMonth
+    `;
+
+    const [rows] = await pool.query(statsQuery);
+    const stats = rows[0] || {};
 
     return {
       totalUsers: stats.totalUsers || 0,
@@ -63,8 +180,79 @@ const getUserStats = async () => {
  */
 const getUserById = async (userId) => {
   try {
-    const [rows] = await pool.query('CALL sp_get_user_by_id(?)', [userId]);
-    const user = rows[0]?.[0] || null;
+    const userQuery = `
+      SELECT
+        u.uuid as id,
+        CONCAT(profile.first_name, ' ', profile.last_name) as name,
+        profile.first_name as firstName,
+        profile.last_name as lastName,
+        UPPER(CONCAT(LEFT(profile.first_name, 1), LEFT(profile.last_name, 1))) as initials,
+        u.email,
+        CASE u.role_id
+          WHEN 1 THEN 'student'
+          WHEN 2 THEN 'instructor'
+          WHEN 3 THEN 'admin'
+        END as role,
+        u.role_id as roleId,
+        COALESCE(sci.department, 'N/A') as department,
+        COALESCE(sci.designation, sci.job_profile, 'N/A') as jobTitle,
+        CASE
+          WHEN u.status = 'active' THEN 'Active'
+          ELSE 'Inactive'
+        END as status,
+        u.updated_at as lastLogin,
+        u.created_at as joinDate,
+        profile.dp as avatar,
+        profile.contact as phone,
+        profile.city as location,
+        profile.address,
+        profile.state,
+        profile.country,
+        sci.manager_name as manager,
+        sci.organization_name as organization,
+        COALESCE(completed_courses.count, 0) as coursesCompleted,
+        COALESCE(active_courses.count, 0) as coursesActive,
+        (COALESCE(completed_courses.count, 0) + COALESCE(active_courses.count, 0)) as totalCourses
+      FROM users u
+      LEFT JOIN (
+        SELECT user_id, first_name, last_name, dp, contact, city, address, state, country FROM students
+        UNION ALL
+        SELECT user_id, first_name, last_name, dp, contact, city, address, state, country FROM instructors
+        UNION ALL
+        SELECT user_id, first_name, last_name, dp, contact, city, address, state, country FROM admins
+      ) profile ON u.uuid = profile.user_id
+      LEFT JOIN student_corporate_info sci ON u.uuid = sci.user_id
+      LEFT JOIN (
+        SELECT e.user_id, COUNT(DISTINCT e.course_id) as count
+        FROM enrol e
+        LEFT JOIN (
+          SELECT cp.enroll_id,
+                 SUM(cp.lesson_completed) as completed_lessons,
+                 COUNT(*) as total_lessons
+          FROM course_progress cp
+          GROUP BY cp.enroll_id
+        ) progress ON e.id = progress.enroll_id
+        WHERE progress.completed_lessons IS NULL OR progress.completed_lessons < progress.total_lessons
+        GROUP BY e.user_id
+      ) active_courses ON u.uuid = active_courses.user_id
+      LEFT JOIN (
+        SELECT e.user_id, COUNT(DISTINCT e.course_id) as count
+        FROM enrol e
+        INNER JOIN (
+          SELECT cp.enroll_id,
+                 SUM(cp.lesson_completed) as completed_lessons,
+                 COUNT(*) as total_lessons
+          FROM course_progress cp
+          GROUP BY cp.enroll_id
+          HAVING SUM(cp.lesson_completed) = COUNT(*)
+        ) progress ON e.id = progress.enroll_id
+        GROUP BY e.user_id
+      ) completed_courses ON u.uuid = completed_courses.user_id
+      WHERE u.uuid = ? AND u.is_deleted = 0
+    `;
+
+    const [rows] = await pool.query(userQuery, [userId]);
+    const user = rows[0] || null;
 
     if (!user) {
       return null;
@@ -231,10 +419,15 @@ const getDeactivationLog = async (page = 1, limit = 10) => {
  */
 const getDepartments = async () => {
   try {
-    const [rows] = await pool.query('CALL sp_get_departments()');
-    const departments = rows[0] || [];
+    const departmentsQuery = `
+      SELECT DISTINCT department
+      FROM student_corporate_info
+      WHERE department IS NOT NULL AND department != ''
+      ORDER BY department
+    `;
 
-    return departments.map(d => d.department).filter(Boolean);
+    const [rows] = await pool.query(departmentsQuery);
+    return rows.map(d => d.department).filter(Boolean);
   } catch (error) {
     console.error('UserManagementService - getDepartments error:', error);
     throw error;
