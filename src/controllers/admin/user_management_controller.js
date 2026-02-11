@@ -83,6 +83,29 @@ const getUserById = async (req, res) => {
 };
 
 /**
+ * Get user's learning history
+ */
+const getUserLearningHistory = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const learningHistory = await userManagementService.getUserLearningHistory(id);
+
+    res.json({
+      success: true,
+      data: learningHistory
+    });
+  } catch (error) {
+    console.error('UserManagementController - getUserLearningHistory error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch learning history',
+      error: error.message
+    });
+  }
+};
+
+/**
  * Create a new user
  */
 const createUser = async (req, res) => {
@@ -173,6 +196,115 @@ const updateUser = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update user',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Change user status
+ */
+const changeUserStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status is required'
+      });
+    }
+
+    const result = await userManagementService.changeUserStatus(id, status);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error('UserManagementController - changeUserStatus error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to change user status',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Change user role
+ */
+const changeUserRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    if (!role) {
+      return res.status(400).json({
+        success: false,
+        message: 'Role is required'
+      });
+    }
+
+    const result = await userManagementService.changeUserRole(id, role);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error('UserManagementController - changeUserRole error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to change user role',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Reset user password
+ */
+const resetUserPassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await userManagementService.resetUserPassword(id);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: result.message,
+      data: {
+        newPassword: result.newPassword
+      }
+    });
+  } catch (error) {
+    console.error('UserManagementController - resetUserPassword error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reset password',
       error: error.message
     });
   }
@@ -290,6 +422,103 @@ const getDepartments = async (req, res) => {
 };
 
 /**
+ * Get courses for enrollment
+ */
+const getCoursesForEnrollment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { search, page = 1, limit = 10 } = req.query;
+
+    const result = await userManagementService.getCoursesForEnrollment(id, {
+      search,
+      page: parseInt(page),
+      limit: parseInt(limit)
+    });
+
+    res.json({
+      success: true,
+      data: result.courses,
+      pagination: result.pagination
+    });
+  } catch (error) {
+    console.error('UserManagementController - getCoursesForEnrollment error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch courses',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Enroll user in a course
+ */
+const enrollUserInCourse = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { courseId } = req.body;
+
+    if (!courseId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Course ID is required'
+      });
+    }
+
+    const result = await userManagementService.enrollUserInCourse(id, courseId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error('UserManagementController - enrollUserInCourse error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to enroll user',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Unenroll user from a course
+ */
+const unenrollUserFromCourse = async (req, res) => {
+  try {
+    const { id, courseId } = req.params;
+
+    const result = await userManagementService.unenrollUserFromCourse(id, courseId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error('UserManagementController - unenrollUserFromCourse error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to unenroll user',
+      error: error.message
+    });
+  }
+};
+
+/**
  * Bulk import users
  */
 const bulkImportUsers = async (req, res) => {
@@ -343,8 +572,15 @@ module.exports = {
   getAllUsers,
   getUserStats,
   getUserById,
+  getUserLearningHistory,
+  getCoursesForEnrollment,
+  enrollUserInCourse,
+  unenrollUserFromCourse,
   createUser,
   updateUser,
+  changeUserStatus,
+  changeUserRole,
+  resetUserPassword,
   deactivateUser,
   reactivateUser,
   getDeactivationLog,

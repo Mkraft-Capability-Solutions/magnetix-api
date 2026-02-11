@@ -1,6 +1,7 @@
 const { promisePool: pool } = require('../../config/db');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 
 /**
  * Admin User Management Service
@@ -76,8 +77,8 @@ const getAllUsers = async (filters = {}) => {
           WHEN 2 THEN 'instructor'
           WHEN 3 THEN 'admin'
         END as role,
-        COALESCE(sci.department, 'N/A') as department,
-        COALESCE(sci.designation, sci.job_profile, 'N/A') as jobTitle,
+        sci.department as department,
+        COALESCE(sci.designation, sci.job_profile) as jobTitle,
         CASE
           WHEN u.status = 'active' THEN 'Active'
           ELSE 'Inactive'
@@ -194,12 +195,9 @@ const getUserById = async (userId) => {
           WHEN 3 THEN 'admin'
         END as role,
         u.role_id as roleId,
-        COALESCE(sci.department, 'N/A') as department,
-        COALESCE(sci.designation, sci.job_profile, 'N/A') as jobTitle,
-        CASE
-          WHEN u.status = 'active' THEN 'Active'
-          ELSE 'Inactive'
-        END as status,
+        sci.department as department,
+        COALESCE(sci.designation, sci.job_profile) as jobTitle,
+        CONCAT(UCASE(LEFT(u.status, 1)), SUBSTRING(u.status, 2)) as status,
         u.updated_at as lastLogin,
         u.created_at as joinDate,
         profile.dp as avatar,
@@ -258,6 +256,13 @@ const getUserById = async (userId) => {
       return null;
     }
 
+    console.log('getUserById result:', {
+      userId,
+      coursesCompleted: user.coursesCompleted,
+      coursesActive: user.coursesActive,
+      totalCourses: user.totalCourses
+    });
+
     return user;
   } catch (error) {
     console.error('UserManagementService - getUserById error:', error);
@@ -284,11 +289,9 @@ const createUser = async (userData) => {
     const uuid = uuidv4();
     const generatedPassword = crypto.randomBytes(6).toString('base64');
 
-    // Hash password (in production, use bcrypt)
-    const hashedPassword = crypto
-      .createHash('sha256')
-      .update(generatedPassword)
-      .digest('hex');
+    // Hash password using bcrypt (same as auth service)
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(generatedPassword, salt);
 
     const [rows] = await pool.query(
       'CALL sp_create_user(?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -338,6 +341,185 @@ const updateUser = async (userId, userData) => {
     };
   } catch (error) {
     console.error('UserManagementService - updateUser error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Change user status (direct SQL, no stored procedure)
+ */
+const changeUserStatus = async (userId, status) => {
+  try {
+    // Convert status to lowercase for database
+    const dbStatus = status.toLowerCase();
+
+    // Validate status
+    const validStatuses = ['active', 'inactive', 'suspended'];
+    if (!validStatuses.includes(dbStatus)) {
+      return {
+        success: false,
+        message: 'Invalid status value'
+      };
+    }
+
+    // Update user status directly
+    const [result] = await pool.query(
+      'UPDATE users SET status = ?, updated_at = NOW() WHERE uuid = ? AND is_deleted = 0',
+      [dbStatus, userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return {
+        success: false,
+        message: 'User not found'
+      };
+    }
+
+    return {
+      success: true,
+      message: `User status updated to ${status} successfully`
+    };
+  } catch (error) {
+    console.error('UserManagementService - changeUserStatus error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Change user role (migrates data between role tables)
+ */
+const changeUserRole = async (userId, newRole) => {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    // Get current user role and data
+    const [userRows] = await connection.query(
+      'SELECT role_id, email FROM users WHERE uuid = ? AND is_deleted = 0',
+      [userId]
+    );
+
+    if (userRows.length === 0) {
+      await connection.rollback();
+      return {
+        success: false,
+        message: 'User not found'
+      };
+    }
+
+    const currentRoleId = userRows[0].role_id;
+    const newRoleId = newRole === 'admin' ? 3 : newRole === 'instructor' ? 2 : newRole === 'super_admin' ? 4 : 1;
+
+    // If role is the same, no need to change
+    if (currentRoleId === newRoleId) {
+      await connection.rollback();
+      return {
+        success: false,
+        message: 'User already has this role'
+      };
+    }
+
+    // Get user profile data from current role table
+    let currentTableName = currentRoleId === 1 ? 'students' :
+                          currentRoleId === 2 ? 'instructors' :
+                          currentRoleId === 3 ? 'admins' : 'super_admins';
+
+    const [profileRows] = await connection.query(
+      `SELECT first_name, last_name, dp, contact, city, address, state, country
+       FROM ${currentTableName} WHERE user_id = ?`,
+      [userId]
+    );
+
+    if (profileRows.length === 0) {
+      await connection.rollback();
+      return {
+        success: false,
+        message: 'User profile not found'
+      };
+    }
+
+    const profile = profileRows[0];
+
+    // Delete from current role table
+    await connection.query(
+      `DELETE FROM ${currentTableName} WHERE user_id = ?`,
+      [userId]
+    );
+
+    // If changing from student, delete corporate info
+    if (currentRoleId === 1) {
+      await connection.query(
+        'DELETE FROM student_corporate_info WHERE user_id = ?',
+        [userId]
+      );
+    }
+
+    // Insert into new role table
+    let newTableName = newRoleId === 1 ? 'students' :
+                      newRoleId === 2 ? 'instructors' :
+                      newRoleId === 3 ? 'admins' : 'super_admins';
+
+    await connection.query(
+      `INSERT INTO ${newTableName} (user_id, first_name, last_name, dp, contact, city, address, state, country)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [userId, profile.first_name, profile.last_name, profile.dp, profile.contact,
+       profile.city, profile.address, profile.state, profile.country]
+    );
+
+    // Update role_id in users table
+    await connection.query(
+      'UPDATE users SET role_id = ?, updated_at = NOW() WHERE uuid = ?',
+      [newRoleId, userId]
+    );
+
+    await connection.commit();
+
+    return {
+      success: true,
+      message: `User role updated to ${newRole} successfully`
+    };
+  } catch (error) {
+    await connection.rollback();
+    console.error('UserManagementService - changeUserRole error:', error);
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/**
+ * Reset user password
+ */
+const resetUserPassword = async (userId) => {
+  try {
+    // Generate new random password
+    const newPassword = crypto.randomBytes(8).toString('base64').slice(0, 12);
+
+    // Hash password using bcrypt (same as auth service)
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // Update password in database
+    const [result] = await pool.query(
+      'UPDATE users SET password = ?, updated_at = NOW() WHERE uuid = ? AND is_deleted = 0',
+      [hashedPassword, userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return {
+        success: false,
+        message: 'User not found'
+      };
+    }
+
+    return {
+      success: true,
+      message: 'Password reset successfully',
+      newPassword // Return this to display to admin or send via email
+    };
+  } catch (error) {
+    console.error('UserManagementService - resetUserPassword error:', error);
     throw error;
   }
 };
@@ -415,6 +597,59 @@ const getDeactivationLog = async (page = 1, limit = 10) => {
 };
 
 /**
+ * Get user's learning history (enrolled courses with progress)
+ */
+const getUserLearningHistory = async (userId) => {
+  try {
+    const learningHistoryQuery = `
+      SELECT
+        c.id as id,
+        c.title as name,
+        COALESCE(cat.name, c.level) as type,
+        e.enrolled_date as enrolledDate,
+        COALESCE(c.total_lessons, 0) as totalLessons,
+        COALESCE(progress_info.completed_lessons, 0) as completedLessons,
+        CASE
+          WHEN progress_info.completed_lessons IS NULL THEN 0
+          WHEN c.total_lessons = 0 THEN 0
+          ELSE ROUND((progress_info.completed_lessons / c.total_lessons) * 100)
+        END as progress,
+        CASE
+          WHEN progress_info.completed_lessons = c.total_lessons AND c.total_lessons > 0
+          THEN 'Completed'
+          WHEN progress_info.completed_lessons > 0
+          THEN 'In Progress'
+          ELSE 'Not Started'
+        END as status,
+        CASE
+          WHEN progress_info.completed_lessons = c.total_lessons AND c.total_lessons > 0
+          THEN progress_info.last_completed_date
+          ELSE NULL
+        END as completedDate
+      FROM enrol e
+      INNER JOIN course c ON e.course_id = c.id
+      LEFT JOIN course_category cat ON c.category_id = cat.id
+      LEFT JOIN (
+        SELECT
+          cp.enroll_id,
+          SUM(cp.lesson_completed) as completed_lessons,
+          MAX(cp.last_access) as last_completed_date
+        FROM course_progress cp
+        GROUP BY cp.enroll_id
+      ) progress_info ON e.id = progress_info.enroll_id
+      WHERE e.user_id = ? AND c.is_deleted = 0
+      ORDER BY e.enrolled_date DESC
+    `;
+
+    const [rows] = await pool.query(learningHistoryQuery, [userId]);
+    return rows;
+  } catch (error) {
+    console.error('UserManagementService - getUserLearningHistory error:', error);
+    throw error;
+  }
+};
+
+/**
  * Get distinct departments for filter dropdown
  */
 const getDepartments = async () => {
@@ -430,6 +665,150 @@ const getDepartments = async () => {
     return rows.map(d => d.department).filter(Boolean);
   } catch (error) {
     console.error('UserManagementService - getDepartments error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all courses for enrollment with pagination and search
+ */
+const getCoursesForEnrollment = async (userId, filters = {}) => {
+  try {
+    const { search, page = 1, limit = 10 } = filters;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    let whereConditions = ['c.is_deleted = 0', "c.status = 'active'"];
+    let queryParams = [];
+
+    // Search filter
+    if (search && search !== '') {
+      whereConditions.push('(c.title LIKE ? OR c.short_description LIKE ? OR cat.name LIKE ?)');
+      queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    const whereClause = whereConditions.join(' AND ');
+
+    // Get total count
+    const countQuery = `
+      SELECT COUNT(*) as total_count
+      FROM course c
+      LEFT JOIN course_category cat ON c.category_id = cat.id
+      WHERE ${whereClause}
+    `;
+
+    const [countResult] = await pool.query(countQuery, queryParams);
+    const totalCount = countResult[0]?.total_count || 0;
+
+    // Get paginated courses
+    const coursesQuery = `
+      SELECT
+        c.id,
+        c.title as name,
+        c.short_description as description,
+        c.level,
+        c.total_lessons as lessons,
+        c.course_duration as duration,
+        c.thumbnail,
+        COALESCE(cat.name, c.level) as category,
+        CASE
+          WHEN e.id IS NOT NULL THEN 1
+          ELSE 0
+        END as isEnrolled
+      FROM course c
+      LEFT JOIN course_category cat ON c.category_id = cat.id
+      LEFT JOIN enrol e ON c.id = e.course_id AND e.user_id = ?
+      WHERE ${whereClause}
+      ORDER BY c.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const [courses] = await pool.query(coursesQuery, [userId, ...queryParams, parseInt(limit), offset]);
+
+    return {
+      courses,
+      pagination: {
+        total: totalCount,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(totalCount / parseInt(limit))
+      }
+    };
+  } catch (error) {
+    console.error('UserManagementService - getCoursesForEnrollment error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Enroll user in a course
+ */
+const enrollUserInCourse = async (userId, courseId) => {
+  try {
+    // Check if already enrolled
+    const [existing] = await pool.query(
+      'SELECT id FROM enrol WHERE user_id = ? AND course_id = ?',
+      [userId, courseId]
+    );
+
+    if (existing.length > 0) {
+      return {
+        success: false,
+        message: 'User is already enrolled in this course'
+      };
+    }
+
+    // Enroll user
+    await pool.query(
+      'INSERT INTO enrol (user_id, course_id, enrolled_date) VALUES (?, ?, NOW())',
+      [userId, courseId]
+    );
+
+    return {
+      success: true,
+      message: 'User enrolled successfully'
+    };
+  } catch (error) {
+    console.error('UserManagementService - enrollUserInCourse error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Unenroll user from a course
+ */
+const unenrollUserFromCourse = async (userId, courseId) => {
+  try {
+    // Check if enrolled
+    const [existing] = await pool.query(
+      'SELECT id FROM enrol WHERE user_id = ? AND course_id = ?',
+      [userId, courseId]
+    );
+
+    if (existing.length === 0) {
+      return {
+        success: false,
+        message: 'User is not enrolled in this course'
+      };
+    }
+
+    // Delete enrollment
+    await pool.query(
+      'DELETE FROM enrol WHERE user_id = ? AND course_id = ?',
+      [userId, courseId]
+    );
+
+    // Also delete course progress data
+    await pool.query(
+      'DELETE cp FROM course_progress cp INNER JOIN enrol e ON cp.enroll_id = e.id WHERE e.user_id = ? AND e.course_id = ?',
+      [userId, courseId]
+    );
+
+    return {
+      success: true,
+      message: 'User unenrolled successfully'
+    };
+  } catch (error) {
+    console.error('UserManagementService - unenrollUserFromCourse error:', error);
     throw error;
   }
 };
@@ -452,10 +831,10 @@ const bulkImportUsers = async (usersData, instance = 'default') => {
       try {
         const uuid = uuidv4();
         const generatedPassword = crypto.randomBytes(6).toString('base64');
-        const hashedPassword = crypto
-          .createHash('sha256')
-          .update(generatedPassword)
-          .digest('hex');
+
+        // Hash password using bcrypt (same as auth service)
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(generatedPassword, salt);
 
         const role = user.role || 'student';
         const roleId = role === 'admin' ? 3 : role === 'instructor' ? 2 : 1;
@@ -517,8 +896,15 @@ module.exports = {
   getAllUsers,
   getUserStats,
   getUserById,
+  getUserLearningHistory,
+  getCoursesForEnrollment,
+  enrollUserInCourse,
+  unenrollUserFromCourse,
   createUser,
   updateUser,
+  changeUserStatus,
+  changeUserRole,
+  resetUserPassword,
   deactivateUser,
   reactivateUser,
   getDeactivationLog,
