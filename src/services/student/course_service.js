@@ -672,11 +672,17 @@ async getCourseBasicDetails(courseId) {
 
 async getEnrolledCourseDetails(userId, courseId) {
   try {
+    // Update last_accessed timestamp for enrolled users viewing the course
+    await promisePool.query(
+      'UPDATE enrol SET last_accessed = NOW() WHERE user_id = ? AND course_id = ?',
+      [userId, courseId]
+    );
+
     const [results] = await promisePool.query(
       'CALL get_course_enrolled_details(?, ?)',
       [userId, courseId]
     );
-    
+
     // First result sets are from get_course_basic_details
     const courseInfo = results[0][0];
     const requirements = results[1];
@@ -688,15 +694,15 @@ async getEnrolledCourseDetails(userId, courseId) {
     const iltsLessons = results[7];
     const reviews = results[8];
     const ratingStats = results[9][0];
-    
+
     // Additional result sets for enrolled details
     const lessonsWithProgress = results[10];
     const progressSummary = results[11][0];
     const achievedSkills = results[12];
-    
+
     // Combine all lessons
     const allLessons = [...contentLessons, ...iltsLessons];
-    
+
     return new ServiceResponseDTO(true, {
       ...courseInfo,
       requirements: requirements.map(req => new CourseRequirementDTO(req)),
