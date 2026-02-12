@@ -289,8 +289,9 @@ exports.getCourseDetails = async (req, res, next) => {
 exports.getLessonById = async (req, res, next) => {
   try {
     const { courseId, lessonId } = req.params;
+    const userId = req.user.uuid;
 
-    console.log('getLessonById called with courseId:', courseId, 'lessonId:', lessonId);
+    console.log('getLessonById called with courseId:', courseId, 'lessonId:', lessonId, 'userId:', userId);
 
     if (!courseId || !lessonId) {
       return res.status(400).json({
@@ -299,7 +300,7 @@ exports.getLessonById = async (req, res, next) => {
       });
     }
 
-    const lesson = await courseService.getLessonById(courseId, lessonId);
+    const lesson = await courseService.getLessonById(courseId, lessonId, userId);
 
     res.json({
       success: true,

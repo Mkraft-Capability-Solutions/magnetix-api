@@ -74,8 +74,12 @@ BEGIN
       WHERE cp.enroll_id = e.id
     );
 
-  -- Count skills - set to 0 (skills feature not yet implemented)
-  SET skills_gained = 0;
+  -- Count skills in progress from AI learning path
+  -- Skills are considered "in progress" when mastery_percentage < 100
+  SELECT COUNT(*) INTO skills_gained
+  FROM ai_learning_path_skills
+  WHERE user_id = p_user_id
+    AND mastery_percentage < 100;
 
   -- Count achievements from gamification system
   -- Only counts unlocked achievements
