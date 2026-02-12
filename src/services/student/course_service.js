@@ -672,11 +672,18 @@ async getCourseBasicDetails(courseId) {
 
 async getEnrolledCourseDetails(userId, courseId) {
   try {
+    // Update last_accessed timestamp for enrolled users viewing the course
+    // COMMENTED OUT: last_accessed column doesn't exist in enrol table
+    // await promisePool.query(
+    //   'UPDATE enrol SET last_accessed = NOW() WHERE user_id = ? AND course_id = ?',
+    //   [userId, courseId]
+    // );
+
     const [results] = await promisePool.query(
       'CALL get_course_enrolled_details(?, ?)',
       [userId, courseId]
     );
-    
+
     // First result sets are from get_course_basic_details
     const courseInfo = results[0][0];
     const requirements = results[1];
@@ -688,15 +695,15 @@ async getEnrolledCourseDetails(userId, courseId) {
     const iltsLessons = results[7];
     const reviews = results[8];
     const ratingStats = results[9][0];
-    
+
     // Additional result sets for enrolled details
     const lessonsWithProgress = results[10];
     const progressSummary = results[11][0];
     const achievedSkills = results[12];
-    
+
     // Combine all lessons
     const allLessons = [...contentLessons, ...iltsLessons];
-    
+
     return new ServiceResponseDTO(true, {
       ...courseInfo,
       requirements: requirements.map(req => new CourseRequirementDTO(req)),
@@ -734,8 +741,8 @@ async getCourseDetails(userId, courseId) {
   }
 }
 
-async getLessonById(courseId, lessonId) {
-  console.log("getLessonById called with courseId:", courseId, "lessonId:", lessonId);
+async getLessonById(courseId, lessonId, userId) {
+  console.log("getLessonById called with courseId:", courseId, "lessonId:", lessonId, "userId:", userId);
 
   try {
     const [lessons] = await promisePool.query(
@@ -751,6 +758,29 @@ async getLessonById(courseId, lessonId) {
     }
 
     const lesson = lessons[0];
+
+    // Check if the lesson is completed by the user
+    let isCompleted = false;
+    if (userId) {
+      const [progress] = await promisePool.query(
+        `SELECT cp.lesson_completed
+        FROM course_progress cp
+        INNER JOIN enrol e ON cp.enroll_id = e.id
+        WHERE e.user_id = ? AND e.course_id = ? AND cp.lesson_id = ?`,
+        [userId, courseId, lessonId]
+      );
+
+      console.log('Lesson completion check - progress result:', progress);
+      console.log('Progress length:', progress.length);
+      if (progress.length > 0) {
+        console.log('lesson_completed value:', progress[0].lesson_completed);
+      }
+
+      if (progress.length > 0 && progress[0].lesson_completed === 1) {
+        isCompleted = true;
+      }
+      console.log('Final isCompleted value:', isCompleted);
+    }
 
     return {
       id: lesson.id,
@@ -776,6 +806,7 @@ async getLessonById(courseId, lessonId) {
       endTime: lesson.end_time,
       eventVenue: lesson.event_venue,
       meetUrl: lesson.meet_url,
+      isCompleted: isCompleted,
     };
   } catch (error) {
     console.error("Error in getLessonById:", error);
