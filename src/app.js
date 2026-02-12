@@ -174,6 +174,48 @@ app.use("/api/super-admin/content", superAdminLessonRoutes);
 app.use("/api/super-admin/catalog", require("./routes/super_admin/catalog_routes"));
 app.use("/api/super-admin/group-projects", require("./routes/super_admin/group_project_routes"));
 
+// SCORM manifest API endpoint
+const { getScormEntryPoint, parseScormManifest } = require("./utils/scormManifestParser");
+
+app.get("/api/scorm-manifest/:packageName", async (req, res) => {
+  try {
+    const { packageName } = req.params;
+    const packagePath = path.join(__dirname, "../uploads/courses/lessons/scorm_packages", packageName);
+
+    const manifestInfo = await parseScormManifest(packagePath);
+
+    res.json({
+      success: true,
+      data: manifestInfo
+    });
+  } catch (error) {
+    console.error("Error fetching SCORM manifest:", error);
+
+    // Fallback: Try to get entry point only
+    try {
+      const { packageName } = req.params;
+      const packagePath = path.join(__dirname, "../uploads/courses/lessons/scorm_packages", packageName);
+      const entryPoint = await getScormEntryPoint(packagePath);
+
+      res.json({
+        success: true,
+        data: {
+          entryPoint,
+          scormVersion: "1.2",
+          title: "SCORM Content",
+          fallback: true
+        }
+      });
+    } catch (fallbackError) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to parse SCORM manifest",
+        error: fallbackError.message
+      });
+    }
+  }
+});
+
 // Serve uploaded files (e.g., profile pictures)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
