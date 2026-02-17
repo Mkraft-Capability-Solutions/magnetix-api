@@ -47,6 +47,10 @@ router.get(
   "/:courseId/sections",
   adminCourseController.getSectionsByCourseId
 );
+router.put(
+  "/:courseId/sections/:sectionId",
+  adminCourseController.updateSection
+);
 router.post(
   "/:courseId/lessons",
   adminCourseController.addLesson
