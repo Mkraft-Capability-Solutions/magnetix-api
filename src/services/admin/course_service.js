@@ -2032,6 +2032,35 @@ class AdminCourseService {
     }
   }
 
+
+
+
+  async updateSection(courseId, sectionId, title, updatedBy) {
+    const connection = await promisePool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const [result] = await connection.query(
+        "UPDATE course_section SET title = ?, last_updated_by = ?, last_updated = NOW() WHERE id = ? AND course_id = ?",
+        [title, updatedBy, sectionId, courseId]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error("Section not found or no changes made");
+      }
+
+      await connection.commit();
+      return { success: true };
+    } catch (error) {
+      await connection.rollback();
+      console.error("Error in updateSection:", error);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+
   // ============================================================================
   // LESSON UPDATE & REORDERING
   // ============================================================================

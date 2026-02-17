@@ -413,6 +413,38 @@ exports.getSectionsByCourseId = async (req, res, next) => {
   }
 };
 
+exports.updateSection = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const sectionId = req.params.sectionId;
+    const { title } = req.body;
+    const updatedBy = req.user.uuid;
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Section title is required",
+      });
+    }
+
+    const result = await AdminCourseService.updateSection(
+      courseId,
+      sectionId,
+      title.trim(),
+      updatedBy
+    );
+
+    res.json({
+      success: true,
+      message: "Section updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateSection:", error);
+    next(error);
+  }
+};
+
 exports.addLesson = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;
