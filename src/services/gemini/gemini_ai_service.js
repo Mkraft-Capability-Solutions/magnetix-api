@@ -441,6 +441,97 @@ IMPORTANT Guidelines:
       throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
     }
   }
+
+  async generateSubjectiveAssessmentQuestions(topic, numberOfQuestions, difficultyLevel) {
+    await this.ensureInitialized();
+
+    const sanitizedTopic = topic
+      .replace(/<[^>]*>/g, '')
+      .replace(/[<>]/g, '')
+      .trim();
+
+    const difficultyInstruction = difficultyLevel === 'mixed'
+      ? 'Generate a mix of easy, medium, and hard questions. Distribute them roughly evenly.'
+      : `All questions should be "${difficultyLevel}" difficulty level.`;
+
+    const prompt = `You are an expert assessment creator and educator. Generate ${numberOfQuestions} high-quality subjective assessment questions on the following topic.
+
+Topic: "${sanitizedTopic}"
+
+Difficulty: ${difficultyInstruction}
+
+Generate a JSON response with this EXACT structure (no markdown, no code blocks, just pure JSON):
+{
+  "questions": [
+    {
+      "type": "paragraph",
+      "text": "Clear, thought-provoking question that requires a detailed answer",
+      "difficulty": "easy"
+    }
+  ]
+}
+
+IMPORTANT Guidelines:
+1. Generate exactly ${numberOfQuestions} questions
+2. Question types MUST be either "short_text" (brief answer) or "paragraph" (detailed answer)
+3. Use mostly "paragraph" (about 70%) for deeper understanding, with some "short_text" (about 30%) for quick recall
+4. Each question must have a "difficulty" field: "easy", "medium", or "hard"
+5. Questions should assess different learning objectives - analysis, synthesis, application
+6. Questions should be open-ended and encourage critical thinking
+7. Avoid questions with single-word answers
+8. Question text should be clear and unambiguous
+9. Do NOT include options or correctAnswers fields
+10. Return ONLY valid JSON - no explanations, no markdown formatting`;
+
+    try {
+      console.log('🤖 Generating subjective assessment questions for:', sanitizedTopic);
+
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      let text = response.text();
+      text = this._extractJSON(text);
+
+      const parsed = JSON.parse(text);
+
+      if (!parsed.questions || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+        throw new Error('PARSE_ERROR: No questions generated');
+      }
+
+      // Validate and normalize each question
+      const validatedQuestions = parsed.questions.map((q, index) => {
+        if (!q.text) {
+          throw new Error(`PARSE_ERROR: Question ${index + 1} is missing text`);
+        }
+
+        const type = q.type === 'short_text' ? 'short_text' : 'paragraph';
+        const validDifficulties = ['easy', 'medium', 'hard'];
+        const difficulty = validDifficulties.includes(q.difficulty?.toLowerCase())
+          ? q.difficulty.toLowerCase()
+          : difficultyLevel === 'mixed' ? 'medium' : difficultyLevel;
+
+        return {
+          type,
+          text: q.text.trim(),
+          difficulty
+        };
+      });
+
+      console.log(`✅ Generated ${validatedQuestions.length} subjective assessment questions for "${sanitizedTopic}"`);
+      return validatedQuestions;
+    } catch (error) {
+      console.error('❌ Subjective question generation error:', error.message);
+
+      if (error.message.includes('SAFETY')) {
+        throw new Error('CONTENT_FILTERED: Unable to generate questions for this topic. Please try a different topic.');
+      }
+
+      if (error instanceof SyntaxError) {
+        throw new Error('PARSE_ERROR: Failed to parse AI response. Please try again.');
+      }
+
+      throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
+    }
+  }
 }
 
 // Export singleton instance

@@ -76,16 +76,25 @@ const getFormById = async (formId) => {
 /**
  * Validate questions based on form type
  */
-const validateQuestions = (formType, questions) => {
+const validateQuestions = (formType, questions, assessmentType) => {
   if (!questions || questions.length === 0) {
     throw new Error('At least one question is required');
   }
 
   for (const question of questions) {
-    // For assessment type, only allow multiple choice questions
+    // For assessment type, validate based on assessment_type
     if (formType === 'assessment') {
-      if (question.type !== 'multiple_choice_single' && question.type !== 'multiple_choice_multi') {
-        throw new Error('Assessment forms can only contain multiple choice questions');
+      if (assessmentType === 'subjective') {
+        // Subjective assessments allow: short_text, paragraph, slider
+        const allowedTypes = ['short_text', 'paragraph', 'slider'];
+        if (!allowedTypes.includes(question.type)) {
+          throw new Error('Subjective assessment forms can only contain short text, paragraph, or slider questions');
+        }
+      } else {
+        // Objective assessments (default) allow: multiple_choice_single, multiple_choice_multi
+        if (question.type !== 'multiple_choice_single' && question.type !== 'multiple_choice_multi') {
+          throw new Error('Objective assessment forms can only contain multiple choice questions');
+        }
       }
     }
 
@@ -100,6 +109,11 @@ const validateQuestions = (formType, questions) => {
         throw new Error('Multiple choice questions must have at least 2 options');
       }
     }
+
+    // Validate score field (optional, defaults to 1)
+    if (question.score !== undefined && (typeof question.score !== 'number' || question.score < 1)) {
+      throw new Error('Question score must be a positive number');
+    }
   }
 };
 
@@ -112,8 +126,8 @@ const createForm = async (formData, userUuid) => {
   try {
     await connection.beginTransaction();
 
-    // Validate questions based on form type
-    validateQuestions(formData.type || 'feedback', formData.questions);
+    // Validate questions based on form type and assessment type
+    validateQuestions(formData.type || 'feedback', formData.questions, formData.assessmentType);
 
     const slug = generateSlug();
     const uuid = uuidv4();
@@ -121,15 +135,16 @@ const createForm = async (formData, userUuid) => {
     // Insert form
     const [formResult] = await connection.query(`
       INSERT INTO feedback_forms
-      (uuid, slug, name, description, type, status, expiry_date, max_responses,
+      (uuid, slug, name, description, type, assessment_type, status, expiry_date, max_responses,
        one_per_browser, collect_name, collect_email, show_correct_answers, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       uuid,
       slug,
       formData.name,
       formData.description || null,
       formData.type || 'feedback',
+      formData.assessmentType || null,
       formData.status || 'draft',
       formData.expiryDate || null,
       formData.maxResponses || null,
@@ -152,8 +167,8 @@ const createForm = async (formData, userUuid) => {
 
         await connection.query(`
           INSERT INTO feedback_questions
-          (form_id, question_order, question_type, question_text, is_required, options, correct_answers)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          (form_id, question_order, question_type, question_text, is_required, options, correct_answers, score)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           formId,
           i + 1,
@@ -161,7 +176,8 @@ const createForm = async (formData, userUuid) => {
           q.text,
           q.required ? 1 : 0,
           cleanOptions ? JSON.stringify(cleanOptions) : null,
-          correctAnswers
+          correctAnswers,
+          q.score || 1
         ]);
       }
     }
@@ -191,15 +207,15 @@ const updateForm = async (formId, formData) => {
   try {
     await connection.beginTransaction();
 
-    // Validate questions based on form type
+    // Validate questions based on form type and assessment type
     if (formData.questions) {
-      validateQuestions(formData.type || 'feedback', formData.questions);
+      validateQuestions(formData.type || 'feedback', formData.questions, formData.assessmentType);
     }
 
     // Update form
     await connection.query(`
       UPDATE feedback_forms SET
-        name = ?, description = ?, type = ?, status = ?,
+        name = ?, description = ?, type = ?, assessment_type = ?, status = ?,
         expiry_date = ?, max_responses = ?, one_per_browser = ?,
         collect_name = ?, collect_email = ?, show_correct_answers = ?
       WHERE id = ? AND is_deleted = 0
@@ -207,6 +223,7 @@ const updateForm = async (formId, formData) => {
       formData.name,
       formData.description || null,
       formData.type || 'feedback',
+      formData.assessmentType || null,
       formData.status || 'draft',
       formData.expiryDate || null,
       formData.maxResponses || null,
@@ -229,8 +246,8 @@ const updateForm = async (formId, formData) => {
 
         await connection.query(`
           INSERT INTO feedback_questions
-          (form_id, question_order, question_type, question_text, is_required, options, correct_answers)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          (form_id, question_order, question_type, question_text, is_required, options, correct_answers, score)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           formId,
           i + 1,
@@ -238,7 +255,8 @@ const updateForm = async (formId, formData) => {
           q.text,
           q.required ? 1 : 0,
           cleanOptions ? JSON.stringify(cleanOptions) : null,
-          correctAnswers
+          correctAnswers,
+          q.score || 1
         ]);
       }
     }

@@ -9,6 +9,7 @@ const app = express();
 require("dotenv").config();
 
 const allowedOrigins = [
+  "http://localhost:3000",
   process.env.FRONTEND_URL,
   process.env.ASSESSMENT_URL,
   "https://magnetix-prod.web.app","https://mkraftmagnetix.com"

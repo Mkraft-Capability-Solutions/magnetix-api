@@ -237,7 +237,7 @@ exports.getResponseById = async (req, res) => {
  */
 exports.generateAssessmentQuestions = async (req, res) => {
   try {
-    const { topic, numberOfQuestions, difficultyLevel } = req.body;
+    const { topic, numberOfQuestions, difficultyLevel, assessmentType } = req.body;
 
     // Validate required fields
     if (!topic || typeof topic !== 'string' || topic.trim().length < 3) {
@@ -265,7 +265,13 @@ exports.generateAssessmentQuestions = async (req, res) => {
     const validDifficulties = ['easy', 'medium', 'hard', 'mixed'];
     const difficulty = validDifficulties.includes(difficultyLevel) ? difficultyLevel : 'medium';
 
-    const questions = await geminiAIService.generateAssessmentQuestions(topic.trim(), count, difficulty);
+    // Choose AI generation method based on assessment type
+    let questions;
+    if (assessmentType === 'subjective') {
+      questions = await geminiAIService.generateSubjectiveAssessmentQuestions(topic.trim(), count, difficulty);
+    } else {
+      questions = await geminiAIService.generateAssessmentQuestions(topic.trim(), count, difficulty);
+    }
 
     res.json({
       success: true,
