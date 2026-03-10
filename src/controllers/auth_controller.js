@@ -123,10 +123,8 @@ exports.login = async (req, res, next) => {
       message: "Login successful",
       accessToken,
       accessTokenExpiry,
-      refreshToken:
-        process.env.NODE_ENV === "development" ? refreshToken : undefined,
-      refreshTokenExpiry:
-        process.env.NODE_ENV === "development" ? refreshTokenExpiry : undefined,
+      refreshToken,
+      refreshTokenExpiry,
       user: {
         uuid: user.uuid,
         email: user.email,
