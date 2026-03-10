@@ -23,4 +23,11 @@ router.get('/forms/:id/responses/paginated', feedbackController.getFormResponses
 router.get('/forms/:id/responses', feedbackController.getFormResponses);
 router.get('/responses/:id', feedbackController.getResponseById);
 
+// Subjective assessment scoring
+router.post('/responses/:id/ai-score', feedbackController.aiScoreResponse);
+router.put('/responses/:id/score', feedbackController.updateManualScores);
+
+// Submissions - All submissions across all forms
+router.get('/submissions', feedbackController.getAllSubmissions);
+
 module.exports = router;

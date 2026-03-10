@@ -532,6 +532,92 @@ IMPORTANT Guidelines:
       throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
     }
   }
+  /**
+   * Score subjective assessment answers using AI
+   * @param {Array} questionsAndAnswers - Array of {questionText, answerText, maxScore}
+   * @returns {Array} Array of {score, maxScore, feedback}
+   */
+  async scoreSubjectiveAnswers(questionsAndAnswers) {
+    await this.ensureInitialized();
+
+    const questionsForAI = questionsAndAnswers.map((qa, i) => ({
+      index: i + 1,
+      question: qa.questionText,
+      answer: qa.answerText || '(No answer provided)',
+      maxScore: qa.maxScore || 1
+    }));
+
+    const prompt = `You are an expert assessment evaluator. Score the following subjective answers fairly and consistently.
+
+For each question-answer pair, provide:
+- A score from 0 to the maxScore (can use decimals like 0.5)
+- Brief feedback explaining the score
+
+SCORING CRITERIA:
+- Full marks: Complete, accurate, well-explained answer
+- Partial marks: Partially correct or incomplete answer
+- Zero marks: No answer, completely wrong, or irrelevant
+
+Questions and Answers to evaluate:
+${JSON.stringify(questionsForAI, null, 2)}
+
+Generate a JSON response with this EXACT structure (no markdown, no code blocks, just pure JSON):
+{
+  "scores": [
+    {
+      "index": 1,
+      "score": 0.8,
+      "maxScore": 1,
+      "feedback": "Good understanding shown, but missed the key point about..."
+    }
+  ]
+}
+
+IMPORTANT:
+1. Evaluate EACH question independently
+2. Score must be between 0 and maxScore
+3. Be fair but rigorous
+4. Feedback should be constructive and specific (1-2 sentences)
+5. Return ONLY valid JSON`;
+
+    try {
+      console.log('🤖 Scoring subjective assessment answers...');
+
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      let text = response.text();
+      text = this._extractJSON(text);
+
+      const parsed = JSON.parse(text);
+
+      if (!parsed.scores || !Array.isArray(parsed.scores)) {
+        throw new Error('PARSE_ERROR: Invalid scoring response format');
+      }
+
+      // Map scores back to the original questions
+      const scoredResults = questionsAndAnswers.map((qa, i) => {
+        const aiResult = parsed.scores.find(s => s.index === i + 1);
+        const score = aiResult ? Math.min(Math.max(0, aiResult.score), qa.maxScore || 1) : 0;
+
+        return {
+          score: parseFloat(score.toFixed(2)),
+          maxScore: qa.maxScore || 1,
+          feedback: aiResult?.feedback || 'Unable to evaluate this answer.'
+        };
+      });
+
+      console.log(`✅ Scored ${scoredResults.length} subjective answers`);
+      return scoredResults;
+    } catch (error) {
+      console.error('❌ Subjective scoring error:', error.message);
+
+      if (error instanceof SyntaxError) {
+        throw new Error('PARSE_ERROR: Failed to parse AI scoring response. Please try again.');
+      }
+
+      throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
+    }
+  }
 }
 
 // Export singleton instance
