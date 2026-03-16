@@ -1,6 +1,7 @@
 const { promisePool } = require('../../config/db');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
+const geminiAIService = require('../gemini/gemini_ai_service');
 
 /**
  * Generate unique slug for public URL (16-char hex)
@@ -457,6 +458,7 @@ const getPublicFormBySlug = async (slug, browserFingerprint = null) => {
       name: form.name,
       description: form.description,
       type: form.type,
+      assessmentType: form.assessment_type || 'objective',
       collectName: form.collect_name === 1,
       collectEmail: form.collect_email === 1,
       showCorrectAnswers: form.show_correct_answers === 1,
@@ -543,75 +545,177 @@ const submitResponse = async (slug, responseData) => {
 
     // Get form details to check if it's an assessment
     const [formDetails] = await connection.query(
-      'SELECT type, show_correct_answers FROM feedback_forms WHERE id = ?',
+      'SELECT type, assessment_type, show_correct_answers FROM feedback_forms WHERE id = ?',
       [form.id]
     );
     const isAssessment = formDetails[0]?.type === 'assessment';
+    const isSubjective = formDetails[0]?.assessment_type === 'subjective';
     const showCorrectAnswers = formDetails[0]?.show_correct_answers === 1;
 
     // Calculate score for assessments
     let scoreData = null;
     let detailedResults = null;
+    let assessmentType = formDetails[0]?.assessment_type || 'objective';
     if (isAssessment) {
-      // Fetch questions with correct_answers for scoring (not included in public form response)
+      // Fetch questions with correct_answers and score for scoring
       const [questionsWithAnswers] = await connection.query(`
-        SELECT id, question_order, question_type, question_text, options, correct_answers
+        SELECT id, question_order, question_type, question_text, options, correct_answers, score
         FROM feedback_questions
         WHERE form_id = ?
         ORDER BY question_order ASC
       `, [form.id]);
 
       if (questionsWithAnswers.length > 0) {
-        scoreData = calculateAssessmentScore(questionsWithAnswers, responseData.answers || []);
+        // Parse options for all questions
+        const parsedQuestions = questionsWithAnswers.map(q => ({
+          ...q,
+          options: q.options ? (typeof q.options === 'string' ? JSON.parse(q.options) : q.options) : [],
+          correct_answers: q.correct_answers ? (typeof q.correct_answers === 'string' ? JSON.parse(q.correct_answers) : q.correct_answers) : [],
+        }));
 
-        // Build detailed results for each question
-        detailedResults = questionsWithAnswers.map(question => {
-          const userAnswer = (responseData.answers || []).find(a => a.questionId === question.id);
+        if (isSubjective) {
+          // AI scoring for subjective assessments
+          const subjectiveTypes = ['short_text', 'paragraph', 'slider'];
+          const questionsForAI = [];
 
-          // Parse correct answers
-          const correctAnswers = question.correct_answers
-            ? (typeof question.correct_answers === 'string'
-                ? JSON.parse(question.correct_answers)
-                : question.correct_answers)
-            : [];
-
-          // Parse question options
-          const questionOptions = question.options
-            ? (typeof question.options === 'string'
-                ? JSON.parse(question.options)
-                : question.options)
-            : [];
-
-          // Get user's selected option indices
-          let userSelectedIndices = [];
-          if (userAnswer && userAnswer.options) {
-            const selectedOptions = typeof userAnswer.options === 'string'
-              ? JSON.parse(userAnswer.options)
-              : userAnswer.options;
-
-            if (Array.isArray(selectedOptions)) {
-              userSelectedIndices = selectedOptions.map(selectedOpt =>
-                questionOptions.findIndex(opt => opt === selectedOpt)
-              ).filter(idx => idx !== -1);
+          for (const question of parsedQuestions) {
+            const userAnswer = (responseData.answers || []).find(a => a.questionId === question.id);
+            if (subjectiveTypes.includes(question.question_type)) {
+              let answerText = '';
+              if (question.question_type === 'slider') {
+                answerText = userAnswer?.text ? `Rating: ${userAnswer.text} out of 10` : (userAnswer?.rating !== undefined ? `Rating: ${userAnswer.rating} out of 10` : '(No answer)');
+              } else {
+                answerText = userAnswer?.text || '(No answer provided)';
+              }
+              questionsForAI.push({
+                questionId: question.id,
+                questionText: question.question_text,
+                answerText,
+                maxScore: question.score || 1,
+              });
             }
           }
 
-          // Check if correct
-          const correctAnswersSet = new Set(correctAnswers);
-          const userAnswersSet = new Set(userSelectedIndices);
-          const isCorrect = correctAnswers.length === userSelectedIndices.length &&
-                           correctAnswers.every(idx => userAnswersSet.has(idx)) &&
-                           userSelectedIndices.every(idx => correctAnswersSet.has(idx));
+          let aiScoringResults = null;
+          try {
+            const aiScores = await geminiAIService.scoreSubjectiveAnswers(questionsForAI);
+            aiScoringResults = {};
+            let totalScore = 0;
+            let totalMaxScore = 0;
 
-          return {
-            questionId: question.id,
-            questionText: question.question_text,
-            options: questionOptions,
-            userSelectedIndices,
-            correctIndices: correctAnswers,
-            isCorrect
-          };
-        });
+            for (let i = 0; i < questionsForAI.length; i++) {
+              const qId = questionsForAI[i].questionId;
+              const aiResult = aiScores[i];
+              aiScoringResults[qId] = {
+                score: aiResult.score,
+                maxScore: aiResult.maxScore,
+                feedback: aiResult.feedback,
+              };
+              totalScore += aiResult.score;
+              totalMaxScore += aiResult.maxScore;
+            }
+
+            // Also account for any objective questions in a mixed assessment
+            for (const question of parsedQuestions) {
+              if (!subjectiveTypes.includes(question.question_type)) {
+                const qMaxScore = question.score || 1;
+                totalMaxScore += qMaxScore;
+                const userAnswer = (responseData.answers || []).find(a => a.questionId === question.id);
+                if (userAnswer && question.correct_answers && question.correct_answers.length > 0) {
+                  let userSelectedIndices = [];
+                  if (userAnswer.options) {
+                    const selectedOptions = typeof userAnswer.options === 'string' ? JSON.parse(userAnswer.options) : userAnswer.options;
+                    if (Array.isArray(selectedOptions)) {
+                      userSelectedIndices = selectedOptions.map(opt => question.options.findIndex(o => o === opt)).filter(idx => idx !== -1);
+                    }
+                  }
+                  const correctAnswersSet = new Set(question.correct_answers);
+                  const userAnswersSet = new Set(userSelectedIndices);
+                  const isCorrect = question.correct_answers.length === userSelectedIndices.length &&
+                    question.correct_answers.every(idx => userAnswersSet.has(idx)) &&
+                    userSelectedIndices.every(idx => correctAnswersSet.has(idx));
+                  if (isCorrect) totalScore += qMaxScore;
+                }
+              }
+            }
+
+            scoreData = {
+              score: parseFloat(totalScore.toFixed(2)),
+              maxScore: totalMaxScore,
+              percentage: totalMaxScore > 0 ? ((totalScore / totalMaxScore) * 100).toFixed(2) : 0,
+            };
+          } catch (aiError) {
+            console.error('AI scoring failed for public subjective assessment:', aiError.message);
+            scoreData = calculateAssessmentScore(parsedQuestions, responseData.answers || []);
+            aiScoringResults = { _error: 'AI scoring unavailable. Your answers will be reviewed manually.' };
+          }
+
+          // Build detailed results for subjective
+          detailedResults = parsedQuestions.map(question => {
+            const userAnswer = (responseData.answers || []).find(a => a.questionId === question.id);
+            const aiResult = aiScoringResults && !aiScoringResults._error ? aiScoringResults[question.id] : null;
+
+            let userAnswerText = '';
+            if (question.question_type === 'slider') {
+              userAnswerText = userAnswer?.text ? `${userAnswer.text}/10` : (userAnswer?.rating !== undefined ? `${userAnswer.rating}/10` : 'No answer');
+            } else if (userAnswer?.text) {
+              userAnswerText = userAnswer.text;
+            } else {
+              userAnswerText = 'No answer provided';
+            }
+
+            return {
+              questionId: question.id,
+              questionText: question.question_text,
+              questionType: question.question_type,
+              userAnswerText,
+              aiScore: aiResult ? aiResult.score : null,
+              aiMaxScore: aiResult ? aiResult.maxScore : (question.score || 1),
+              aiFeedback: aiResult ? aiResult.feedback : (aiScoringResults?._error || null),
+              isSubjective: true,
+            };
+          });
+        } else {
+          // Objective scoring (existing logic)
+          scoreData = calculateAssessmentScore(parsedQuestions, responseData.answers || []);
+
+          // Build detailed results for each question
+          detailedResults = parsedQuestions.map(question => {
+            const userAnswer = (responseData.answers || []).find(a => a.questionId === question.id);
+
+            // Get user's selected option indices
+            let userSelectedIndices = [];
+            if (userAnswer && userAnswer.options) {
+              const selectedOptions = typeof userAnswer.options === 'string'
+                ? JSON.parse(userAnswer.options)
+                : userAnswer.options;
+
+              if (Array.isArray(selectedOptions)) {
+                userSelectedIndices = selectedOptions.map(selectedOpt =>
+                  question.options.findIndex(opt => opt === selectedOpt)
+                ).filter(idx => idx !== -1);
+              }
+            }
+
+            // Check if correct
+            const correctAnswersSet = new Set(question.correct_answers);
+            const userAnswersSet = new Set(userSelectedIndices);
+            const isCorrect = question.correct_answers.length === userSelectedIndices.length &&
+                             question.correct_answers.every(idx => userAnswersSet.has(idx)) &&
+                             userSelectedIndices.every(idx => correctAnswersSet.has(idx));
+
+            return {
+              questionId: question.id,
+              questionText: question.question_text,
+              questionType: question.question_type,
+              options: question.options,
+              userSelectedIndices,
+              correctIndices: question.correct_answers,
+              isCorrect,
+              isSubjective: false,
+            };
+          });
+        }
       }
     }
 
@@ -659,9 +763,10 @@ const submitResponse = async (slug, responseData) => {
         score: scoreData.score,
         maxScore: scoreData.maxScore,
         percentage: scoreData.percentage,
-        showCorrectAnswers,
-        // Only include detailed results if admin enabled showing correct answers
-        ...(showCorrectAnswers && { results: detailedResults }),
+        assessmentType,
+        showCorrectAnswers: isSubjective ? true : showCorrectAnswers,
+        // For subjective always show results; for objective only if admin enabled
+        ...((isSubjective || showCorrectAnswers) && { results: detailedResults }),
         respondentName: responseData.respondentName || responseData.name || null,
         respondentEmail: responseData.respondentEmail || responseData.email || null
       })
