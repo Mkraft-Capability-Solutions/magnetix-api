@@ -32,6 +32,10 @@ router.get('/:courseId', authenticate, authorize(1), courseController.getCourseD
 // Get single lesson details
 router.get('/:courseId/lessons/:lessonId', authenticate, authorize(1), courseController.getLessonById);
 
+// Assessment/Quiz endpoints
+router.get('/:courseId/lessons/:lessonId/assessment', authenticate, authorize(1), courseController.getLessonAssessment);
+router.post('/:courseId/lessons/:lessonId/assessment/submit', authenticate, authorize(1), courseController.submitLessonAssessment);
+
 // Mark lesson complete - supports both URL params and body params for backward compatibility
 router.post('/:courseId/lessons/:lessonId/complete', authenticate, authorize(1), courseController.markLessonCompleted);
 router.post('/mark-lesson-completed', authenticate, authorize(1), courseController.markLessonCompleted);

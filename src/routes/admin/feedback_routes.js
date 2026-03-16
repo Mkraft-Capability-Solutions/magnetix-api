@@ -5,29 +5,28 @@ const { authenticate, authorize } = require('../../middleware/auth_middleware');
 
 // Apply auth to all admin routes
 router.use(authenticate);
-router.use(authorize(3, 4)); // Admin (3) and Super Admin (4)
 
 // AI Question Generation
-router.post('/forms/ai-generate-questions', feedbackController.generateAssessmentQuestions);
+router.post('/forms/ai-generate-questions', authorize(3, 4), feedbackController.generateAssessmentQuestions);
 
-// Form CRUD
-router.get('/forms', feedbackController.getAllForms);
-router.get('/forms/:id', feedbackController.getFormById);
-router.post('/forms', feedbackController.createForm);
-router.put('/forms/:id', feedbackController.updateForm);
-router.delete('/forms/:id', feedbackController.deleteForm);
+// Form CRUD - GET forms is accessible to instructors too (for quiz lesson dropdown)
+router.get('/forms', authorize(2, 3, 4), feedbackController.getAllForms);
+router.get('/forms/:id', authorize(2, 3, 4), feedbackController.getFormById);
+router.post('/forms', authorize(3, 4), feedbackController.createForm);
+router.put('/forms/:id', authorize(3, 4), feedbackController.updateForm);
+router.delete('/forms/:id', authorize(3, 4), feedbackController.deleteForm);
 
 // Analytics & Responses
-router.get('/forms/:id/analytics', feedbackController.getFormAnalytics);
-router.get('/forms/:id/responses/paginated', feedbackController.getFormResponsesPaginated);
-router.get('/forms/:id/responses', feedbackController.getFormResponses);
-router.get('/responses/:id', feedbackController.getResponseById);
+router.get('/forms/:id/analytics', authorize(3, 4), feedbackController.getFormAnalytics);
+router.get('/forms/:id/responses/paginated', authorize(3, 4), feedbackController.getFormResponsesPaginated);
+router.get('/forms/:id/responses', authorize(3, 4), feedbackController.getFormResponses);
+router.get('/responses/:id', authorize(3, 4), feedbackController.getResponseById);
 
 // Subjective assessment scoring
-router.post('/responses/:id/ai-score', feedbackController.aiScoreResponse);
-router.put('/responses/:id/score', feedbackController.updateManualScores);
+router.post('/responses/:id/ai-score', authorize(3, 4), feedbackController.aiScoreResponse);
+router.put('/responses/:id/score', authorize(3, 4), feedbackController.updateManualScores);
 
 // Submissions - All submissions across all forms
-router.get('/submissions', feedbackController.getAllSubmissions);
+router.get('/submissions', authorize(3, 4), feedbackController.getAllSubmissions);
 
 module.exports = router;

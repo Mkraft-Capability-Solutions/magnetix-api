@@ -1379,5 +1379,6 @@ module.exports = {
   getAllSubmissions,
   aiScoreResponse,
   updateManualScores,
-  getResponseByIdWithScoring
+  getResponseByIdWithScoring,
+  calculateAssessmentScore
 };

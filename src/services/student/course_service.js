@@ -16,6 +16,7 @@ const {
 const { ServiceResponseDTO, ErrorResponseDTO } = require('../../dto/response_dto');
 const achievementsService = require('./achievements_service');
 const certificationService = require('../admin/certification_service');
+const { calculateAssessmentScore } = require('../admin/feedback_service');
 
 class CourseService {
   async getSubscribedCourses(studentId) {
@@ -746,9 +747,10 @@ async getLessonById(courseId, lessonId, userId) {
 
   try {
     const [lessons] = await promisePool.query(
-      `SELECT l.*, s.title as section_title
+      `SELECT l.*, s.title as section_title, ff.name as assessment_name
       FROM course_lesson l
       LEFT JOIN course_section s ON l.section_id = s.id
+      LEFT JOIN feedback_forms ff ON l.assessment_id = ff.id
       WHERE l.id = ? AND l.course_id = ?`,
       [lessonId, courseId]
     );
@@ -810,6 +812,7 @@ async getLessonById(courseId, lessonId, userId) {
       isCompleted: isCompleted,
       // Quiz/Assessment fields
       assessmentId: lesson.assessment_id || null,
+      assessmentName: lesson.assessment_name || null,
       requireSectionCompletion: !!lesson.require_section_completion,
       assessmentStartDate: lesson.assessment_start_date || null,
       assessmentEndDate: lesson.assessment_end_date || null,
@@ -1063,6 +1066,257 @@ async updateCourseRating(userId, courseId, rating, review = '') {
     return new ErrorResponseDTO(error);
   }
 }
+
+  // ============================================================================
+  // ASSESSMENT / QUIZ METHODS
+  // ============================================================================
+
+  /**
+   * Get assessment form + questions for a lesson's linked assessment.
+   * Does NOT return correct_answers to prevent cheating.
+   */
+  async getLessonAssessment(userId, courseId, lessonId) {
+    try {
+      // Verify enrollment
+      const [enrollment] = await promisePool.query(
+        'SELECT id FROM enrol WHERE user_id = ? AND course_id = ?',
+        [userId, courseId]
+      );
+      if (enrollment.length === 0) {
+        return new ErrorResponseDTO(new Error('You must be enrolled in this course'), 403);
+      }
+
+      // Get lesson and its assessment_id
+      const [lessons] = await promisePool.query(
+        'SELECT id, assessment_id, lesson_content_type FROM course_lesson WHERE id = ? AND course_id = ?',
+        [lessonId, courseId]
+      );
+      if (lessons.length === 0) {
+        return new ErrorResponseDTO(new Error('Lesson not found'), 404);
+      }
+      const lesson = lessons[0];
+      if (lesson.lesson_content_type !== 'quiz' || !lesson.assessment_id) {
+        return new ErrorResponseDTO(new Error('This lesson does not have an assessment'), 400);
+      }
+
+      // Get the assessment form
+      const [forms] = await promisePool.query(
+        'SELECT id, name, description, type, show_correct_answers FROM feedback_forms WHERE id = ? AND is_deleted = 0',
+        [lesson.assessment_id]
+      );
+      if (forms.length === 0) {
+        return new ErrorResponseDTO(new Error('Assessment not found'), 404);
+      }
+      const form = forms[0];
+
+      // Get questions WITHOUT correct_answers
+      const [questions] = await promisePool.query(
+        `SELECT id, question_order, question_type, question_text, is_required, options, score
+         FROM feedback_questions WHERE form_id = ? ORDER BY question_order ASC`,
+        [form.id]
+      );
+
+      // Check for previous attempt by this user
+      const [prevAttempts] = await promisePool.query(
+        `SELECT id, score, max_score, percentage, submitted_at
+         FROM feedback_responses
+         WHERE form_id = ? AND respondent_name = ?
+         ORDER BY submitted_at DESC LIMIT 1`,
+        [form.id, userId]
+      );
+
+      return new ServiceResponseDTO(true, {
+        form: {
+          id: form.id,
+          name: form.name,
+          description: form.description,
+          type: form.type,
+          showCorrectAnswers: form.show_correct_answers === 1,
+          questions: questions.map(q => ({
+            ...q,
+            options: q.options ? (typeof q.options === 'string' ? JSON.parse(q.options) : q.options) : null,
+            is_required: q.is_required === 1,
+          })),
+        },
+        previousAttempt: prevAttempts.length > 0 ? prevAttempts[0] : null,
+      });
+    } catch (error) {
+      console.error('Error in getLessonAssessment:', error);
+      return new ErrorResponseDTO(error);
+    }
+  }
+
+  /**
+   * Submit quiz answers for a lesson's assessment.
+   * Auto-scores, stores response, and marks lesson complete on pass.
+   */
+  async submitLessonAssessment(userId, courseId, lessonId, answers) {
+    const connection = await promisePool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      // Verify enrollment
+      const [enrollment] = await connection.query(
+        'SELECT id FROM enrol WHERE user_id = ? AND course_id = ?',
+        [userId, courseId]
+      );
+      if (enrollment.length === 0) {
+        await connection.rollback();
+        connection.release();
+        return new ErrorResponseDTO(new Error('You must be enrolled in this course'), 403);
+      }
+
+      // Get lesson and assessment_id
+      const [lessons] = await connection.query(
+        'SELECT id, assessment_id, lesson_content_type FROM course_lesson WHERE id = ? AND course_id = ?',
+        [lessonId, courseId]
+      );
+      if (lessons.length === 0 || lessons[0].lesson_content_type !== 'quiz' || !lessons[0].assessment_id) {
+        await connection.rollback();
+        connection.release();
+        return new ErrorResponseDTO(new Error('Invalid quiz lesson'), 400);
+      }
+      const assessmentId = lessons[0].assessment_id;
+
+      // Get form details
+      const [forms] = await connection.query(
+        'SELECT id, type, show_correct_answers FROM feedback_forms WHERE id = ? AND is_deleted = 0',
+        [assessmentId]
+      );
+      if (forms.length === 0) {
+        await connection.rollback();
+        connection.release();
+        return new ErrorResponseDTO(new Error('Assessment not found'), 404);
+      }
+      const form = forms[0];
+      const showCorrectAnswers = form.show_correct_answers === 1;
+
+      // Get questions WITH correct_answers for scoring
+      const [questions] = await connection.query(
+        `SELECT id, question_order, question_type, question_text, options, correct_answers, score
+         FROM feedback_questions WHERE form_id = ? ORDER BY question_order ASC`,
+        [assessmentId]
+      );
+
+      // Parse options for scoring
+      const questionsForScoring = questions.map(q => ({
+        ...q,
+        options: q.options ? (typeof q.options === 'string' ? JSON.parse(q.options) : q.options) : [],
+        correct_answers: q.correct_answers ? (typeof q.correct_answers === 'string' ? JSON.parse(q.correct_answers) : q.correct_answers) : [],
+      }));
+
+      // Calculate score
+      const scoreData = calculateAssessmentScore(questionsForScoring, answers);
+
+      // Check if score and max_score columns exist in feedback_responses
+      const [scoreCols] = await connection.query(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = 'lms_db' AND TABLE_NAME = 'feedback_responses'
+        AND COLUMN_NAME IN ('score', 'max_score', 'percentage')
+      `);
+      const hasScoreCols = scoreCols.length >= 3;
+
+      // Insert response - use respondent_name to store userId for student identification
+      let insertQuery, insertParams;
+      if (hasScoreCols) {
+        insertQuery = `INSERT INTO feedback_responses (form_id, respondent_name, score, max_score, percentage, submitted_at)
+                       VALUES (?, ?, ?, ?, ?, NOW())`;
+        insertParams = [assessmentId, userId, scoreData.score, scoreData.maxScore, scoreData.percentage];
+      } else {
+        insertQuery = `INSERT INTO feedback_responses (form_id, respondent_name, submitted_at)
+                       VALUES (?, ?, NOW())`;
+        insertParams = [assessmentId, userId];
+      }
+      const [responseResult] = await connection.query(insertQuery, insertParams);
+      const responseId = responseResult.insertId;
+
+      // Insert individual answers
+      for (const answer of answers) {
+        await connection.query(
+          `INSERT INTO feedback_answers (response_id, question_id, answer_text, answer_options, answer_rating)
+           VALUES (?, ?, ?, ?, ?)`,
+          [
+            responseId,
+            answer.questionId,
+            answer.text || null,
+            answer.options ? JSON.stringify(answer.options) : null,
+            answer.rating !== undefined ? answer.rating : null,
+          ]
+        );
+      }
+
+      // Auto-mark lesson complete (quiz completion = lesson completion)
+      let lessonCompleted = false;
+      try {
+        await connection.query('CALL mark_lesson_completed(?, ?, ?)', [userId, lessonId, courseId]);
+        lessonCompleted = true;
+      } catch (markError) {
+        console.error('Error auto-marking lesson complete:', markError);
+        // Don't fail the whole submission if this fails
+      }
+
+      await connection.commit();
+
+      // Build per-question results if showCorrectAnswers
+      let detailedResults = null;
+      if (showCorrectAnswers) {
+        detailedResults = questionsForScoring.map(question => {
+          const userAnswer = answers.find(a => a.questionId === question.id);
+          let userSelectedIndices = [];
+          if (userAnswer && userAnswer.options) {
+            const selectedOptions = typeof userAnswer.options === 'string'
+              ? JSON.parse(userAnswer.options) : userAnswer.options;
+            if (Array.isArray(selectedOptions)) {
+              userSelectedIndices = selectedOptions.map(opt =>
+                question.options.findIndex(o => o === opt)
+              ).filter(idx => idx !== -1);
+            }
+          }
+
+          const correctAnswersSet = new Set(question.correct_answers);
+          const userAnswersSet = new Set(userSelectedIndices);
+          const isCorrect = question.correct_answers.length === userSelectedIndices.length &&
+            question.correct_answers.every(idx => userAnswersSet.has(idx)) &&
+            userSelectedIndices.every(idx => correctAnswersSet.has(idx));
+
+          return {
+            questionId: question.id,
+            questionText: question.question_text,
+            options: question.options,
+            userSelectedIndices,
+            correctIndices: question.correct_answers,
+            isCorrect,
+          };
+        });
+      }
+
+      // Award points for quiz completion
+      try {
+        await achievementsService.awardPoints(
+          userId, 15, 0, 'quiz_complete', 'lesson', lessonId,
+          `Completed quiz for lesson ID: ${lessonId} - Score: ${scoreData.score}/${scoreData.maxScore}`
+        );
+      } catch (pointsErr) {
+        console.error('Error awarding quiz points:', pointsErr);
+      }
+
+      return new ServiceResponseDTO(true, {
+        score: scoreData.score,
+        maxScore: scoreData.maxScore,
+        percentage: parseFloat(scoreData.percentage),
+        showCorrectAnswers,
+        results: detailedResults,
+        lessonCompleted,
+        responseId,
+      });
+    } catch (error) {
+      await connection.rollback();
+      console.error('Error in submitLessonAssessment:', error);
+      return new ErrorResponseDTO(error);
+    } finally {
+      connection.release();
+    }
+  }
 
 }
 
