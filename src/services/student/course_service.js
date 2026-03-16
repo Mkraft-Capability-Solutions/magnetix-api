@@ -17,6 +17,7 @@ const { ServiceResponseDTO, ErrorResponseDTO } = require('../../dto/response_dto
 const achievementsService = require('./achievements_service');
 const certificationService = require('../admin/certification_service');
 const { calculateAssessmentScore } = require('../admin/feedback_service');
+const geminiAIService = require('../gemini/gemini_ai_service');
 
 class CourseService {
   async getSubscribedCourses(studentId) {
@@ -1101,7 +1102,7 @@ async updateCourseRating(userId, courseId, rating, review = '') {
 
       // Get the assessment form
       const [forms] = await promisePool.query(
-        'SELECT id, name, description, type, show_correct_answers FROM feedback_forms WHERE id = ? AND is_deleted = 0',
+        'SELECT id, name, description, type, assessment_type, show_correct_answers FROM feedback_forms WHERE id = ? AND is_deleted = 0',
         [lesson.assessment_id]
       );
       if (forms.length === 0) {
@@ -1131,6 +1132,7 @@ async updateCourseRating(userId, courseId, rating, review = '') {
           name: form.name,
           description: form.description,
           type: form.type,
+          assessmentType: form.assessment_type || 'objective',
           showCorrectAnswers: form.show_correct_answers === 1,
           questions: questions.map(q => ({
             ...q,
@@ -1180,7 +1182,7 @@ async updateCourseRating(userId, courseId, rating, review = '') {
 
       // Get form details
       const [forms] = await connection.query(
-        'SELECT id, type, show_correct_answers FROM feedback_forms WHERE id = ? AND is_deleted = 0',
+        'SELECT id, type, assessment_type, show_correct_answers FROM feedback_forms WHERE id = ? AND is_deleted = 0',
         [assessmentId]
       );
       if (forms.length === 0) {
@@ -1190,6 +1192,7 @@ async updateCourseRating(userId, courseId, rating, review = '') {
       }
       const form = forms[0];
       const showCorrectAnswers = form.show_correct_answers === 1;
+      const isSubjective = form.assessment_type === 'subjective';
 
       // Get questions WITH correct_answers for scoring
       const [questions] = await connection.query(
@@ -1205,8 +1208,95 @@ async updateCourseRating(userId, courseId, rating, review = '') {
         correct_answers: q.correct_answers ? (typeof q.correct_answers === 'string' ? JSON.parse(q.correct_answers) : q.correct_answers) : [],
       }));
 
-      // Calculate score
-      const scoreData = calculateAssessmentScore(questionsForScoring, answers);
+      // Calculate score - different approach for subjective vs objective
+      let scoreData;
+      let aiScoringResults = null;
+
+      if (isSubjective) {
+        // Build question-answer pairs for AI scoring
+        const subjectiveTypes = ['short_text', 'paragraph', 'slider'];
+        const questionsForAI = [];
+
+        for (const question of questionsForScoring) {
+          const userAnswer = answers.find(a => a.questionId === question.id);
+          if (subjectiveTypes.includes(question.question_type)) {
+            let answerText = '';
+            if (question.question_type === 'slider') {
+              answerText = userAnswer?.rating !== undefined ? `Rating: ${userAnswer.rating} out of 10` : '(No answer)';
+            } else {
+              answerText = userAnswer?.text || '(No answer provided)';
+            }
+            questionsForAI.push({
+              questionId: question.id,
+              questionText: question.question_text,
+              answerText,
+              maxScore: question.score || 1,
+            });
+          }
+        }
+
+        // Call Gemini AI for scoring
+        try {
+          const aiScores = await geminiAIService.scoreSubjectiveAnswers(questionsForAI);
+          aiScoringResults = {};
+          let totalScore = 0;
+          let totalMaxScore = 0;
+
+          for (let i = 0; i < questionsForAI.length; i++) {
+            const qId = questionsForAI[i].questionId;
+            const aiResult = aiScores[i];
+            aiScoringResults[qId] = {
+              score: aiResult.score,
+              maxScore: aiResult.maxScore,
+              feedback: aiResult.feedback,
+            };
+            totalScore += aiResult.score;
+            totalMaxScore += aiResult.maxScore;
+          }
+
+          // Also account for any objective questions in a mixed assessment
+          for (const question of questionsForScoring) {
+            if (!subjectiveTypes.includes(question.question_type)) {
+              const userAnswer = answers.find(a => a.questionId === question.id);
+              const qMaxScore = question.score || 1;
+              totalMaxScore += qMaxScore;
+              if (userAnswer && question.correct_answers && question.correct_answers.length > 0) {
+                let userSelectedIndices = [];
+                if (userAnswer.options) {
+                  const selectedOptions = typeof userAnswer.options === 'string'
+                    ? JSON.parse(userAnswer.options) : userAnswer.options;
+                  if (Array.isArray(selectedOptions)) {
+                    userSelectedIndices = selectedOptions.map(opt =>
+                      question.options.findIndex(o => o === opt)
+                    ).filter(idx => idx !== -1);
+                  }
+                }
+                const correctAnswersSet = new Set(question.correct_answers);
+                const userAnswersSet = new Set(userSelectedIndices);
+                const isCorrect = question.correct_answers.length === userSelectedIndices.length &&
+                  question.correct_answers.every(idx => userAnswersSet.has(idx)) &&
+                  userSelectedIndices.every(idx => correctAnswersSet.has(idx));
+                if (isCorrect) totalScore += qMaxScore;
+              }
+            }
+          }
+
+          scoreData = {
+            score: parseFloat(totalScore.toFixed(2)),
+            maxScore: totalMaxScore,
+            percentage: totalMaxScore > 0 ? ((totalScore / totalMaxScore) * 100).toFixed(2) : 0,
+          };
+        } catch (aiError) {
+          console.error('AI scoring failed, falling back to zero scores for subjective:', aiError.message);
+          // Fallback: give 0 for subjective, normal scoring for objective
+          scoreData = calculateAssessmentScore(questionsForScoring, answers);
+          // Mark that AI scoring failed
+          aiScoringResults = { _error: 'AI scoring unavailable. Your subjective answers will be reviewed manually.' };
+        }
+      } else {
+        // Objective scoring (existing logic)
+        scoreData = calculateAssessmentScore(questionsForScoring, answers);
+      }
 
       // Check if score and max_score columns exist in feedback_responses
       const [scoreCols] = await connection.query(`
@@ -1252,14 +1342,42 @@ async updateCourseRating(userId, courseId, rating, review = '') {
         lessonCompleted = true;
       } catch (markError) {
         console.error('Error auto-marking lesson complete:', markError);
-        // Don't fail the whole submission if this fails
       }
 
       await connection.commit();
 
-      // Build per-question results if showCorrectAnswers
+      // Build per-question results
       let detailedResults = null;
-      if (showCorrectAnswers) {
+      if (isSubjective) {
+        // For subjective assessments, always show results with AI feedback
+        detailedResults = questionsForScoring.map(question => {
+          const userAnswer = answers.find(a => a.questionId === question.id);
+          const aiResult = aiScoringResults && !aiScoringResults._error
+            ? aiScoringResults[question.id]
+            : null;
+
+          let userAnswerText = '';
+          if (question.question_type === 'slider') {
+            userAnswerText = userAnswer?.rating !== undefined ? `${userAnswer.rating}/10` : 'No answer';
+          } else if (userAnswer?.text) {
+            userAnswerText = userAnswer.text;
+          } else {
+            userAnswerText = 'No answer provided';
+          }
+
+          return {
+            questionId: question.id,
+            questionText: question.question_text,
+            questionType: question.question_type,
+            userAnswerText,
+            aiScore: aiResult ? aiResult.score : null,
+            aiMaxScore: aiResult ? aiResult.maxScore : (question.score || 1),
+            aiFeedback: aiResult ? aiResult.feedback : (aiScoringResults?._error || null),
+            isSubjective: true,
+          };
+        });
+      } else if (showCorrectAnswers) {
+        // Objective results (existing logic)
         detailedResults = questionsForScoring.map(question => {
           const userAnswer = answers.find(a => a.questionId === question.id);
           let userSelectedIndices = [];
@@ -1282,10 +1400,12 @@ async updateCourseRating(userId, courseId, rating, review = '') {
           return {
             questionId: question.id,
             questionText: question.question_text,
+            questionType: question.question_type,
             options: question.options,
             userSelectedIndices,
             correctIndices: question.correct_answers,
             isCorrect,
+            isSubjective: false,
           };
         });
       }
@@ -1304,7 +1424,8 @@ async updateCourseRating(userId, courseId, rating, review = '') {
         score: scoreData.score,
         maxScore: scoreData.maxScore,
         percentage: parseFloat(scoreData.percentage),
-        showCorrectAnswers,
+        showCorrectAnswers: isSubjective ? true : showCorrectAnswers,
+        assessmentType: form.assessment_type || 'objective',
         results: detailedResults,
         lessonCompleted,
         responseId,
