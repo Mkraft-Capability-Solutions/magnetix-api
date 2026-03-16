@@ -180,6 +180,14 @@ class CourseLessonDTO {
       }
 
       this.contentUrl = contentUrl;
+
+      // Quiz/Assessment fields
+      if (this.contentType === 'quiz') {
+        this.assessmentId = lessonData.assessment_id || null;
+        this.requireSectionCompletion = !!lessonData.require_section_completion;
+        this.assessmentStartDate = lessonData.assessment_start_date || null;
+        this.assessmentEndDate = lessonData.assessment_end_date || null;
+      }
     } else if (lessonData.lesson_type === 'ILTS') {
       this.iltsMode = lessonData.venue ? 'Offline' : 'Online';
       this.iltsInfo = {

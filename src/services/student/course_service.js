@@ -782,7 +782,8 @@ async getLessonById(courseId, lessonId, userId) {
       console.log('Final isCompleted value:', isCompleted);
     }
 
-    return {
+    // Build base response
+    const result = {
       id: lesson.id,
       title: lesson.title,
       section: lesson.section_title,
@@ -807,7 +808,74 @@ async getLessonById(courseId, lessonId, userId) {
       eventVenue: lesson.event_venue,
       meetUrl: lesson.meet_url,
       isCompleted: isCompleted,
+      // Quiz/Assessment fields
+      assessmentId: lesson.assessment_id || null,
+      requireSectionCompletion: !!lesson.require_section_completion,
+      assessmentStartDate: lesson.assessment_start_date || null,
+      assessmentEndDate: lesson.assessment_end_date || null,
     };
+
+    // If this is a quiz lesson, compute access control
+    if (lesson.lesson_content_type === 'quiz' && userId) {
+      let quizAccessible = true;
+      const denyReasons = [];
+
+      // Check section completion requirement
+      if (lesson.require_section_completion) {
+        const [sectionLessons] = await promisePool.query(
+          `SELECT
+            COUNT(*) as totalLessons,
+            SUM(CASE WHEN cp.lesson_completed = 1 THEN 1 ELSE 0 END) as completedLessons
+          FROM course_lesson cl
+          LEFT JOIN course_progress cp ON cl.id = cp.lesson_id
+            AND cp.enroll_id = (SELECT id FROM enrol WHERE user_id = ? AND course_id = ? LIMIT 1)
+          WHERE cl.section_id = ? AND cl.course_id = ? AND cl.id != ?
+            AND (cl.lesson_content_type IS NULL OR cl.lesson_content_type != 'quiz')`,
+          [userId, courseId, lesson.section_id, courseId, lessonId]
+        );
+
+        const total = sectionLessons[0].totalLessons || 0;
+        const completed = sectionLessons[0].completedLessons || 0;
+        const allCompleted = total > 0 && completed >= total;
+
+        result.sectionLessonsCompleted = allCompleted;
+        result.totalSectionLessons = total;
+        result.completedSectionLessons = completed;
+
+        if (!allCompleted) {
+          quizAccessible = false;
+          denyReasons.push(`Complete all lessons in this section first (${completed}/${total} completed).`);
+        }
+      }
+
+      // Check date range restriction
+      if (lesson.assessment_start_date || lesson.assessment_end_date) {
+        const now = new Date();
+
+        if (lesson.assessment_start_date) {
+          const startDate = new Date(lesson.assessment_start_date);
+          if (now < startDate) {
+            quizAccessible = false;
+            denyReasons.push(`This assessment opens on ${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.`);
+          }
+        }
+
+        if (lesson.assessment_end_date) {
+          const endDate = new Date(lesson.assessment_end_date);
+          // Set end date to end of day
+          endDate.setHours(23, 59, 59, 999);
+          if (now > endDate) {
+            quizAccessible = false;
+            denyReasons.push(`This assessment closed on ${new Date(lesson.assessment_end_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.`);
+          }
+        }
+      }
+
+      result.quizAccessible = quizAccessible;
+      result.quizAccessDeniedReason = denyReasons.length > 0 ? denyReasons.join(' ') : null;
+    }
+
+    return result;
   } catch (error) {
     console.error("Error in getLessonById:", error);
     throw error;

@@ -107,14 +107,20 @@ CREATE TABLE IF NOT EXISTS course_lesson (
   lesson_order INT DEFAULT 0,
 
   -- Content-Based fields
-  content_type ENUM('document', 'scorm', 'mp4', 'url') NULL,
+  lesson_content_type ENUM('document', 'scorm', 'mp4', 'url', 'quiz') NULL,
   lesson_content_document VARCHAR(500),
-  scorm_package VARCHAR(500),
-  video_upload VARCHAR(500),
-  content_url VARCHAR(1000),
+  lesson_content_scorm VARCHAR(500),
+  lesson_content_mp4 VARCHAR(500),
+  lesson_content_url VARCHAR(1000),
   lesson_duration VARCHAR(100),
   description TEXT,
   skills TEXT, -- JSON array of skills
+
+  -- Quiz/Assessment fields
+  assessment_id INT NULL,
+  require_section_completion TINYINT(1) DEFAULT 0,
+  assessment_start_date DATE NULL,
+  assessment_end_date DATE NULL,
 
   -- ILTS fields
   ilts_type ENUM('Online', 'Offline') NULL,
@@ -499,11 +505,11 @@ BEGIN
     l.title,
     l.lesson_type as lessonType,
     l.lesson_order as lessonOrder,
-    l.content_type as contentType,
+    l.lesson_content_type as contentType,
     l.lesson_content_document as lessonContentDocument,
-    l.scorm_package as scormPackage,
-    l.video_upload as videoUpload,
-    l.content_url as contentUrl,
+    l.lesson_content_scorm as scormPackage,
+    l.lesson_content_mp4 as videoUpload,
+    l.lesson_content_url as contentUrl,
     l.lesson_duration as lessonDuration,
     l.description,
     l.skills,
@@ -514,7 +520,11 @@ BEGIN
     l.end_date as endDate,
     l.end_time as endTime,
     l.event_venue as eventVenue,
-    l.meet_url as meetUrl
+    l.meet_url as meetUrl,
+    l.assessment_id as assessmentId,
+    l.require_section_completion as requireSectionCompletion,
+    l.assessment_start_date as assessmentStartDate,
+    l.assessment_end_date as assessmentEndDate
   FROM course_lesson l
   WHERE l.course_id = p_course_id AND l.is_deleted = 0
   ORDER BY l.section_id, l.lesson_order, l.id;
@@ -584,19 +594,25 @@ CREATE PROCEDURE add_course_lesson(
   IN p_lesson_duration VARCHAR(100),
   IN p_description TEXT,
   IN p_skills TEXT,
-  IN p_creator_id VARCHAR(36)
+  IN p_creator_id VARCHAR(36),
+  IN p_assessment_id INT,
+  IN p_require_section_completion TINYINT(1),
+  IN p_assessment_start_date DATE,
+  IN p_assessment_end_date DATE
 )
 BEGIN
   DECLARE v_lesson_id INT;
 
   INSERT INTO course_lesson (
-    course_id, section_id, title, lesson_type, content_type,
-    lesson_content_document, scorm_package, video_upload, content_url,
-    lesson_duration, description, skills, creator_id
+    course_id, section_id, title, lesson_type, lesson_content_type,
+    lesson_content_document, lesson_content_scorm, lesson_content_mp4, lesson_content_url,
+    lesson_duration, description, skills, creator_id,
+    assessment_id, require_section_completion, assessment_start_date, assessment_end_date
   ) VALUES (
     p_course_id, p_section_id, p_title, p_lesson_type, p_content_type,
     p_lesson_content_document, p_scorm_package, p_video_upload, p_content_url,
-    p_lesson_duration, p_description, p_skills, p_creator_id
+    p_lesson_duration, p_description, p_skills, p_creator_id,
+    p_assessment_id, COALESCE(p_require_section_completion, 0), p_assessment_start_date, p_assessment_end_date
   );
 
   SET v_lesson_id = LAST_INSERT_ID();
@@ -869,12 +885,16 @@ BEGIN
     l.title,
     l.section_id as sectionId,
     l.lesson_type as lessonType,
-    l.content_type as contentType,
-    l.video_upload as videoUrl,
-    l.scorm_package as scormUrl,
+    l.lesson_content_type as contentType,
+    l.lesson_content_mp4 as videoUrl,
+    l.lesson_content_scorm as scormUrl,
     l.lesson_content_document as documentUrl,
-    l.content_url as externalUrl,
+    l.lesson_content_url as externalUrl,
     l.lesson_duration as duration,
+    l.assessment_id,
+    l.require_section_completion,
+    l.assessment_start_date,
+    l.assessment_end_date,
     COALESCE(lp.progress, 0) as progress,
     COALESCE(lp.completed, 0) as completed
   FROM course_lesson l
