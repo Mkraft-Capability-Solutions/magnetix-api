@@ -342,3 +342,101 @@ exports.getLearningEngagementData = async (req, res) => {
     });
   }
 };
+
+/**
+ * Get login activity data (daily active users over 30 days)
+ * GET /api/admin/reports/login-activity
+ */
+exports.getLoginActivity = async (req, res) => {
+  try {
+    const data = await reportService.getLoginActivity();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Report Controller - getLoginActivity error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch login activity', error: error.message });
+  }
+};
+
+/**
+ * Get enrollment timeline data
+ * GET /api/admin/reports/enrollment-timeline
+ */
+exports.getEnrollmentTimeline = async (req, res) => {
+  try {
+    const data = await reportService.getEnrollmentTimeline();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Report Controller - getEnrollmentTimeline error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch enrollment timeline', error: error.message });
+  }
+};
+
+/**
+ * Get category breakdown data
+ * GET /api/admin/reports/category-breakdown
+ */
+exports.getCategoryBreakdown = async (req, res) => {
+  try {
+    const data = await reportService.getCategoryBreakdown();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Report Controller - getCategoryBreakdown error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch category breakdown', error: error.message });
+  }
+};
+
+/**
+ * Get progress distribution data
+ * GET /api/admin/reports/progress-distribution
+ */
+exports.getProgressDistribution = async (req, res) => {
+  try {
+    const data = await reportService.getProgressDistribution();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Report Controller - getProgressDistribution error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch progress distribution', error: error.message });
+  }
+};
+
+/**
+ * Get user growth data
+ * GET /api/admin/reports/user-growth
+ */
+exports.getUserGrowth = async (req, res) => {
+  try {
+    const data = await reportService.getUserGrowth();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Report Controller - getUserGrowth error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch user growth', error: error.message });
+  }
+};
+
+/**
+ * Get role distribution data
+ * GET /api/admin/reports/role-distribution
+ */
+exports.getRoleDistribution = async (req, res) => {
+  try {
+    const data = await reportService.getRoleDistribution();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Report Controller - getRoleDistribution error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch role distribution', error: error.message });
+  }
+};
+
+/**
+ * Get activity heatmap data
+ * GET /api/admin/reports/activity-heatmap
+ */
+exports.getActivityHeatmap = async (req, res) => {
+  try {
+    const data = await reportService.getActivityHeatmap();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Report Controller - getActivityHeatmap error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch activity heatmap', error: error.message });
+  }
+};

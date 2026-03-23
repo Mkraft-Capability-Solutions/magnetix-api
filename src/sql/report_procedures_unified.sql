@@ -298,18 +298,44 @@ BEGIN
     c.title as courseTitle,
     COALESCE(cat.category_name, 'Uncategorized') as category,
     COUNT(DISTINCT e.user_id) as totalEnrollments,
-    COUNT(DISTINCT CASE WHEN e.last_updated IS NOT NULL THEN e.user_id END) as completedCount,
+    COUNT(DISTINCT CASE
+      WHEN total_lessons.lesson_count > 0
+        AND completed_lessons.completed_count >= total_lessons.lesson_count
+      THEN e.user_id
+    END) as completedCount,
     ROUND(
-      COUNT(DISTINCT CASE WHEN e.last_updated IS NOT NULL THEN e.user_id END) * 100.0 /
+      COUNT(DISTINCT CASE
+        WHEN total_lessons.lesson_count > 0
+          AND completed_lessons.completed_count >= total_lessons.lesson_count
+        THEN e.user_id
+      END) * 100.0 /
       NULLIF(COUNT(DISTINCT e.user_id), 0),
       1
     ) as completionRate,
-    COALESCE(AVG(cp.time_spent), 0) as avgTimeSpentMinutes,
+    COALESCE(ROUND(AVG(cp_time.time_spent), 1), 0) as avgTimeSpentMinutes,
     c.course_duration as courseDuration
   FROM course c
   LEFT JOIN enrol e ON c.id = e.course_id
   LEFT JOIN category cat ON c.category_id = cat.id
-  LEFT JOIN course_progress cp ON e.id = cp.enroll_id
+  LEFT JOIN (
+    SELECT cl.course_id, COUNT(*) as lesson_count
+    FROM course_lesson cl
+    INNER JOIN course_section cs ON cl.section_id = cs.id
+    WHERE cl.is_deleted = 0
+    GROUP BY cl.course_id
+  ) total_lessons ON c.id = total_lessons.course_id
+  LEFT JOIN (
+    SELECT cp.enroll_id, e2.course_id, COUNT(*) as completed_count
+    FROM course_progress cp
+    INNER JOIN enrol e2 ON cp.enroll_id = e2.id
+    WHERE cp.lesson_completed = 1
+    GROUP BY cp.enroll_id, e2.course_id
+  ) completed_lessons ON e.id = completed_lessons.enroll_id AND c.id = completed_lessons.course_id
+  LEFT JOIN (
+    SELECT enroll_id, COALESCE(SUM(time_spent), 0) as time_spent
+    FROM course_progress
+    GROUP BY enroll_id
+  ) cp_time ON e.id = cp_time.enroll_id
   WHERE c.is_deleted = 0
     AND (p_instructor_id IS NULL OR c.creator_id = p_instructor_id)
     AND (p_from_date IS NULL OR e.enrolled_date >= p_from_date)

@@ -66,6 +66,48 @@ router.get('/course-completion-data', reportController.getCourseCompletionData);
 router.get('/learning-engagement-data', reportController.getLearningEngagementData);
 
 /**
+ * GET /api/admin/reports/login-activity
+ * Get daily active users over the past 30 days
+ */
+router.get('/login-activity', reportController.getLoginActivity);
+
+/**
+ * GET /api/admin/reports/enrollment-timeline
+ * Get weekly enrollment timeline over past 6 months
+ */
+router.get('/enrollment-timeline', reportController.getEnrollmentTimeline);
+
+/**
+ * GET /api/admin/reports/category-breakdown
+ * Get course enrollment breakdown by category
+ */
+router.get('/category-breakdown', reportController.getCategoryBreakdown);
+
+/**
+ * GET /api/admin/reports/progress-distribution
+ * Get learner progress distribution across courses
+ */
+router.get('/progress-distribution', reportController.getProgressDistribution);
+
+/**
+ * GET /api/admin/reports/user-growth
+ * Get user growth trend over past 12 months
+ */
+router.get('/user-growth', reportController.getUserGrowth);
+
+/**
+ * GET /api/admin/reports/role-distribution
+ * Get user count by role
+ */
+router.get('/role-distribution', reportController.getRoleDistribution);
+
+/**
+ * GET /api/admin/reports/activity-heatmap
+ * Get user activity heatmap data (day of week x hour)
+ */
+router.get('/activity-heatmap', reportController.getActivityHeatmap);
+
+/**
  * POST /api/admin/reports/generate
  * Generate a report file
  * Body: { reportType, format, dateRange, department }
