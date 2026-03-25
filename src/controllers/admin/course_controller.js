@@ -1,6 +1,8 @@
 const e = require("express");
 const AdminCourseService = require("../../services/admin/course_service");
+const courseSectionLessonService = require("../../services/admin/courseSectionLessonService");
 const batchAssignmentService = require("../../services/batch_assignment_service");
+const asyncHandler = require("../../utils/asyncHandler");
 const Joi = require("joi");
 
 // ============================================================================
@@ -366,182 +368,99 @@ exports.updateMetaKeywords = async (req, res, next) => {
 // SECTIONS AND LESSONS
 // ============================================================================
 
-exports.addSection = async (req, res, next) => {
-  try {
-    const courseId = req.params.courseId;
-    const section = req.body.title;
-    const creatorId = req.user.uuid;
+exports.addSection = asyncHandler(async (req, res) => {
+  const result = await courseSectionLessonService.addSection(
+    req.params.courseId,
+    req.body.title,
+    req.user.uuid
+  );
 
-    if (!section) {
-      return res.status(400).json({
-        success: false,
-        message: "Section is required",
-      });
-    }
+  res.status(201).json({
+    success: true,
+    message: "Section added successfully",
+    data: result,
+  });
+});
 
-    const result = await AdminCourseService.addSection(
-      courseId,
-      section,
-      creatorId
-    );
+exports.getSectionsByCourseId = asyncHandler(async (req, res) => {
+  const sections = await courseSectionLessonService.getSectionsByCourseId(
+    req.params.courseId
+  );
 
-    res.json({
-      success: true,
-      message: "Section added successfully",
-      data: result,
-    });
-  } catch (error) {
-    console.error("Error in addSection:", error);
-    next(error);
-  }
-};
+  res.json({
+    success: true,
+    data: sections,
+  });
+});
 
-exports.getSectionsByCourseId = async (req, res, next) => {
-  try {
-    const courseId = req.params.courseId;
-    const sections = await AdminCourseService.getSectionsByCourseId(
-      courseId
-    );
+exports.updateSection = asyncHandler(async (req, res) => {
+  const result = await courseSectionLessonService.updateSection(
+    req.params.courseId,
+    req.params.sectionId,
+    req.body.title,
+    req.user.uuid
+  );
 
-    res.json({
-      success: true,
-      data: sections,
-    });
-  } catch (error) {
-    console.error("Error in getSectionsByCourseId:", error);
-    next(error);
-  }
-};
+  res.json({
+    success: true,
+    message: "Section updated successfully",
+    data: result,
+  });
+});
 
-exports.updateSection = async (req, res, next) => {
-  try {
-    const courseId = req.params.courseId;
-    const sectionId = req.params.sectionId;
-    const { title } = req.body;
-    const updatedBy = req.user.uuid;
+exports.addLesson = asyncHandler(async (req, res) => {
+  const lessonId = await courseSectionLessonService.addLesson(
+    req.params.courseId,
+    req.body,
+    req.user.uuid
+  );
 
-    if (!title || !title.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Section title is required",
-      });
-    }
+  res.status(201).json({
+    success: true,
+    message: "Lesson added successfully",
+    data: { id: lessonId },
+  });
+});
 
-    const result = await AdminCourseService.updateSection(
-      courseId,
-      sectionId,
-      title.trim(),
-      updatedBy
-    );
+exports.updateLesson = asyncHandler(async (req, res) => {
+  const result = await courseSectionLessonService.updateLesson(
+    req.params.courseId,
+    req.params.lessonId,
+    req.body,
+    req.user.uuid
+  );
 
-    res.json({
-      success: true,
-      message: "Section updated successfully",
-      data: result,
-    });
-  } catch (error) {
-    console.error("Error in updateSection:", error);
-    next(error);
-  }
-};
+  res.json({
+    success: true,
+    message: "Lesson updated successfully",
+    data: result,
+  });
+});
 
-exports.addLesson = async (req, res, next) => {
-  try {
-    const courseId = req.params.courseId;
-    const creatorId = req.user.uuid;
-    const lesson = req.body;
-    // Validation
-    if (!lesson.title || !lesson.sectionId) {
-      return res.status(400).json({
-        success: false,
-        message: "Title and sectionId are required for each lesson",
-      });
-    }
+exports.deleteLesson = asyncHandler(async (req, res) => {
+  const result = await courseSectionLessonService.deleteLesson(
+    req.params.courseId,
+    req.params.lessonId
+  );
 
-    // Save lessons
-    const result = await AdminCourseService.addLesson(
-      courseId,
-      lesson,
-      creatorId
-    );
+  res.json({
+    success: true,
+    message: "Lesson deleted successfully",
+    data: result,
+  });
+});
 
-    res.json({
-      success: true,
-      message: "Lesson added successfully",
-      data: { id: result },
-    });
-  } catch (error) {
-    console.error("Error in addLesson:", error);
-    next(error);
-  }
-};
+exports.getLessonById = asyncHandler(async (req, res) => {
+  const lesson = await courseSectionLessonService.getLessonById(
+    req.params.courseId,
+    req.params.lessonId
+  );
 
-exports.updateLesson = async (req, res, next) => {
-  try {
-    const courseId = req.params.courseId;
-    const lessonId = req.params.lessonId;
-    const lessonData = req.body;
-    const updatedBy = req.user.uuid;
-
-    const result = await AdminCourseService.updateLesson(
-      courseId,
-      lessonId,
-      lessonData,
-      updatedBy
-    );
-
-    res.json({
-      success: true,
-      message: "Lesson updated successfully",
-      data: result,
-    });
-  } catch (error) {
-    console.error("Error in updateLesson:", error);
-    next(error);
-  }
-};
-
-exports.deleteLesson = async (req, res, next) => {
-  try {
-    const courseId = req.params.courseId;
-    const lessonId = req.params.lessonId;
-
-    const result = await AdminCourseService.deleteLesson(courseId, lessonId);
-
-    res.json({
-      success: true,
-      message: "Lesson deleted successfully",
-      data: result,
-    });
-  } catch (error) {
-    console.error("Error in deleteLesson:", error);
-    next(error);
-  }
-};
-
-exports.getLessonById = async (req, res, next) => {
-  try {
-    const { courseId, lessonId } = req.params;
-    const lesson = await AdminCourseService.getLessonById(
-      courseId,
-      lessonId
-    );
-
-    res.json({
-      success: true,
-      data: lesson,
-    });
-  } catch (error) {
-    console.error("Error in getLessonById:", error);
-    if (error.message === "Lesson not found") {
-      return res.status(404).json({
-        success: false,
-        message: error.message,
-      });
-    }
-    next(error);
-  }
-};
+  res.json({
+    success: true,
+    data: lesson,
+  });
+});
 
 exports.getAllInstructors = async (req, res, next) => {
   try {

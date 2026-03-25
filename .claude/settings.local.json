@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /Volumes/Project/Mkraft/magnetix-api/src -type f \\\\\\(-name *.js -o -name *.ts \\\\\\))",
+      "Bash(npm install:*)",
+      "Bash(node:*)"
+    ]
+  }
+}

@@ -2,6 +2,12 @@ const express = require("express");
 const router = express.Router();
 const adminCourseController = require("../../controllers/admin/course_controller");
 const { authenticate, authorize } = require("../../middleware/auth_middleware");
+const {
+  validateAddSection,
+  validateUpdateSection,
+  validateAddLesson,
+  validateUpdateLesson,
+} = require("../../validators/courseSectionLessonValidator");
 
 router.use(authenticate);
 router.use(authorize(3, 4)); // Role 3 = Admin, Role 4 = Super Admin
@@ -41,6 +47,7 @@ router.put(
 
 router.post(
   "/:courseId/sections",
+  validateAddSection,
   adminCourseController.addSection
 );
 router.get(
@@ -49,14 +56,17 @@ router.get(
 );
 router.put(
   "/:courseId/sections/:sectionId",
+  validateUpdateSection,
   adminCourseController.updateSection
 );
 router.post(
   "/:courseId/lessons",
+  validateAddLesson,
   adminCourseController.addLesson
 );
 router.put(
   "/:courseId/lessons/:lessonId",
+  validateUpdateLesson,
   adminCourseController.updateLesson
 );
 router.delete(
