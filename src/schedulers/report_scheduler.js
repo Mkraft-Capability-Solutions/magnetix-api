@@ -2,8 +2,7 @@ const cron = require('node-cron');
 const reportSchedulerService = require('../services/admin/report_scheduler_service');
 const reportService = require('../services/admin/report_service');
 const emailHelper = require('../utils/email_helper');
-const { generatePDF } = require('../utils/report_generator');
-const fs = require('fs');
+const { generateAnalyticsPDFBuffer } = require('../utils/analytics_pdf_generator');
 
 class ReportScheduler {
   constructor() {
@@ -65,60 +64,71 @@ class ReportScheduler {
     console.log(`📊 Processing schedule #${schedule.id} (${schedule.frequency}) for ${schedule.recipients.length} recipient(s)`);
 
     try {
-      // Fetch analytics data
-      const analyticsData = await reportService.getDashboardAnalytics();
+      // Fetch ALL analytics data — same endpoints as the frontend AnalyticsPage
+      const [
+        combinedAnalytics,
+        userReportData,
+        courseCompletionData,
+        learningEngagementData,
+        loginActivity,
+        enrollmentTimeline,
+        categoryBreakdown,
+        progressDistribution,
+        userGrowth,
+        roleDistribution,
+        activityHeatmap
+      ] = await Promise.allSettled([
+        reportService.getDashboardAnalytics(),
+        reportService.getUserReportData(),
+        reportService.getCourseCompletionData(),
+        reportService.getLearningEngagementData(),
+        reportService.getLoginActivity(),
+        reportService.getEnrollmentTimeline(),
+        reportService.getCategoryBreakdown(),
+        reportService.getProgressDistribution(),
+        reportService.getUserGrowth(),
+        reportService.getRoleDistribution(),
+        reportService.getActivityHeatmap()
+      ]);
 
-      // Generate PDF on the server
-      const reportResult = await generatePDF('analytics', 'Analytics Report', this.flattenAnalyticsData(analyticsData), {
-        dateRange: { from: 'All time', to: new Date().toLocaleDateString() }
-      });
+      const extract = (result) => result.status === 'fulfilled' ? result.value : null;
 
-      // Read the generated PDF file as a buffer
-      const pdfBuffer = fs.readFileSync(reportResult.filePath);
+      // Build the same AnalyticsData shape as the frontend
+      const analyticsData = {
+        combinedAnalytics: extract(combinedAnalytics),
+        userReportData: extract(userReportData),
+        courseCompletionData: extract(courseCompletionData),
+        learningEngagement: extract(learningEngagementData),
+        loginActivity: extract(loginActivity),
+        enrollmentTimeline: extract(enrollmentTimeline),
+        categoryBreakdown: extract(categoryBreakdown),
+        progressDistribution: extract(progressDistribution),
+        userGrowth: extract(userGrowth),
+        roleDistribution: extract(roleDistribution),
+        activityHeatmap: extract(activityHeatmap),
+      };
+
+      // Generate the exact same PDF as the frontend Export PDF button
+      const pdfBuffer = generateAnalyticsPDFBuffer(analyticsData);
+
+      const fileName = `Analytics_Report_${new Date().toISOString().split('T')[0]}.pdf`;
 
       // Send email to all recipients
       await emailHelper.sendScheduledReportEmail(
         schedule.recipients,
         'Analytics Report',
         pdfBuffer,
-        reportResult.fileName
+        fileName
       );
 
       // Mark as sent
       await reportSchedulerService.markAsSent(schedule.id);
-
-      // Cleanup the temp PDF file
-      try { fs.unlinkSync(reportResult.filePath); } catch (_) { /* ignore */ }
 
       const duration = Date.now() - startTime;
       console.log(`✅ Schedule #${schedule.id} processed in ${duration}ms — sent to ${schedule.recipients.length} recipient(s)`);
     } catch (error) {
       console.error(`❌ Schedule #${schedule.id} failed:`, error.message);
     }
-  }
-
-  /**
-   * Flatten the analytics data object into an array suitable for the generic PDF table
-   */
-  flattenAnalyticsData(data) {
-    if (!data) return [];
-
-    const rows = [];
-    const stats = data.dashboardStats || [];
-
-    stats.forEach(stat => {
-      rows.push({ metric: stat.title || 'N/A', value: String(stat.value ?? 0) });
-    });
-
-    if (data.learningEngagement) {
-      const eng = data.learningEngagement;
-      rows.push({ metric: 'Total Active Users', value: String(eng.totalActiveUsers || 0) });
-      rows.push({ metric: 'Total Enrollments', value: String(eng.totalEnrollments || 0) });
-      rows.push({ metric: 'Total Time Spent (min)', value: String(eng.totalTimeSpentMinutes || 0) });
-      rows.push({ metric: 'Avg Time Per User (min)', value: String(eng.avgTimePerUser || 0) });
-    }
-
-    return rows;
   }
 
   getStatus() {

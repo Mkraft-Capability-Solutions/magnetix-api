@@ -180,24 +180,31 @@ const toggleSchedule = async (id, isActive) => {
 
 /**
  * Get schedules that are due to run right now.
- * Matches based on frequency, day, and time (rounded to current minute).
+ * Compares schedule time against server-local time (Node.js process timezone).
+ * This avoids reliance on MySQL CONVERT_TZ which requires timezone tables to be loaded.
  */
 const getDueSchedules = async () => {
   try {
-    // Get current time components in UTC — the scheduler converts to each schedule's timezone
+    // Build current time string in each schedule's expected format using Node.js
+    // This works even when MySQL timezone tables are not loaded
     const now = new Date();
+    const currentHour = String(now.getHours()).padStart(2, '0');
+    const currentMinute = String(now.getMinutes()).padStart(2, '0');
+    const currentTimeStr = `${currentHour}:${currentMinute}`;
+    const currentDayOfWeek = now.getDay(); // 0=Sun, 6=Sat
+    const currentDayOfMonth = now.getDate();
 
     const [rows] = await pool.query(`
       SELECT * FROM report_schedules
       WHERE is_active = 1
         AND (
           (frequency = 'daily')
-          OR (frequency = 'weekly' AND day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(), 'UTC', timezone)) - 1)
-          OR (frequency = 'monthly' AND day_of_month = DAY(CONVERT_TZ(NOW(), 'UTC', timezone)))
+          OR (frequency = 'weekly' AND day_of_week = ?)
+          OR (frequency = 'monthly' AND day_of_month = ?)
         )
-        AND TIME_FORMAT(CONVERT_TZ(NOW(), 'UTC', timezone), '%H:%i') = TIME_FORMAT(time_of_day, '%H:%i')
+        AND TIME_FORMAT(time_of_day, '%H:%i') = ?
         AND (last_sent_at IS NULL OR last_sent_at < DATE_SUB(NOW(), INTERVAL 50 MINUTE))
-    `);
+    `, [currentDayOfWeek, currentDayOfMonth, currentTimeStr]);
 
     return rows.map(row => ({
       ...row,
