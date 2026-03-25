@@ -1673,6 +1673,9 @@ class AdminCourseService {
             dbContentType = 'url';
             contentUrl = lessonData.contentUrl || lessonData.url || null;
             break;
+          case 'quiz':
+            dbContentType = 'quiz';
+            break;
           default:
             dbContentType = lessonData.contentType;
         }
@@ -1684,6 +1687,12 @@ class AdminCourseService {
       console.log(`Single lesson - MP4 file: ${mp4File}`);
       console.log(`Single lesson - Content URL: ${contentUrl}`);
       console.log('Full lesson data received:', JSON.stringify(lessonData, null, 2));
+
+      // Assessment fields
+      const assessmentId = lessonData.assessmentId || null;
+      const requireSectionCompletion = lessonData.requireSectionCompletion ? 1 : 0;
+      const assessmentStartDate = lessonData.assessmentStartDate || null;
+      const assessmentEndDate = lessonData.assessmentEndDate || null;
 
       // Ensure all parameters are properly defined (null instead of undefined)
       const params = [
@@ -1704,13 +1713,37 @@ class AdminCourseService {
 
       console.log('SQL parameters:', params);
 
-      // Use the stored procedure to get automatic lesson ordering
+      // Use direct INSERT instead of stored procedure to support assessment fields
       const [result] = await connection.query(
-        "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        params
+        `INSERT INTO course_lesson (
+          title, section_id, lesson_type, lesson_content_type,
+          lesson_content_document, lesson_content_scorm, lesson_content_mp4, lesson_content_url,
+          lesson_duration, course_id, creator_id, last_updated_by,
+          lesson_order, assessment_id, require_section_completion,
+          assessment_start_date, assessment_end_date
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          lessonData.title || null,
+          lessonData.sectionId || null,
+          lessonData.lessonType || "Content-Based",
+          dbContentType || null,
+          documentFile === undefined ? null : documentFile,
+          scormFile === undefined ? null : scormFile,
+          mp4File === undefined ? null : mp4File,
+          contentUrl === undefined ? null : contentUrl,
+          lessonData.lessonDuration || lessonData.duration || null,
+          courseId,
+          creatorId,
+          creatorId,
+          lessonData.lessonOrder || null,
+          assessmentId,
+          requireSectionCompletion,
+          assessmentStartDate,
+          assessmentEndDate,
+        ]
       );
 
-      const lessonId = result[0][0].id || result[0][0].lessonId;
+      const lessonId = result.insertId;
       console.log("Lesson created with ID:", lessonId);
 
       // Note: File uploads are handled on the frontend after lesson creation
@@ -1856,14 +1889,19 @@ class AdminCourseService {
           lessonType: lesson.lesson_type,
           lessonOrder: lesson.lesson_order,
           // Content-Based fields
-          contentType: lesson.content_type,
+          contentType: lesson.lesson_content_type,
           lessonContentDocument: lesson.lesson_content_document,
-          scormPackage: lesson.scorm_package,
-          videoUpload: lesson.video_upload,
-          contentUrl: lesson.content_url,
+          scormPackage: lesson.lesson_content_scorm,
+          videoUpload: lesson.lesson_content_mp4,
+          contentUrl: lesson.lesson_content_url,
           lessonDuration: lesson.lesson_duration,
           description: lesson.description,
           skills: lesson.skills ? JSON.parse(lesson.skills) : [],
+          // Quiz/Assessment fields
+          assessmentId: lesson.assessment_id,
+          requireSectionCompletion: !!lesson.require_section_completion,
+          assessmentStartDate: lesson.assessment_start_date,
+          assessmentEndDate: lesson.assessment_end_date,
           // ILTS fields
           iltsType: lesson.ilts_type,
           iltsUrl: lesson.ilts_url,
@@ -2086,6 +2124,9 @@ class AdminCourseService {
           case 'url':
             dbContentType = 'url';
             break;
+          case 'quiz':
+            dbContentType = 'quiz';
+            break;
           default:
             dbContentType = lessonData.contentType;
         }
@@ -2147,6 +2188,12 @@ class AdminCourseService {
         }
       }
 
+      // Assessment fields
+      const assessmentId = lessonData.assessmentId || null;
+      const requireSectionCompletion = lessonData.requireSectionCompletion ? 1 : 0;
+      const assessmentStartDate = lessonData.assessmentStartDate || null;
+      const assessmentEndDate = lessonData.assessmentEndDate || null;
+
       // Update lesson with preserved/updated content
       const [result] = await connection.query(
         `UPDATE course_lesson SET
@@ -2160,6 +2207,10 @@ class AdminCourseService {
          lesson_content_mp4 = ?,
          lesson_content_url = ?,
          lesson_duration = ?,
+         assessment_id = ?,
+         require_section_completion = ?,
+         assessment_start_date = ?,
+         assessment_end_date = ?,
          last_updated_by = ?,
          last_updated = NOW()
          WHERE id = ? AND course_id = ?`,
@@ -2173,7 +2224,11 @@ class AdminCourseService {
           scormFile,
           mp4File,
           contentUrl,
-          lessonData.duration,
+          lessonData.duration || lessonData.lessonDuration,
+          assessmentId,
+          requireSectionCompletion,
+          assessmentStartDate,
+          assessmentEndDate,
           updatedBy,
           lessonId,
           courseId

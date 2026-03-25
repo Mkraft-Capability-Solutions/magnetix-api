@@ -441,6 +441,393 @@ IMPORTANT Guidelines:
       throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
     }
   }
+
+  async generateSubjectiveAssessmentQuestions(topic, numberOfQuestions, difficultyLevel) {
+    await this.ensureInitialized();
+
+    const sanitizedTopic = topic
+      .replace(/<[^>]*>/g, '')
+      .replace(/[<>]/g, '')
+      .trim();
+
+    const difficultyInstruction = difficultyLevel === 'mixed'
+      ? 'Generate a mix of easy, medium, and hard questions. Distribute them roughly evenly.'
+      : `All questions should be "${difficultyLevel}" difficulty level.`;
+
+    const prompt = `You are an expert assessment creator and educator. Generate ${numberOfQuestions} high-quality subjective assessment questions on the following topic.
+
+Topic: "${sanitizedTopic}"
+
+Difficulty: ${difficultyInstruction}
+
+Generate a JSON response with this EXACT structure (no markdown, no code blocks, just pure JSON):
+{
+  "questions": [
+    {
+      "type": "paragraph",
+      "text": "Clear, thought-provoking question that requires a detailed answer",
+      "difficulty": "easy"
+    }
+  ]
+}
+
+IMPORTANT Guidelines:
+1. Generate exactly ${numberOfQuestions} questions
+2. Question types MUST be either "short_text" (brief answer) or "paragraph" (detailed answer)
+3. Use mostly "paragraph" (about 70%) for deeper understanding, with some "short_text" (about 30%) for quick recall
+4. Each question must have a "difficulty" field: "easy", "medium", or "hard"
+5. Questions should assess different learning objectives - analysis, synthesis, application
+6. Questions should be open-ended and encourage critical thinking
+7. Avoid questions with single-word answers
+8. Question text should be clear and unambiguous
+9. Do NOT include options or correctAnswers fields
+10. Return ONLY valid JSON - no explanations, no markdown formatting`;
+
+    try {
+      console.log('🤖 Generating subjective assessment questions for:', sanitizedTopic);
+
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      let text = response.text();
+      text = this._extractJSON(text);
+
+      const parsed = JSON.parse(text);
+
+      if (!parsed.questions || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+        throw new Error('PARSE_ERROR: No questions generated');
+      }
+
+      // Validate and normalize each question
+      const validatedQuestions = parsed.questions.map((q, index) => {
+        if (!q.text) {
+          throw new Error(`PARSE_ERROR: Question ${index + 1} is missing text`);
+        }
+
+        const type = q.type === 'short_text' ? 'short_text' : 'paragraph';
+        const validDifficulties = ['easy', 'medium', 'hard'];
+        const difficulty = validDifficulties.includes(q.difficulty?.toLowerCase())
+          ? q.difficulty.toLowerCase()
+          : difficultyLevel === 'mixed' ? 'medium' : difficultyLevel;
+
+        return {
+          type,
+          text: q.text.trim(),
+          difficulty
+        };
+      });
+
+      console.log(`✅ Generated ${validatedQuestions.length} subjective assessment questions for "${sanitizedTopic}"`);
+      return validatedQuestions;
+    } catch (error) {
+      console.error('❌ Subjective question generation error:', error.message);
+
+      if (error.message.includes('SAFETY')) {
+        throw new Error('CONTENT_FILTERED: Unable to generate questions for this topic. Please try a different topic.');
+      }
+
+      if (error instanceof SyntaxError) {
+        throw new Error('PARSE_ERROR: Failed to parse AI response. Please try again.');
+      }
+
+      throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
+    }
+  }
+  /**
+   * Score subjective assessment answers using AI
+   * @param {Array} questionsAndAnswers - Array of {questionText, answerText, maxScore}
+   * @returns {Array} Array of {score, maxScore, feedback}
+   */
+  async scoreSubjectiveAnswers(questionsAndAnswers) {
+    await this.ensureInitialized();
+
+    const questionsForAI = questionsAndAnswers.map((qa, i) => ({
+      index: i + 1,
+      question: qa.questionText,
+      answer: qa.answerText || '(No answer provided)',
+      maxScore: qa.maxScore || 1
+    }));
+
+    const prompt = `You are an expert assessment evaluator. Score the following subjective answers fairly and consistently.
+
+For each question-answer pair, provide:
+- A score from 0 to the maxScore (can use decimals like 0.5)
+- Brief feedback explaining the score
+
+SCORING CRITERIA:
+- Full marks: Complete, accurate, well-explained answer
+- Partial marks: Partially correct or incomplete answer
+- Zero marks: No answer, completely wrong, or irrelevant
+
+Questions and Answers to evaluate:
+${JSON.stringify(questionsForAI, null, 2)}
+
+Generate a JSON response with this EXACT structure (no markdown, no code blocks, just pure JSON):
+{
+  "scores": [
+    {
+      "index": 1,
+      "score": 0.8,
+      "maxScore": 1,
+      "feedback": "Good understanding shown, but missed the key point about..."
+    }
+  ]
+}
+
+IMPORTANT:
+1. Evaluate EACH question independently
+2. Score must be between 0 and maxScore
+3. Be fair but rigorous
+4. Feedback should be constructive and specific (1-2 sentences)
+5. Return ONLY valid JSON`;
+
+    try {
+      console.log('🤖 Scoring subjective assessment answers...');
+
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      let text = response.text();
+      text = this._extractJSON(text);
+
+      const parsed = JSON.parse(text);
+
+      if (!parsed.scores || !Array.isArray(parsed.scores)) {
+        throw new Error('PARSE_ERROR: Invalid scoring response format');
+      }
+
+      // Map scores back to the original questions
+      const scoredResults = questionsAndAnswers.map((qa, i) => {
+        const aiResult = parsed.scores.find(s => s.index === i + 1);
+        const score = aiResult ? Math.min(Math.max(0, aiResult.score), qa.maxScore || 1) : 0;
+
+        return {
+          score: parseFloat(score.toFixed(2)),
+          maxScore: qa.maxScore || 1,
+          feedback: aiResult?.feedback || 'Unable to evaluate this answer.'
+        };
+      });
+
+      console.log(`✅ Scored ${scoredResults.length} subjective answers`);
+      return scoredResults;
+    } catch (error) {
+      console.error('❌ Subjective scoring error:', error.message);
+
+      if (error instanceof SyntaxError) {
+        throw new Error('PARSE_ERROR: Failed to parse AI scoring response. Please try again.');
+      }
+
+      throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
+    }
+  }
+  /**
+   * Generate a custom report configuration from a natural language prompt
+   * @param {string} userPrompt - Natural language description of the desired report
+   * @param {Object} availableDataSources - Available data sources and their fields
+   * @returns {Promise<Object>} Report configuration
+   */
+  async generateReportConfig(userPrompt, availableDataSources) {
+    await this.ensureInitialized();
+
+    const sourceSummary = Object.entries(availableDataSources).map(([key, src]) => ({
+      key,
+      label: src.label,
+      description: src.description,
+      fields: src.fields.map(f => ({
+        key: f.key,
+        label: f.label,
+        filterable: f.filterable,
+        filterType: f.filterType,
+        filterOptions: f.filterOptions,
+      })),
+    }));
+
+    const prompt = `You are an expert data analyst working with a Learning Management System (LMS). A user wants to build a custom report. Based on their request, generate the optimal report configuration.
+
+Available data sources and their fields:
+${JSON.stringify(sourceSummary, null, 2)}
+
+User's request: "${userPrompt}"
+
+Generate a JSON response with this EXACT structure (no markdown, no code blocks, just pure JSON):
+{
+  "dataSource": "the_best_matching_data_source_key",
+  "fields": ["field_key_1", "field_key_2"],
+  "filters": [
+    {
+      "field": "filterable_field_key",
+      "operator": "equals|contains|startsWith|greaterThan|lessThan|between",
+      "value": "filter_value",
+      "valueTo": "optional_for_between"
+    }
+  ],
+  "sortBy": "field_key_to_sort_by_or_empty_string",
+  "sortOrder": "asc|desc",
+  "chartConfig": {
+    "chartType": "bar|horizontal|pie",
+    "groupByField": "field_key_to_group_by",
+    "aggregateFunction": "count|sum|avg|max|min",
+    "aggregateField": "field_key_for_aggregate_or_empty_string"
+  },
+  "explanation": "Brief explanation of why you chose this configuration and what the report will show"
+}
+
+IMPORTANT Rules:
+1. "dataSource" MUST be one of the available data source keys
+2. "fields" MUST only contain valid field keys from the chosen data source
+3. "filters" should only use filterable fields. Use the correct operator based on filterType (select->equals, date->between, text->contains)
+4. For "filterOptions" fields, use values from the provided options
+5. Include relevant fields that answer the user's question
+6. Choose appropriate chart type: bar for comparisons, pie for distributions, horizontal for rankings
+7. "aggregateField" is only needed when aggregateFunction is sum/avg/max/min (not count)
+8. Return ONLY valid JSON`;
+
+    try {
+      console.log('🤖 Generating report config for:', userPrompt.substring(0, 80) + '...');
+
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      let text = response.text();
+      text = this._extractJSON(text);
+
+      const config = JSON.parse(text);
+
+      // Validate the data source exists
+      if (!availableDataSources[config.dataSource]) {
+        // Fallback to first available source
+        config.dataSource = Object.keys(availableDataSources)[0];
+        config.fields = availableDataSources[config.dataSource].fields.slice(0, 5).map(f => f.key);
+      }
+
+      // Validate fields exist in chosen source
+      const validFieldKeys = availableDataSources[config.dataSource].fields.map(f => f.key);
+      config.fields = (config.fields || []).filter(f => validFieldKeys.includes(f));
+      if (config.fields.length === 0) {
+        config.fields = validFieldKeys.slice(0, 5);
+      }
+
+      // Validate filters
+      const filterableFieldKeys = availableDataSources[config.dataSource].fields
+        .filter(f => f.filterable)
+        .map(f => f.key);
+      config.filters = (config.filters || []).filter(f => filterableFieldKeys.includes(f.field));
+
+      // Validate chart config
+      if (config.chartConfig) {
+        if (!validFieldKeys.includes(config.chartConfig.groupByField)) {
+          config.chartConfig.groupByField = validFieldKeys[0];
+        }
+        if (!['bar', 'horizontal', 'pie'].includes(config.chartConfig.chartType)) {
+          config.chartConfig.chartType = 'bar';
+        }
+        if (!['count', 'sum', 'avg', 'max', 'min'].includes(config.chartConfig.aggregateFunction)) {
+          config.chartConfig.aggregateFunction = 'count';
+        }
+      }
+
+      return config;
+    } catch (error) {
+      console.error('❌ Report config generation error:', error.message);
+
+      if (error.message.includes('SAFETY')) {
+        throw new Error('CONTENT_FILTERED: Unable to process this request. Please try a different description.');
+      }
+
+      if (error instanceof SyntaxError) {
+        throw new Error('PARSE_ERROR: Failed to parse AI response. Please try again.');
+      }
+
+      throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
+    }
+  }
+
+  /**
+   * Generate insights and analysis from report data
+   * @param {Object} params - Report context for analysis
+   * @param {string} params.dataSourceLabel - Name of the data source
+   * @param {Array} params.data - Array of data rows (limited sample)
+   * @param {Array} params.fields - Array of {key, label} field descriptors
+   * @param {number} params.totalRecords - Total record count
+   * @param {Object} params.chartSummary - Optional aggregate summary
+   * @returns {Promise<Object>} Generated insights
+   */
+  async generateReportInsights(params) {
+    await this.ensureInitialized();
+
+    const { dataSourceLabel, data, fields, totalRecords, chartSummary } = params;
+
+    // Limit data sample to avoid token overflow
+    const sampleData = (data || []).slice(0, 30);
+
+    const prompt = `You are an expert data analyst reviewing an LMS (Learning Management System) report. Analyze the following data and provide clear, actionable insights.
+
+Data Source: ${dataSourceLabel}
+Total Records: ${totalRecords}
+Fields: ${fields.map(f => f.label).join(', ')}
+${chartSummary ? `\nAggregate Summary: ${JSON.stringify(chartSummary)}` : ''}
+
+Sample Data (${sampleData.length} of ${totalRecords} records):
+${JSON.stringify(sampleData, null, 1)}
+
+Generate a JSON response with this EXACT structure (no markdown, no code blocks, just pure JSON):
+{
+  "summary": "A 2-3 sentence executive summary of what this data shows",
+  "keyFindings": [
+    "Finding 1 - a specific, data-backed observation",
+    "Finding 2 - another specific insight",
+    "Finding 3 - a notable pattern or trend"
+  ],
+  "recommendations": [
+    "Actionable recommendation 1",
+    "Actionable recommendation 2",
+    "Actionable recommendation 3"
+  ],
+  "highlights": {
+    "positive": "One positive highlight from the data",
+    "concern": "One area of concern or improvement opportunity",
+    "trend": "A notable trend or pattern"
+  }
+}
+
+IMPORTANT:
+1. Be specific - reference actual values and field names from the data
+2. Keep insights concise and actionable
+3. Focus on patterns relevant to learning management
+4. Return ONLY valid JSON`;
+
+    try {
+      console.log('🤖 Generating report insights for:', dataSourceLabel);
+
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      let text = response.text();
+      text = this._extractJSON(text);
+
+      const insights = JSON.parse(text);
+
+      // Validate structure
+      return {
+        summary: insights.summary || 'Analysis complete.',
+        keyFindings: Array.isArray(insights.keyFindings) ? insights.keyFindings.slice(0, 5) : [],
+        recommendations: Array.isArray(insights.recommendations) ? insights.recommendations.slice(0, 5) : [],
+        highlights: {
+          positive: insights.highlights?.positive || '',
+          concern: insights.highlights?.concern || '',
+          trend: insights.highlights?.trend || '',
+        },
+      };
+    } catch (error) {
+      console.error('❌ Report insights generation error:', error.message);
+
+      if (error.message.includes('SAFETY')) {
+        throw new Error('CONTENT_FILTERED: Unable to analyze this data. Please try again.');
+      }
+
+      if (error instanceof SyntaxError) {
+        throw new Error('PARSE_ERROR: Failed to parse AI analysis. Please try again.');
+      }
+
+      throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
+    }
+  }
 }
 
 // Export singleton instance

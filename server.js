@@ -3,6 +3,7 @@ const http = require('http');
 const app = require('./src/app');
 const { promisePool } = require('./src/config/db');
 const eventReminderScheduler = require('./src/schedulers/event_reminder_scheduler');
+const reportScheduler = require('./src/schedulers/report_scheduler');
 const { initializeSocketIO } = require('./src/socket/socketServer');
 const PORT = process.env.PORT || 3000;
 
@@ -78,6 +79,13 @@ server.listen(PORT, async () => {
     await eventReminderScheduler.start();
   } catch (error) {
     console.error('⚠️  Failed to start event reminder scheduler:', error);
+  }
+
+  // Start report scheduler
+  try {
+    await reportScheduler.start();
+  } catch (error) {
+    console.error('⚠️  Failed to start report scheduler:', error);
   }
 
   // Setup shutdown handlers

@@ -371,6 +371,37 @@ Both options will expire in 1 hour.`;
     });
   }
 
+  async sendScheduledReportEmail(recipients, reportTitle, pdfBuffer, fileName) {
+    const templateData = {
+      appName: process.env.APP_NAME || 'Learning Management System',
+      reportTitle,
+      generatedAt: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['scheduled-report']
+      ? this.templates['scheduled-report'](templateData)
+      : `<p>Your scheduled report "${reportTitle}" is attached.</p>`;
+
+    const text = `Your scheduled "${reportTitle}" report has been generated and is attached to this email.\nGenerated: ${templateData.generatedAt}`;
+
+    const recipientList = Array.isArray(recipients) ? recipients.join(', ') : recipients;
+
+    return this.sendEmail({
+      to: recipientList,
+      subject: `Scheduled Report: ${reportTitle} - ${new Date().toLocaleDateString('en-IN')}`,
+      html,
+      text,
+      attachments: [
+        {
+          filename: fileName || 'analytics-report.pdf',
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        }
+      ]
+    });
+  }
+
   async sendSessionRejectedEmail(email, firstName, sessionData, mentorName) {
     const formattedDate = new Date(sessionData.sessionDate).toLocaleDateString('en-IN', {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'

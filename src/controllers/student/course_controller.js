@@ -434,3 +434,33 @@ exports.updateCourseRating = async (req, res, next) => {
     next(error);
   }
 };
+
+// Get assessment form for a quiz lesson
+exports.getLessonAssessment = async (req, res, next) => {
+  try {
+    const { courseId, lessonId } = req.params;
+    const userId = req.user.uuid;
+    const response = await courseService.getLessonAssessment(userId, Number(courseId), Number(lessonId));
+    res.status(response.success ? 200 : (response.error?.status || 500)).json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Submit assessment answers for a quiz lesson
+exports.submitLessonAssessment = async (req, res, next) => {
+  try {
+    const { courseId, lessonId } = req.params;
+    const userId = req.user.uuid;
+    const { answers } = req.body;
+
+    if (!answers || !Array.isArray(answers)) {
+      return res.status(400).json({ success: false, message: 'Answers array is required' });
+    }
+
+    const response = await courseService.submitLessonAssessment(userId, Number(courseId), Number(lessonId), answers);
+    res.status(response.success ? 200 : (response.error?.status || 500)).json(response);
+  } catch (error) {
+    next(error);
+  }
+};

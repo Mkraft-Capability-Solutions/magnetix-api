@@ -92,6 +92,9 @@ const generatePDF = async (reportType, title, data, options = {}) => {
         case 'skills-assessment':
           addSkillsAssessmentContent(doc, data);
           break;
+        case 'custom-report':
+          addCustomReportContent(doc, data, options.customFields);
+          break;
         default:
           addGenericTableContent(doc, data);
       }
@@ -297,6 +300,31 @@ const addSkillsAssessmentContent = (doc, data) => {
 };
 
 /**
+ * Add Custom Report Content (dynamic fields)
+ */
+const addCustomReportContent = (doc, data, customFields) => {
+  if (!data || !data.length) {
+    doc.fontSize(12).fillColor(BRAND_COLORS.text).text('No data available');
+    return;
+  }
+
+  if (customFields && customFields.length > 0) {
+    const headers = customFields.map(f => f.label);
+    const maxColWidth = Math.floor(500 / Math.min(headers.length, 7));
+    const colWidths = headers.map(() => Math.max(maxColWidth, 60));
+
+    addPDFTable(doc, headers, data.map(row =>
+      customFields.map(f => {
+        const val = row[f.key];
+        return val !== null && val !== undefined ? String(val).substring(0, 40) : '-';
+      })
+    ), colWidths);
+  } else {
+    addGenericTableContent(doc, data);
+  }
+};
+
+/**
  * Add generic table content
  */
 const addGenericTableContent = (doc, data) => {
@@ -426,7 +454,9 @@ const generateExcel = async (reportType, title, data, options = {}) => {
 
   // Add data based on report type
   if (data && data.length > 0) {
-    const headers = getHeadersForReportType(reportType, data);
+    const headers = options.customFields
+      ? options.customFields.map(f => ({ key: f.key, label: f.label, width: 20 }))
+      : getHeadersForReportType(reportType, data);
 
     // Add header row
     const headerRow = worksheet.addRow(headers.map(h => h.label));

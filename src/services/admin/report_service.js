@@ -1,224 +1,112 @@
-const { promisePool: pool } = require('../../config/db');
-const reportGenerator = require('../../utils/report_generator');
+const repository = require("../../repositories/admin/reportAnalyticsRepository");
+const reportGenerator = require("../../utils/report_generator");
+const logger = require("../../config/logger");
+const AppError = require("../../utils/appError");
 
-/**
- * Admin Report Service
- * Handles all business logic for report generation and data retrieval
- */
+const CATEGORY_COLORS = ["#6366f1", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6"];
+const ROLE_NAMES = { 1: "Student", 2: "Instructor", 3: "Admin", 4: "Super Admin" };
+const ROLE_COLORS = { Student: "#3b82f6", Instructor: "#10b981", Admin: "#f59e0b", "Super Admin": "#8b5cf6" };
 
-/**
- * Get leaderboard data - top performers
- * @param {number} limit - Number of top performers to return
- * @returns {Promise<Array>} Array of leaderboard entries
- */
-const getLeaderboard = async (limit = 50) => {
-  try {
-    const [rows] = await pool.query('CALL sp_get_report_leaderboard(?, ?)', [null, limit]);
-    return rows[0] || [];
-  } catch (error) {
-    console.error('Report Service - getLeaderboard error:', error);
-    throw error;
+class ReportAnalyticsService {
+  // ============================================================================
+  // ANALYTICS DATA METHODS
+  // ============================================================================
+
+  async getLeaderboard(limit = 50) {
+    return repository.getLeaderboard(null, limit);
   }
-};
 
-/**
- * Get department performance data
- * @returns {Promise<Array>} Array of department performance objects
- */
-const getDepartmentPerformance = async () => {
-  try {
-    const [rows] = await pool.query('CALL sp_get_department_performance(?)', [null]);
-    return rows[0] || [];
-  } catch (error) {
-    console.error('Report Service - getDepartmentPerformance error:', error);
-    throw error;
+  async getDepartmentPerformance() {
+    return repository.getDepartmentPerformance(null);
   }
-};
 
-/**
- * Get completion trends data (last 6 months)
- * @returns {Promise<Array>} Array of monthly trend data
- */
-const getCompletionTrends = async () => {
-  try {
-    const [rows] = await pool.query('CALL sp_get_completion_trends(?)', [null]);
-    return rows[0] || [];
-  } catch (error) {
-    console.error('Report Service - getCompletionTrends error:', error);
-    throw error;
+  async getCompletionTrends() {
+    return repository.getCompletionTrends(null);
   }
-};
 
-/**
- * Get certification distribution data
- * @returns {Promise<Array>} Array of certification type distributions
- */
-const getCertificationDistribution = async () => {
-  try {
-    const query = `
-      SELECT
-        type,
-        percentage,
-        CASE
-          WHEN row_num = 1 THEN '#10b981'
-          WHEN row_num = 2 THEN '#3b82f6'
-          WHEN row_num = 3 THEN '#a855f7'
-          ELSE '#f59e0b'
-        END as color
-      FROM (
-        SELECT
-          COALESCE(sc.certificate_name, 'Other') as type,
-          ROUND(COUNT(*) * 100.0 / NULLIF((SELECT COUNT(*) FROM student_certificates), 0), 0) as percentage,
-          ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) as row_num
-        FROM student_certificates sc
-        GROUP BY COALESCE(sc.certificate_name, 'Other')
-        ORDER BY COUNT(*) DESC
-        LIMIT 5
-      ) cert_data
-    `;
-
-    const [rows] = await pool.query(query);
-    return rows || [];
-  } catch (error) {
-    console.error('Report Service - getCertificationDistribution error:', error);
-    throw error;
+  async getCertificationDistribution() {
+    return repository.getCertificationDistribution();
   }
-};
 
-/**
- * Get user report data for export
- * @param {Date} fromDate - Start date filter
- * @param {Date} toDate - End date filter
- * @param {string} department - Department filter
- * @returns {Promise<Array>} Array of user data
- */
-const getUserReportData = async (fromDate = null, toDate = null, department = null) => {
-  try {
-    const [rows] = await pool.query(
-      'CALL sp_get_user_report_data(?, ?, ?, ?)',
-      [null, fromDate, toDate, department]
-    );
-    return rows[0] || [];
-  } catch (error) {
-    console.error('Report Service - getUserReportData error:', error);
-    throw error;
+  async getUserReportData(fromDate = null, toDate = null, department = null) {
+    return repository.getUserReportData(null, fromDate, toDate, department);
   }
-};
 
-/**
- * Get course completion report data
- * @param {Date} fromDate - Start date filter
- * @param {Date} toDate - End date filter
- * @returns {Promise<Array>} Array of course completion data
- */
-const getCourseCompletionData = async (fromDate = null, toDate = null) => {
-  try {
-    const [rows] = await pool.query(
-      'CALL sp_get_course_completion_report(?, ?, ?)',
-      [null, fromDate, toDate]
-    );
-    return rows[0] || [];
-  } catch (error) {
-    console.error('Report Service - getCourseCompletionData error:', error);
-    throw error;
+  async getCourseCompletionData(fromDate = null, toDate = null) {
+    return repository.getCourseCompletionData(fromDate, toDate);
   }
-};
 
-/**
- * Get learning engagement report data
- * @param {Date} fromDate - Start date filter
- * @param {Date} toDate - End date filter
- * @returns {Promise<Object>} Engagement summary object
- */
-const getLearningEngagementData = async (fromDate = null, toDate = null) => {
-  try {
-    const [rows] = await pool.query(
-      'CALL sp_get_learning_engagement_report(?, ?, ?)',
-      [null, fromDate, toDate]
-    );
-    return rows[0]?.[0] || null;
-  } catch (error) {
-    console.error('Report Service - getLearningEngagementData error:', error);
-    throw error;
+  async getLearningEngagementData(fromDate = null, toDate = null) {
+    return repository.getLearningEngagementData(null, fromDate, toDate);
   }
-};
 
-/**
- * Get skills assessment data (based on course categories)
- * @returns {Promise<Array>} Array of skill scores
- */
-const getSkillsAssessmentData = async () => {
-  try {
-    const [rows] = await pool.query('CALL sp_get_skills_assessment(?)', [null]);
-    return rows[0] || [];
-  } catch (error) {
-    console.error('Report Service - getSkillsAssessmentData error:', error);
-    throw error;
+  async getSkillsAssessmentData() {
+    return repository.getSkillsAssessmentData(null);
   }
-};
 
-/**
- * Generate and save a report file
- * @param {string} reportType - Type of report (user, course-completion, learning-engagement, skills-assessment)
- * @param {string} format - Output format (pdf, excel, csv)
- * @param {Object} options - Additional options (dateRange, department)
- * @returns {Promise<Object>} Generated file info
- */
-const generateReport = async (reportType, format, options = {}) => {
-  try {
-    let data;
-    let title;
+  async getLoginActivity() {
+    return repository.getLoginActivity();
+  }
 
-    // Get data based on report type
-    switch (reportType) {
-      case 'user':
-        title = 'User Report';
-        data = await getUserReportData(
-          options.dateRange?.from,
-          options.dateRange?.to,
-          options.department
-        );
-        break;
+  async getEnrollmentTimeline() {
+    return repository.getEnrollmentTimeline();
+  }
 
-      case 'course-completion':
-        title = 'Course Completion Report';
-        data = await getCourseCompletionData(
-          options.dateRange?.from,
-          options.dateRange?.to
-        );
-        break;
+  async getCategoryBreakdown() {
+    const rows = await repository.getCategoryBreakdown();
+    return rows.map((row, i) => ({
+      ...row,
+      color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+    }));
+  }
 
-      case 'learning-engagement':
-        title = 'Learning Engagement Report';
-        const engagementData = await getLearningEngagementData(
-          options.dateRange?.from,
-          options.dateRange?.to
-        );
-        // Convert to array format for report
-        if (engagementData) {
-          data = [
-            { metric: 'Total Active Users', value: engagementData.totalActiveUsers },
-            { metric: 'Users with Enrollments', value: engagementData.usersWithEnrollments },
-            { metric: 'Total Enrollments', value: engagementData.totalEnrollments },
-            { metric: 'Total Time Spent (minutes)', value: engagementData.totalTimeSpentMinutes },
-            { metric: 'Average Time per User (minutes)', value: engagementData.avgTimePerUser },
-            { metric: 'Active Last Week', value: engagementData.activeLastWeek }
-          ];
-        } else {
-          data = [];
-        }
-        break;
+  async getProgressDistribution() {
+    return repository.getProgressDistribution();
+  }
 
-      case 'skills-assessment':
-        title = 'Skills Assessment Report';
-        data = await getSkillsAssessmentData();
-        break;
+  async getUserGrowth() {
+    return repository.getUserGrowth();
+  }
 
-      default:
-        throw new Error(`Unknown report type: ${reportType}`);
-    }
+  async getRoleDistribution() {
+    const rows = await repository.getRoleDistribution();
+    return rows.map((row) => {
+      const roleName = ROLE_NAMES[row.role_id] || `Role ${row.role_id}`;
+      return {
+        role: roleName,
+        count: row.count,
+        color: ROLE_COLORS[roleName] || "#6b7280",
+      };
+    });
+  }
 
-    // Generate the report file
+  async getActivityHeatmap() {
+    return repository.getActivityHeatmap();
+  }
+
+  // ============================================================================
+  // COMBINED DASHBOARD
+  // ============================================================================
+
+  async getDashboardAnalytics() {
+    const [leaderboard, departmentPerformance, completionTrends, certificationDistribution] =
+      await Promise.all([
+        this.getLeaderboard(10),
+        this.getDepartmentPerformance(),
+        this.getCompletionTrends(),
+        this.getCertificationDistribution(),
+      ]);
+
+    return { leaderboard, departmentPerformance, completionTrends, certificationDistribution };
+  }
+
+  // ============================================================================
+  // REPORT GENERATION
+  // ============================================================================
+
+  async generateReport(reportType, format, options = {}) {
+    const { data, title } = await this._getReportData(reportType, options);
+
     const result = await reportGenerator.generateReport(
       reportType,
       format,
@@ -228,51 +116,64 @@ const generateReport = async (reportType, format, options = {}) => {
     );
 
     return {
-      success: true,
       ...result,
-      recordCount: Array.isArray(data) ? data.length : 1
+      recordCount: Array.isArray(data) ? data.length : 1,
     };
-  } catch (error) {
-    console.error('Report Service - generateReport error:', error);
-    throw error;
   }
-};
 
-/**
- * Get all dashboard analytics data in one call
- * @returns {Promise<Object>} Combined analytics data
- */
-const getDashboardAnalytics = async () => {
-  try {
-    const [leaderboard, departmentPerformance, completionTrends, certificationDistribution] =
-      await Promise.all([
-        getLeaderboard(10),
-        getDepartmentPerformance(),
-        getCompletionTrends(),
-        getCertificationDistribution()
-      ]);
+  // ============================================================================
+  // PRIVATE HELPERS
+  // ============================================================================
 
-    return {
-      leaderboard,
-      departmentPerformance,
-      completionTrends,
-      certificationDistribution
-    };
-  } catch (error) {
-    console.error('Report Service - getDashboardAnalytics error:', error);
-    throw error;
+  async _getReportData(reportType, options) {
+    switch (reportType) {
+      case "user":
+        return {
+          title: "User Report",
+          data: await this.getUserReportData(
+            options.dateRange?.from,
+            options.dateRange?.to,
+            options.department
+          ),
+        };
+
+      case "course-completion":
+        return {
+          title: "Course Completion Report",
+          data: await this.getCourseCompletionData(
+            options.dateRange?.from,
+            options.dateRange?.to
+          ),
+        };
+
+      case "learning-engagement": {
+        const engagementData = await this.getLearningEngagementData(
+          options.dateRange?.from,
+          options.dateRange?.to
+        );
+        const data = engagementData
+          ? [
+              { metric: "Total Active Users", value: engagementData.totalActiveUsers },
+              { metric: "Users with Enrollments", value: engagementData.usersWithEnrollments },
+              { metric: "Total Enrollments", value: engagementData.totalEnrollments },
+              { metric: "Total Time Spent (minutes)", value: engagementData.totalTimeSpentMinutes },
+              { metric: "Average Time per User (minutes)", value: engagementData.avgTimePerUser },
+              { metric: "Active Last Week", value: engagementData.activeLastWeek },
+            ]
+          : [];
+        return { title: "Learning Engagement Report", data };
+      }
+
+      case "skills-assessment":
+        return {
+          title: "Skills Assessment Report",
+          data: await this.getSkillsAssessmentData(),
+        };
+
+      default:
+        throw new AppError(`Unknown report type: ${reportType}`, 400);
+    }
   }
-};
+}
 
-module.exports = {
-  getLeaderboard,
-  getDepartmentPerformance,
-  getCompletionTrends,
-  getCertificationDistribution,
-  getUserReportData,
-  getCourseCompletionData,
-  getLearningEngagementData,
-  getSkillsAssessmentData,
-  generateReport,
-  getDashboardAnalytics
-};
+module.exports = new ReportAnalyticsService();

@@ -202,13 +202,13 @@ exports.getFormResponsesPaginated = async (req, res) => {
 };
 
 /**
- * Get detailed response by ID
+ * Get detailed response by ID (with scoring data for subjective)
  * GET /api/admin/feedback/responses/:id
  */
 exports.getResponseById = async (req, res) => {
   try {
     const { id } = req.params;
-    const response = await feedbackService.getResponseById(id);
+    const response = await feedbackService.getResponseByIdWithScoring(id);
 
     if (!response) {
       return res.status(404).json({
@@ -232,12 +232,78 @@ exports.getResponseById = async (req, res) => {
 };
 
 /**
+ * AI score a subjective assessment response
+ * POST /api/admin/feedback/responses/:id/ai-score
+ */
+exports.aiScoreResponse = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await feedbackService.aiScoreResponse(id);
+
+    res.json({
+      success: true,
+      data: result,
+      message: 'AI scoring completed successfully'
+    });
+  } catch (error) {
+    console.error('Feedback Controller - aiScoreResponse error:', error);
+
+    if (error.message.includes('PARSE_ERROR') || error.message.includes('AI_SERVICE_ERROR')) {
+      return res.status(503).json({
+        success: false,
+        message: 'AI service error. Please try again.',
+        error: error.message
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to score response',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Update manual scores for a subjective response
+ * PUT /api/admin/feedback/responses/:id/score
+ */
+exports.updateManualScores = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { scores } = req.body;
+
+    if (!scores || !Array.isArray(scores) || scores.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Scores array is required'
+      });
+    }
+
+    const result = await feedbackService.updateManualScores(id, scores);
+
+    res.json({
+      success: true,
+      data: result,
+      message: 'Scores updated successfully'
+    });
+  } catch (error) {
+    console.error('Feedback Controller - updateManualScores error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update scores',
+      error: error.message
+    });
+  }
+};
+
+/**
  * Generate assessment questions using AI
  * POST /api/admin/feedback/forms/ai-generate-questions
  */
 exports.generateAssessmentQuestions = async (req, res) => {
   try {
-    const { topic, numberOfQuestions, difficultyLevel } = req.body;
+    const { topic, numberOfQuestions, difficultyLevel, assessmentType } = req.body;
 
     // Validate required fields
     if (!topic || typeof topic !== 'string' || topic.trim().length < 3) {
@@ -265,7 +331,13 @@ exports.generateAssessmentQuestions = async (req, res) => {
     const validDifficulties = ['easy', 'medium', 'hard', 'mixed'];
     const difficulty = validDifficulties.includes(difficultyLevel) ? difficultyLevel : 'medium';
 
-    const questions = await geminiAIService.generateAssessmentQuestions(topic.trim(), count, difficulty);
+    // Choose AI generation method based on assessment type
+    let questions;
+    if (assessmentType === 'subjective') {
+      questions = await geminiAIService.generateSubjectiveAssessmentQuestions(topic.trim(), count, difficulty);
+    } else {
+      questions = await geminiAIService.generateAssessmentQuestions(topic.trim(), count, difficulty);
+    }
 
     res.json({
       success: true,
@@ -374,6 +446,7 @@ exports.submitPublicResponse = async (req, res) => {
       response.score = result.score;
       response.maxScore = result.maxScore;
       response.percentage = result.percentage;
+      response.showCorrectAnswers = result.showCorrectAnswers;
       response.results = result.results;
       response.respondentName = result.respondentName;
       response.respondentEmail = result.respondentEmail;
@@ -385,6 +458,37 @@ exports.submitPublicResponse = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to submit response',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get all submissions across all forms with filters
+ * GET /api/admin/feedback/submissions
+ * Query params: page, limit, type, assessmentType, search
+ */
+exports.getAllSubmissions = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, type, assessmentType, search } = req.query;
+
+    const result = await feedbackService.getAllSubmissions(
+      parseInt(page),
+      parseInt(limit),
+      type,
+      assessmentType,
+      search
+    );
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('Feedback Controller - getAllSubmissions error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch submissions',
       error: error.message
     });
   }

@@ -9,6 +9,7 @@ const app = express();
 require("dotenv").config();
 
 const allowedOrigins = [
+  "http://localhost:3000",
   process.env.FRONTEND_URL,
   process.env.ASSESSMENT_URL,
   "https://magnetix-prod.web.app","https://mkraftmagnetix.com"
@@ -84,10 +85,13 @@ const adminDashboardRoutes = require("./routes/admin/dashboard_routes");
 const adminSettingsRoutes = require("./routes/admin/settings_routes");
 const adminUserManagementRoutes = require("./routes/admin/user_management_routes");
 const adminReportRoutes = require("./routes/admin/report_routes");
+const adminReportSchedulerRoutes = require("./routes/admin/report_scheduler_routes");
+const adminCustomReportRoutes = require("./routes/admin/custom_report_routes");
 const adminTeamRoutes = require("./routes/admin/team_routes");
 const adminILTRoutes = require("./routes/admin/ilt_routes");
 const adminBulkUploadRoutes = require("./routes/admin/bulk_upload_routes");
 const adminLessonRoutes = require("./routes/admin/lesson_routes");
+const adminLearningItemRoutes = require("./routes/admin/learning_item_routes");
 const superAdminDashboardRoutes = require("./routes/super_admin/dashboard_routes");
 const superAdminTeamRoutes = require("./routes/super_admin/team_routes");
 const superAdminUserManagementRoutes = require("./routes/super_admin/user_management_routes");
@@ -150,11 +154,14 @@ app.use("/api/admin", require("./routes/admin/external_certificates_routes"));
 app.use("/api/admin/dashboard", adminDashboardRoutes);
 app.use("/api/admin/settings", adminSettingsRoutes);
 app.use("/api/admin/users", adminUserManagementRoutes);
+app.use("/api/admin/reports/schedules", adminReportSchedulerRoutes);
 app.use("/api/admin/reports", adminReportRoutes);
+app.use("/api/admin/custom-reports", adminCustomReportRoutes);
 app.use("/api/admin/teams", adminTeamRoutes);
 app.use("/api/admin/ilt", adminILTRoutes);
 app.use("/api/admin/bulk-upload", adminBulkUploadRoutes);
 app.use("/api/admin/content", adminLessonRoutes);
+app.use("/api/admin/learning-items", adminLearningItemRoutes);
 app.use("/api/google/meet", googleMeetRoutes);
 app.use("/api/google/oauth", googleOAuthRoutes);
 app.use("/api/support", supportRoutes);
