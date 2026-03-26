@@ -20,6 +20,12 @@ router.get('/', reportSchedulerController.getSchedules);
 router.post('/', reportSchedulerController.createSchedule);
 
 /**
+ * POST /api/admin/reports/schedules/ai-parse
+ * Parse a natural language command into schedule configuration using AI
+ */
+router.post('/ai-parse', reportSchedulerController.aiParseSchedule);
+
+/**
  * PUT /api/admin/reports/schedules/:id
  * Update an existing schedule
  */

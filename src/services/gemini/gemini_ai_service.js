@@ -740,6 +740,145 @@ IMPORTANT Rules:
   }
 
   /**
+   * Parse a natural language schedule command into a structured schedule configuration
+   * @param {string} command - Natural language scheduling command
+   * @returns {Promise<Object>} Parsed schedule configuration
+   */
+  async parseScheduleCommand(command) {
+    await this.ensureInitialized();
+
+    const sanitizedCommand = command
+      .replace(/<[^>]*>/g, '')
+      .replace(/[<>]/g, '')
+      .trim();
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const prompt = `You are a smart scheduling assistant for an LMS report system. Parse the user's natural language command into a structured schedule configuration.
+
+Today's date is: ${today}
+
+User's command: "${sanitizedCommand}"
+
+You must return a JSON object with this EXACT structure (no markdown, no code blocks, just pure JSON):
+{
+  "scheduleName": "A short descriptive name for this schedule (e.g., 'Weekly Monday Report')",
+  "frequency": "once | daily | weekdays | weekly | biweekly | monthly | custom",
+  "daysOfWeek": [0,1,2,3,4,5,6],
+  "daysOfMonth": [1,2,...,31],
+  "specificDates": ["YYYY-MM-DD", "YYYY-MM-DD"],
+  "repeatEndDate": "YYYY-MM-DD or null",
+  "timeOfDay": "HH:mm (24-hour format)",
+  "timezone": "timezone string",
+  "recipients": ["email@example.com"],
+  "explanation": "Brief human-readable explanation of what was understood"
+}
+
+RULES:
+1. "frequency" must be EXACTLY one of: once, daily, weekdays, weekly, biweekly, monthly, custom
+2. "daysOfWeek": only include for weekly/biweekly. 0=Sunday, 1=Monday, ..., 6=Saturday. Omit or set to [] for other frequencies.
+3. "daysOfMonth": only include for monthly. Values 1-31. Omit or set to [] for other frequencies.
+4. "specificDates": only include for once/custom. Must be YYYY-MM-DD format. For "once", include all specific dates mentioned. For "custom", include all dates.
+5. "repeatEndDate": set if user mentions an end date, otherwise null
+6. "timeOfDay": default to "09:00" if not specified. Use 24-hour format.
+7. "timezone": default to "Asia/Kolkata" if not specified. Use IANA timezone names.
+8. "recipients": extract email addresses if mentioned, otherwise return empty array []
+9. "explanation": explain in simple English what the schedule will do
+10. If user says "every Monday and Wednesday" → frequency: "weekly", daysOfWeek: [1, 3]
+11. If user says "on the 1st and 15th" → frequency: "monthly", daysOfMonth: [1, 15]
+12. If user says "next Friday" or specific dates → frequency: "once", specificDates: ["YYYY-MM-DD"]
+13. If user says "weekdays" or "Monday to Friday" → frequency: "weekdays"
+14. If user says "every other week" → frequency: "biweekly"
+15. Convert relative dates (e.g., "next Monday", "tomorrow") to absolute YYYY-MM-DD dates based on today's date
+16. Return ONLY valid JSON - no explanations, no markdown formatting`;
+
+    try {
+      console.log('🤖 Parsing schedule command:', sanitizedCommand.substring(0, 80));
+
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      let text = response.text();
+      text = this._extractJSON(text);
+
+      const parsed = JSON.parse(text);
+
+      // Validate and normalize
+      const validFrequencies = ['once', 'daily', 'weekdays', 'weekly', 'biweekly', 'monthly', 'custom'];
+      if (!validFrequencies.includes(parsed.frequency)) {
+        parsed.frequency = 'daily';
+      }
+
+      // Normalize daysOfWeek
+      if (parsed.daysOfWeek && Array.isArray(parsed.daysOfWeek)) {
+        parsed.daysOfWeek = parsed.daysOfWeek.filter(d => typeof d === 'number' && d >= 0 && d <= 6);
+      } else {
+        parsed.daysOfWeek = [];
+      }
+
+      // Normalize daysOfMonth
+      if (parsed.daysOfMonth && Array.isArray(parsed.daysOfMonth)) {
+        parsed.daysOfMonth = parsed.daysOfMonth.filter(d => typeof d === 'number' && d >= 1 && d <= 31);
+      } else {
+        parsed.daysOfMonth = [];
+      }
+
+      // Normalize specificDates
+      if (parsed.specificDates && Array.isArray(parsed.specificDates)) {
+        parsed.specificDates = parsed.specificDates.filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
+      } else {
+        parsed.specificDates = [];
+      }
+
+      // Normalize timeOfDay
+      if (!parsed.timeOfDay || !/^\d{2}:\d{2}$/.test(parsed.timeOfDay)) {
+        parsed.timeOfDay = '09:00';
+      }
+
+      // Normalize timezone
+      if (!parsed.timezone) {
+        parsed.timezone = 'Asia/Kolkata';
+      }
+
+      // Normalize recipients
+      if (!Array.isArray(parsed.recipients)) {
+        parsed.recipients = [];
+      }
+
+      // Normalize repeatEndDate
+      if (parsed.repeatEndDate && !/^\d{4}-\d{2}-\d{2}$/.test(parsed.repeatEndDate)) {
+        parsed.repeatEndDate = null;
+      }
+
+      console.log(`✅ Parsed schedule command: ${parsed.frequency}, time: ${parsed.timeOfDay}`);
+
+      return {
+        scheduleName: parsed.scheduleName || null,
+        frequency: parsed.frequency,
+        daysOfWeek: parsed.daysOfWeek,
+        daysOfMonth: parsed.daysOfMonth,
+        specificDates: parsed.specificDates,
+        repeatEndDate: parsed.repeatEndDate || null,
+        timeOfDay: parsed.timeOfDay,
+        timezone: parsed.timezone,
+        recipients: parsed.recipients,
+        explanation: parsed.explanation || 'Schedule parsed successfully'
+      };
+    } catch (error) {
+      console.error('❌ Schedule command parsing error:', error.message);
+
+      if (error.message.includes('SAFETY')) {
+        throw new Error('CONTENT_FILTERED: Unable to parse this command. Please try rephrasing.');
+      }
+
+      if (error instanceof SyntaxError) {
+        throw new Error('PARSE_ERROR: Failed to understand the command. Please try again with clearer instructions.');
+      }
+
+      throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
+    }
+  }
+
+  /**
    * Generate insights and analysis from report data
    * @param {Object} params - Report context for analysis
    * @param {string} params.dataSourceLabel - Name of the data source
