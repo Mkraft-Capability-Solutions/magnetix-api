@@ -194,7 +194,7 @@ class InstructorCourseService {
           }
 
           const [lessonResult] = await connection.query(
-            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
               lesson.title,
               lesson.sectionId, // Use existing section ID
@@ -209,6 +209,10 @@ class InstructorCourseService {
               userId,
               userId,
               lessonOrder,
+              lesson.assessmentId || null,
+              lesson.requireSectionCompletion || 0,
+              lesson.assessmentStartDate || null,
+              lesson.assessmentEndDate || null,
             ]
           );
 
@@ -366,7 +370,7 @@ class InstructorCourseService {
             console.log(`Lesson order: ${lessonOrder}`);
 
             const [lessonResult] = await connection.query(
-              "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               [
                 lesson.title,
                 sectionId,
@@ -381,6 +385,10 @@ class InstructorCourseService {
                 userId,
                 userId,
                 lessonOrder,
+                lesson.assessmentId || null,
+                lesson.requireSectionCompletion || 0,
+                lesson.assessmentStartDate || null,
+                lesson.assessmentEndDate || null,
               ]
             );
 
@@ -801,7 +809,7 @@ class InstructorCourseService {
           }
 
           const [lessonResult] = await connection.query(
-            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
               lesson.title,
               lesson.sectionId, // Use existing section ID
@@ -816,6 +824,10 @@ class InstructorCourseService {
               userId,
               userId,
               lessonOrder,
+              lesson.assessmentId || null,
+              lesson.requireSectionCompletion || 0,
+              lesson.assessmentStartDate || null,
+              lesson.assessmentEndDate || null,
             ]
           );
 
@@ -966,7 +978,7 @@ class InstructorCourseService {
             console.log(`Update - Lesson order: ${lessonOrder}`);
 
             const [lessonResult] = await connection.query(
-              "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               [
                 lesson.title,
                 sectionId,
@@ -981,6 +993,10 @@ class InstructorCourseService {
                 userId,
                 userId,
                 lessonOrder,
+                lesson.assessmentId || null,
+                lesson.requireSectionCompletion || 0,
+                lesson.assessmentStartDate || null,
+                lesson.assessmentEndDate || null,
               ]
             );
 
@@ -1837,10 +1853,11 @@ class InstructorCourseService {
       console.log('Full lesson data received:', JSON.stringify(lessonData, null, 2));
 
       // Ensure all parameters are properly defined (null instead of undefined)
-      // Order must match ACTUAL stored procedure signature in database: add_course_lesson(
+      // Order must match stored procedure signature: add_course_lesson(
       //   p_title, p_section_id, p_lesson_type, p_lesson_content_type,
       //   p_lesson_content_document, p_lesson_content_scorm, p_lesson_content_mp4, p_lesson_content_url,
-      //   p_lesson_duration, p_course_id, p_creator_id, p_last_updated_by, p_lesson_order)
+      //   p_lesson_duration, p_course_id, p_creator_id, p_last_updated_by, p_lesson_order,
+      //   p_assessment_id, p_require_section_completion, p_assessment_start_date, p_assessment_end_date)
       const params = [
         lessonData.title || null,                        // p_title
         lessonData.sectionId || null,                    // p_section_id
@@ -1855,13 +1872,17 @@ class InstructorCourseService {
         creatorId,                                       // p_creator_id
         creatorId,                                       // p_last_updated_by
         lessonData.lessonOrder || null,                  // p_lesson_order (null = auto-calculate)
+        lessonData.assessmentId || null,                 // p_assessment_id
+        lessonData.requireSectionCompletion || 0,        // p_require_section_completion
+        lessonData.assessmentStartDate || null,          // p_assessment_start_date
+        lessonData.assessmentEndDate || null,             // p_assessment_end_date
       ];
 
       console.log('SQL parameters:', params);
 
       // Use the stored procedure to get automatic lesson ordering
       const [result] = await connection.query(
-        "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params
       );
 
