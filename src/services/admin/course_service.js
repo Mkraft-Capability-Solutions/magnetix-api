@@ -195,7 +195,7 @@ class AdminCourseService {
           }
 
           const [lessonResult] = await connection.query(
-            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
               lesson.title,
               lesson.sectionId, // Use existing section ID
@@ -210,6 +210,10 @@ class AdminCourseService {
               userId,
               userId,
               lessonOrder,
+              lesson.assessmentId || null,
+              lesson.requireSectionCompletion || 0,
+              lesson.assessmentStartDate || null,
+              lesson.assessmentEndDate || null,
             ]
           );
 
@@ -368,7 +372,7 @@ class AdminCourseService {
             console.log(`Lesson order: ${lessonOrder}`);
 
             const [lessonResult] = await connection.query(
-              "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               [
                 lesson.title,
                 sectionId,
@@ -383,6 +387,10 @@ class AdminCourseService {
                 userId,
                 userId,
                 lessonOrder,
+                lesson.assessmentId || null,
+                lesson.requireSectionCompletion || 0,
+                lesson.assessmentStartDate || null,
+                lesson.assessmentEndDate || null,
               ]
             );
 
