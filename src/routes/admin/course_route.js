@@ -65,6 +65,10 @@ router.post(
   adminCourseController.addLesson
 );
 router.put(
+  "/:courseId/lessons/reorder",
+  adminCourseController.reorderLessons
+);
+router.put(
   "/:courseId/lessons/:lessonId",
   validateUpdateLesson,
   adminCourseController.updateLesson

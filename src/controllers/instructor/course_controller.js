@@ -790,6 +790,28 @@ exports.updateLesson = async (req, res, next) => {
   }
 };
 
+exports.reorderLessons = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const { sectionId, lessonOrders } = req.body;
+    const result = await instructorCourseService.reorderLessons(
+      courseId,
+      sectionId,
+      lessonOrders,
+      req.user.uuid
+    );
+
+    res.json({
+      success: true,
+      message: "Lessons reordered successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in reorderLessons:", error);
+    next(error);
+  }
+};
+
 exports.deleteLesson = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;

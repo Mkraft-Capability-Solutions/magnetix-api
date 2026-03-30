@@ -437,6 +437,21 @@ exports.updateLesson = asyncHandler(async (req, res) => {
   });
 });
 
+exports.reorderLessons = asyncHandler(async (req, res) => {
+  const { sectionId, lessonOrders } = req.body;
+  const result = await courseSectionLessonService.reorderLessons(
+    req.params.courseId,
+    sectionId,
+    lessonOrders
+  );
+
+  res.json({
+    success: true,
+    message: "Lessons reordered successfully",
+    data: result,
+  });
+});
+
 exports.deleteLesson = asyncHandler(async (req, res) => {
   const result = await courseSectionLessonService.deleteLesson(
     req.params.courseId,

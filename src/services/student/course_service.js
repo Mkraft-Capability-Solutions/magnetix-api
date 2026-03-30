@@ -652,9 +652,18 @@ async getCourseBasicDetails(courseId) {
     const reviews = results[8];
     const ratingStats = results[9][0];
     
-    // Combine all lessons
+    // Combine all lessons and sort by section_id, lesson_order, id
     const allLessons = [...contentLessons, ...iltsLessons];
-    
+    allLessons.sort((a, b) => {
+      const secA = a.section_id || 0;
+      const secB = b.section_id || 0;
+      if (secA !== secB) return secA - secB;
+      const ordA = a.lesson_order || 0;
+      const ordB = b.lesson_order || 0;
+      if (ordA !== ordB) return ordA - ordB;
+      return (a.id || 0) - (b.id || 0);
+    });
+
     return new ServiceResponseDTO(true, {
       ...courseInfo,
       requirements: requirements.map(req => new CourseRequirementDTO(req)),
@@ -703,8 +712,45 @@ async getEnrolledCourseDetails(userId, courseId) {
     const progressSummary = results[11][0];
     const achievedSkills = results[12];
 
+    // Enrich lessons with assessment_id and lesson_order from course_lesson table
+    // The stored proc may not include these columns
+    let enrichedLessons = lessonsWithProgress;
+    try {
+      const [extraRows] = await promisePool.query(
+        'SELECT id, assessment_id, lesson_order FROM course_lesson WHERE course_id = ?',
+        [courseId]
+      );
+      if (extraRows.length > 0) {
+        const extraMap = new Map(extraRows.map(r => [r.id, r]));
+        enrichedLessons = lessonsWithProgress.map(lesson => {
+          const lid = lesson.lesson_id || lesson.id;
+          const extra = extraMap.get(lid);
+          if (!extra) return lesson;
+          const enriched = { ...lesson, lesson_order: extra.lesson_order || 0 };
+          if (extra.assessment_id) {
+            enriched.assessment_id = extra.assessment_id;
+            enriched.lesson_content_type = 'quiz';
+          }
+          return enriched;
+        });
+        // Sort by section_id then lesson_order then id
+        enrichedLessons.sort((a, b) => {
+          const secA = a.section_id || 0;
+          const secB = b.section_id || 0;
+          if (secA !== secB) return secA - secB;
+          const ordA = a.lesson_order || 0;
+          const ordB = b.lesson_order || 0;
+          if (ordA !== ordB) return ordA - ordB;
+          return (a.lesson_id || a.id || 0) - (b.lesson_id || b.id || 0);
+        });
+      }
+    } catch (e) {
+      // enrichment columns may not exist — continue with original data
+    }
+
     // Combine all lessons
     const allLessons = [...contentLessons, ...iltsLessons];
+
 
     return new ServiceResponseDTO(true, {
       ...courseInfo,
@@ -713,7 +759,7 @@ async getEnrolledCourseDetails(userId, courseId) {
       faqs: faqs.map(faq => new CourseFaqDTO(faq)),
       skills: skills.map(skill => new CourseSkillDTO(skill)),
       sections: sections.map(section => new CourseSectionDTO(section)),
-      lessons: lessonsWithProgress.map(lesson => new CourseLessonDTO(lesson)),
+      lessons: enrichedLessons.map(lesson => new CourseLessonDTO(lesson)),
       reviews: reviews.map(review => new CourseReviewDTO(review)),
       rating_stats: new RatingStatsDTO(ratingStats),
       progress: new CourseProgressDTO(progressSummary),
