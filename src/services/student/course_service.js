@@ -1238,7 +1238,7 @@ async updateCourseRating(userId, courseId, rating, review = '') {
       }
       const form = forms[0];
       const showCorrectAnswers = form.show_correct_answers === 1;
-      const isSubjective = form.assessment_type === 'subjective';
+      const isSubjective = form.assessment_type === 'subjective' || form.assessment_type === 'both';
 
       // Get questions WITH correct_answers for scoring
       const [questions] = await connection.query(
@@ -1394,33 +1394,66 @@ async updateCourseRating(userId, courseId, rating, review = '') {
 
       // Build per-question results
       let detailedResults = null;
+      const subjectiveTypes = ['short_text', 'paragraph', 'slider'];
       if (isSubjective) {
-        // For subjective assessments, always show results with AI feedback
+        // For subjective/both assessments, build results per question type
         detailedResults = questionsForScoring.map(question => {
           const userAnswer = answers.find(a => a.questionId === question.id);
-          const aiResult = aiScoringResults && !aiScoringResults._error
-            ? aiScoringResults[question.id]
-            : null;
+          const isSubjectiveQ = subjectiveTypes.includes(question.question_type);
 
-          let userAnswerText = '';
-          if (question.question_type === 'slider') {
-            userAnswerText = userAnswer?.rating !== undefined ? `${userAnswer.rating}/10` : 'No answer';
-          } else if (userAnswer?.text) {
-            userAnswerText = userAnswer.text;
+          if (isSubjectiveQ) {
+            const aiResult = aiScoringResults && !aiScoringResults._error
+              ? aiScoringResults[question.id]
+              : null;
+
+            let userAnswerText = '';
+            if (question.question_type === 'slider') {
+              userAnswerText = userAnswer?.rating !== undefined ? `${userAnswer.rating}/10` : 'No answer';
+            } else if (userAnswer?.text) {
+              userAnswerText = userAnswer.text;
+            } else {
+              userAnswerText = 'No answer provided';
+            }
+
+            return {
+              questionId: question.id,
+              questionText: question.question_text,
+              questionType: question.question_type,
+              userAnswerText,
+              aiScore: aiResult ? aiResult.score : null,
+              aiMaxScore: aiResult ? aiResult.maxScore : (question.score || 1),
+              aiFeedback: aiResult ? aiResult.feedback : (aiScoringResults?._error || null),
+              isSubjective: true,
+            };
           } else {
-            userAnswerText = 'No answer provided';
-          }
+            // Objective question in a combined assessment
+            let userSelectedIndices = [];
+            if (userAnswer && userAnswer.options) {
+              const selectedOptions = typeof userAnswer.options === 'string'
+                ? JSON.parse(userAnswer.options) : userAnswer.options;
+              if (Array.isArray(selectedOptions)) {
+                userSelectedIndices = selectedOptions.map(opt =>
+                  question.options.findIndex(o => o === opt)
+                ).filter(idx => idx !== -1);
+              }
+            }
+            const correctAnswersSet = new Set(question.correct_answers);
+            const userAnswersSet = new Set(userSelectedIndices);
+            const isCorrect = question.correct_answers.length === userSelectedIndices.length &&
+              question.correct_answers.every(idx => userAnswersSet.has(idx)) &&
+              userSelectedIndices.every(idx => correctAnswersSet.has(idx));
 
-          return {
-            questionId: question.id,
-            questionText: question.question_text,
-            questionType: question.question_type,
-            userAnswerText,
-            aiScore: aiResult ? aiResult.score : null,
-            aiMaxScore: aiResult ? aiResult.maxScore : (question.score || 1),
-            aiFeedback: aiResult ? aiResult.feedback : (aiScoringResults?._error || null),
-            isSubjective: true,
-          };
+            return {
+              questionId: question.id,
+              questionText: question.question_text,
+              questionType: question.question_type,
+              options: question.options,
+              userSelectedIndices,
+              correctIndices: question.correct_answers,
+              isCorrect,
+              isSubjective: false,
+            };
+          }
         });
       } else if (showCorrectAnswers) {
         // Objective results (existing logic)
