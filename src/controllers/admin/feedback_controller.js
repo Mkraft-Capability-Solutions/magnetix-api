@@ -333,7 +333,19 @@ exports.generateAssessmentQuestions = async (req, res) => {
 
     // Choose AI generation method based on assessment type
     let questions;
-    if (assessmentType === 'subjective') {
+    if (assessmentType === 'both') {
+      // Generate mixed questions based on ratio
+      const ratio = Math.max(10, Math.min(90, parseInt(req.body.objectiveRatio) || 50));
+      const objectiveCount = Math.max(1, Math.round(count * ratio / 100));
+      const subjectiveCount = Math.max(1, count - objectiveCount);
+
+      const [objectiveQuestions, subjectiveQuestions] = await Promise.all([
+        geminiAIService.generateAssessmentQuestions(topic.trim(), objectiveCount, difficulty),
+        geminiAIService.generateSubjectiveAssessmentQuestions(topic.trim(), subjectiveCount, difficulty),
+      ]);
+
+      questions = [...objectiveQuestions, ...subjectiveQuestions];
+    } else if (assessmentType === 'subjective') {
       questions = await geminiAIService.generateSubjectiveAssessmentQuestions(topic.trim(), count, difficulty);
     } else {
       questions = await geminiAIService.generateAssessmentQuestions(topic.trim(), count, difficulty);
@@ -447,6 +459,7 @@ exports.submitPublicResponse = async (req, res) => {
       response.maxScore = result.maxScore;
       response.percentage = result.percentage;
       response.showCorrectAnswers = result.showCorrectAnswers;
+      response.showReport = result.showReport;
       response.results = result.results;
       response.respondentName = result.respondentName;
       response.respondentEmail = result.respondentEmail;

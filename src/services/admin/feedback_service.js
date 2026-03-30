@@ -121,7 +121,13 @@ const validateQuestions = async (formType, questions, assessmentType) => {
 
     // For assessment type, validate based on assessment_type
     if (formType === 'assessment') {
-      if (assessmentType === 'subjective') {
+      if (assessmentType === 'both') {
+        // Combined assessments allow both objective and subjective question types
+        const allowedTypes = ['multiple_choice_single', 'multiple_choice_multi', 'short_text', 'paragraph', 'slider'].filter(t => supportedTypes.includes(t));
+        if (!allowedTypes.includes(question.type)) {
+          throw new Error('Assessment forms can only contain multiple choice, short text, paragraph, or slider questions');
+        }
+      } else if (assessmentType === 'subjective') {
         // Subjective assessments allow: short_text, paragraph, slider
         const allowedTypes = ['short_text', 'paragraph', 'slider'].filter(t => supportedTypes.includes(t));
         if (!allowedTypes.includes(question.type)) {
@@ -169,35 +175,45 @@ const createForm = async (formData, userUuid) => {
     const slug = generateSlug();
     const uuid = uuidv4();
 
-    // Check if assessment_type column exists
+    // Check which optional columns exist
     const [columns] = await connection.query(`
       SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = 'lms_db' AND TABLE_NAME = 'feedback_forms' AND COLUMN_NAME = 'assessment_type'
+      WHERE TABLE_SCHEMA = 'lms_db' AND TABLE_NAME = 'feedback_forms' AND COLUMN_NAME IN ('assessment_type', 'show_report')
     `);
-    const hasAssessmentType = columns.length > 0;
+    const existingCols = new Set(columns.map(c => c.COLUMN_NAME));
+    const hasAssessmentType = existingCols.has('assessment_type');
+    const hasShowReport = existingCols.has('show_report');
 
-    // Insert form - conditionally include assessment_type if column exists
-    const queryColumns = hasAssessmentType
-      ? '(uuid, slug, name, description, type, assessment_type, status, expiry_date, max_responses, one_per_browser, collect_name, collect_email, show_correct_answers, created_by)'
-      : '(uuid, slug, name, description, type, status, expiry_date, max_responses, one_per_browser, collect_name, collect_email, show_correct_answers, created_by)';
+    // If show_report column doesn't exist, add it
+    if (!hasShowReport) {
+      try {
+        await connection.query('ALTER TABLE feedback_forms ADD COLUMN show_report TINYINT(1) DEFAULT 1 AFTER show_correct_answers');
+      } catch (e) { /* column may already exist from concurrent request */ }
+    }
 
-    const queryValues = hasAssessmentType
-      ? '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      : '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+    // Ensure assessment_type column supports 'both' value
+    if (hasAssessmentType && formData.assessmentType === 'both') {
+      try {
+        await connection.query("ALTER TABLE feedback_forms MODIFY COLUMN assessment_type VARCHAR(20) NULL");
+      } catch (e) { /* ignore if already modified */ }
+    }
 
-    const insertParams = hasAssessmentType
-      ? [
-          uuid, slug, formData.name, formData.description || null, formData.type || 'feedback',
-          formData.assessmentType || null, formData.status || 'draft', formData.expiryDate || null,
-          formData.maxResponses || null, formData.onePerBrowser ? 1 : 0, formData.collectName ? 1 : 0,
-          formData.collectEmail ? 1 : 0, formData.showCorrectAnswers !== undefined ? (formData.showCorrectAnswers ? 1 : 0) : 1, userUuid
-        ]
-      : [
-          uuid, slug, formData.name, formData.description || null, formData.type || 'feedback',
-          formData.status || 'draft', formData.expiryDate || null, formData.maxResponses || null,
-          formData.onePerBrowser ? 1 : 0, formData.collectName ? 1 : 0, formData.collectEmail ? 1 : 0,
-          formData.showCorrectAnswers !== undefined ? (formData.showCorrectAnswers ? 1 : 0) : 1, userUuid
-        ];
+    // Build dynamic INSERT columns
+    const cols = ['uuid', 'slug', 'name', 'description', 'type'];
+    const vals = [uuid, slug, formData.name, formData.description || null, formData.type || 'feedback'];
+    if (hasAssessmentType) { cols.push('assessment_type'); vals.push(formData.assessmentType || null); }
+    cols.push('status', 'expiry_date', 'max_responses', 'one_per_browser', 'collect_name', 'collect_email', 'show_correct_answers', 'show_report', 'created_by');
+    vals.push(
+      formData.status || 'draft', formData.expiryDate || null, formData.maxResponses || null,
+      formData.onePerBrowser ? 1 : 0, formData.collectName ? 1 : 0, formData.collectEmail ? 1 : 0,
+      formData.showCorrectAnswers !== undefined ? (formData.showCorrectAnswers ? 1 : 0) : 1,
+      formData.showReport !== undefined ? (formData.showReport ? 1 : 0) : 1,
+      userUuid
+    );
+
+    const queryColumns = `(${cols.join(', ')})`;
+    const queryValues = `(${cols.map(() => '?').join(', ')})`;
+    const insertParams = vals;
 
     const [formResult] = await connection.query(`
       INSERT INTO feedback_forms ${queryColumns}
@@ -287,45 +303,23 @@ const updateForm = async (formId, formData) => {
       await validateQuestions(formData.type || 'feedback', formData.questions, formData.assessmentType);
     }
 
-    // Check if assessment_type column exists
-    const [columns] = await connection.query(`
-      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = 'lms_db' AND TABLE_NAME = 'feedback_forms' AND COLUMN_NAME = 'assessment_type'
-    `);
-    const hasAssessmentType = columns.length > 0;
+    // Update form with all fields including show_report
+    const updateQuery = `UPDATE feedback_forms SET
+        name = ?, description = ?, type = ?, assessment_type = ?, status = ?,
+        expiry_date = ?, max_responses = ?, one_per_browser = ?,
+        collect_name = ?, collect_email = ?, show_correct_answers = ?, show_report = ?
+      WHERE id = ? AND is_deleted = 0`;
 
-    // Update form - conditionally include assessment_type if column exists
-    const updateQuery = hasAssessmentType
-      ? `UPDATE feedback_forms SET
-          name = ?, description = ?, type = ?, assessment_type = ?, status = ?,
-          expiry_date = ?, max_responses = ?, one_per_browser = ?,
-          collect_name = ?, collect_email = ?, show_correct_answers = ?
-        WHERE id = ? AND is_deleted = 0`
-      : `UPDATE feedback_forms SET
-          name = ?, description = ?, type = ?, status = ?,
-          expiry_date = ?, max_responses = ?, one_per_browser = ?,
-          collect_name = ?, collect_email = ?, show_correct_answers = ?
-        WHERE id = ? AND is_deleted = 0`;
-
-    const updateParams = hasAssessmentType
-      ? [
-          formData.name, formData.description || null, formData.type || 'feedback',
-          formData.assessmentType || null, formData.status || 'draft',
-          formData.expiryDate || null, formData.maxResponses || null,
-          formData.onePerBrowser ? 1 : 0, formData.collectName ? 1 : 0,
-          formData.collectEmail ? 1 : 0,
-          formData.showCorrectAnswers !== undefined ? (formData.showCorrectAnswers ? 1 : 0) : 1,
-          formId
-        ]
-      : [
-          formData.name, formData.description || null, formData.type || 'feedback',
-          formData.status || 'draft',
-          formData.expiryDate || null, formData.maxResponses || null,
-          formData.onePerBrowser ? 1 : 0, formData.collectName ? 1 : 0,
-          formData.collectEmail ? 1 : 0,
-          formData.showCorrectAnswers !== undefined ? (formData.showCorrectAnswers ? 1 : 0) : 1,
-          formId
-        ];
+    const updateParams = [
+      formData.name, formData.description || null, formData.type || 'feedback',
+      formData.assessmentType || null, formData.status || 'draft',
+      formData.expiryDate || null, formData.maxResponses || null,
+      formData.onePerBrowser ? 1 : 0, formData.collectName ? 1 : 0,
+      formData.collectEmail ? 1 : 0,
+      formData.showCorrectAnswers !== undefined ? (formData.showCorrectAnswers ? 1 : 0) : 1,
+      formData.showReport !== undefined ? (formData.showReport ? 1 : 0) : 1,
+      formId
+    ];
 
     // Update form
     await connection.query(updateQuery, updateParams);
@@ -462,6 +456,7 @@ const getPublicFormBySlug = async (slug, browserFingerprint = null) => {
       collectName: form.collect_name === 1,
       collectEmail: form.collect_email === 1,
       showCorrectAnswers: form.show_correct_answers === 1,
+      showReport: form.show_report === 1,
       questions: questions.map(q => ({
         ...q,
         options: q.options ? (typeof q.options === 'string' ? JSON.parse(q.options) : q.options) : null
@@ -545,12 +540,13 @@ const submitResponse = async (slug, responseData) => {
 
     // Get form details to check if it's an assessment
     const [formDetails] = await connection.query(
-      'SELECT type, assessment_type, show_correct_answers FROM feedback_forms WHERE id = ?',
+      'SELECT type, assessment_type, show_correct_answers, show_report FROM feedback_forms WHERE id = ?',
       [form.id]
     );
     const isAssessment = formDetails[0]?.type === 'assessment';
     const isSubjective = formDetails[0]?.assessment_type === 'subjective';
     const showCorrectAnswers = formDetails[0]?.show_correct_answers === 1;
+    const showReport = formDetails[0]?.show_report === 1;
 
     // Calculate score for assessments
     let scoreData = null;
@@ -573,7 +569,7 @@ const submitResponse = async (slug, responseData) => {
           correct_answers: q.correct_answers ? (typeof q.correct_answers === 'string' ? JSON.parse(q.correct_answers) : q.correct_answers) : [],
         }));
 
-        if (isSubjective) {
+        if (isSubjective || assessmentType === 'both') {
           // AI scoring for subjective assessments
           const subjectiveTypes = ['short_text', 'paragraph', 'slider'];
           const questionsForAI = [];
@@ -650,30 +646,60 @@ const submitResponse = async (slug, responseData) => {
             aiScoringResults = { _error: 'AI scoring unavailable. Your answers will be reviewed manually.' };
           }
 
-          // Build detailed results for subjective
+          // Build detailed results for all questions (subjective + objective for 'both')
           detailedResults = parsedQuestions.map(question => {
             const userAnswer = (responseData.answers || []).find(a => a.questionId === question.id);
-            const aiResult = aiScoringResults && !aiScoringResults._error ? aiScoringResults[question.id] : null;
+            const isSubjectiveQ = subjectiveTypes.includes(question.question_type);
 
-            let userAnswerText = '';
-            if (question.question_type === 'slider') {
-              userAnswerText = userAnswer?.text ? `${userAnswer.text}/10` : (userAnswer?.rating !== undefined ? `${userAnswer.rating}/10` : 'No answer');
-            } else if (userAnswer?.text) {
-              userAnswerText = userAnswer.text;
+            if (isSubjectiveQ) {
+              // Subjective result with AI scoring
+              const aiResult = aiScoringResults && !aiScoringResults._error ? aiScoringResults[question.id] : null;
+
+              let userAnswerText = '';
+              if (question.question_type === 'slider') {
+                userAnswerText = userAnswer?.text ? `${userAnswer.text}/10` : (userAnswer?.rating !== undefined ? `${userAnswer.rating}/10` : 'No answer');
+              } else if (userAnswer?.text) {
+                userAnswerText = userAnswer.text;
+              } else {
+                userAnswerText = 'No answer provided';
+              }
+
+              return {
+                questionId: question.id,
+                questionText: question.question_text,
+                questionType: question.question_type,
+                userAnswerText,
+                aiScore: aiResult ? aiResult.score : null,
+                aiMaxScore: aiResult ? aiResult.maxScore : (question.score || 1),
+                aiFeedback: aiResult ? aiResult.feedback : (aiScoringResults?._error || null),
+                isSubjective: true,
+              };
             } else {
-              userAnswerText = 'No answer provided';
-            }
+              // Objective result
+              let userSelectedIndices = [];
+              if (userAnswer && userAnswer.options) {
+                const selectedOptions = typeof userAnswer.options === 'string' ? JSON.parse(userAnswer.options) : userAnswer.options;
+                if (Array.isArray(selectedOptions)) {
+                  userSelectedIndices = selectedOptions.map(opt => question.options.findIndex(o => o === opt)).filter(idx => idx !== -1);
+                }
+              }
+              const correctAnswersSet = new Set(question.correct_answers);
+              const userAnswersSet = new Set(userSelectedIndices);
+              const isCorrect = question.correct_answers.length === userSelectedIndices.length &&
+                question.correct_answers.every(idx => userAnswersSet.has(idx)) &&
+                userSelectedIndices.every(idx => correctAnswersSet.has(idx));
 
-            return {
-              questionId: question.id,
-              questionText: question.question_text,
-              questionType: question.question_type,
-              userAnswerText,
-              aiScore: aiResult ? aiResult.score : null,
-              aiMaxScore: aiResult ? aiResult.maxScore : (question.score || 1),
-              aiFeedback: aiResult ? aiResult.feedback : (aiScoringResults?._error || null),
-              isSubjective: true,
-            };
+              return {
+                questionId: question.id,
+                questionText: question.question_text,
+                questionType: question.question_type,
+                options: question.options,
+                userSelectedIndices,
+                correctIndices: question.correct_answers,
+                isCorrect,
+                isSubjective: false,
+              };
+            }
           });
         } else {
           // Objective scoring (existing logic)
@@ -764,9 +790,10 @@ const submitResponse = async (slug, responseData) => {
         maxScore: scoreData.maxScore,
         percentage: scoreData.percentage,
         assessmentType,
-        showCorrectAnswers: isSubjective ? true : showCorrectAnswers,
-        // For subjective always show results; for objective only if admin enabled
-        ...((isSubjective || showCorrectAnswers) && { results: detailedResults }),
+        showCorrectAnswers: (isSubjective || assessmentType === 'both') ? true : showCorrectAnswers,
+        showReport,
+        // For subjective/both always show results; for objective only if admin enabled
+        ...((isSubjective || assessmentType === 'both' || showCorrectAnswers) && { results: detailedResults }),
         respondentName: responseData.respondentName || responseData.name || null,
         respondentEmail: responseData.respondentEmail || responseData.email || null
       })
