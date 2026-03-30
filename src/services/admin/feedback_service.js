@@ -1038,6 +1038,25 @@ const getResponseById = async (responseId) => {
     ORDER BY fq.question_order ASC
   `, [responseId, response.form_id]);
 
+  // If questions were re-created (form edited after submission), answers have orphaned question_ids.
+  // Fall back to matching answers by response_id using question_order position.
+  const hasAnyAnswer = questionsWithAnswers.some(q => q.answer_id !== null);
+  if (!hasAnyAnswer) {
+    const [orphanedAnswers] = await promisePool.query(
+      'SELECT id as answer_id, question_id, answer_text, answer_options, answer_rating FROM feedback_answers WHERE response_id = ? ORDER BY id ASC',
+      [responseId]
+    );
+    if (orphanedAnswers.length > 0) {
+      // Match by position (answer order matches original question order)
+      for (let i = 0; i < Math.min(questionsWithAnswers.length, orphanedAnswers.length); i++) {
+        questionsWithAnswers[i].answer_id = orphanedAnswers[i].answer_id;
+        questionsWithAnswers[i].answer_text = orphanedAnswers[i].answer_text;
+        questionsWithAnswers[i].answer_options = orphanedAnswers[i].answer_options;
+        questionsWithAnswers[i].answer_rating = orphanedAnswers[i].answer_rating;
+      }
+    }
+  }
+
   // Process questions and answers
   const questionsAndAnswers = questionsWithAnswers.map(q => {
     const questionData = {
@@ -1219,8 +1238,8 @@ const aiScoreResponse = async (responseId) => {
   }
 
   const response = responses[0];
-  if (response.type !== 'assessment' || response.assessment_type !== 'subjective') {
-    throw new Error('AI scoring is only available for subjective assessments');
+  if (response.type !== 'assessment' || (response.assessment_type !== 'subjective' && response.assessment_type !== 'both')) {
+    throw new Error('AI scoring is only available for subjective and combined assessments');
   }
 
   // Get questions and answers
@@ -1239,8 +1258,12 @@ const aiScoreResponse = async (responseId) => {
     ORDER BY fq.question_order ASC
   `, [responseId, response.form_id]);
 
+  // Filter only subjective questions for AI scoring (for 'both' type, skip objective ones)
+  const subjectiveTypes = ['short_text', 'paragraph', 'slider'];
+  const subjectiveQAs = questionsAndAnswers.filter(qa => subjectiveTypes.includes(qa.question_type));
+
   // Prepare data for AI scoring
-  const questionsForAI = questionsAndAnswers.map(qa => ({
+  const questionsForAI = subjectiveQAs.map(qa => ({
     questionText: qa.question_text,
     answerText: qa.answer_text || (qa.answer_rating ? String(qa.answer_rating) : null),
     maxScore: qa.max_score || 1
@@ -1248,6 +1271,10 @@ const aiScoreResponse = async (responseId) => {
 
   // Call AI scoring
   const aiScores = await geminiAIService.scoreSubjectiveAnswers(questionsForAI);
+
+  // Build a map from question_id to AI result for subjective questions
+  const aiScoreMap = {};
+  subjectiveQAs.forEach((qa, i) => { aiScoreMap[qa.question_id] = aiScores[i]; });
 
   // Check if scoring columns exist
   const [scoringColumns] = await promisePool.query(`
@@ -1276,9 +1303,10 @@ const aiScoreResponse = async (responseId) => {
 
     for (let i = 0; i < questionsAndAnswers.length; i++) {
       const qa = questionsAndAnswers[i];
-      const aiResult = aiScores[i];
+      const aiResult = aiScoreMap[qa.question_id];
 
-      if (qa.answer_id) {
+      if (aiResult && qa.answer_id) {
+        // Subjective question — update with AI score
         let updateQuery = 'UPDATE feedback_answers SET ai_score = ?';
         const updateParams = [aiResult.score];
 
@@ -1295,10 +1323,14 @@ const aiScoreResponse = async (responseId) => {
         updateParams.push(qa.answer_id);
 
         await connection.query(updateQuery, updateParams);
+        totalScore += aiResult.score;
+        totalMaxScore += aiResult.maxScore;
+      } else if (!aiResult) {
+        // Objective question — score based on correct answers
+        totalMaxScore += qa.max_score || 1;
+        // Objective scoring already happened at submission time, just count the score
+        // We don't modify objective answers here
       }
-
-      totalScore += aiResult.score;
-      totalMaxScore += aiResult.maxScore;
     }
 
     // Update overall response score
@@ -1315,14 +1347,19 @@ const aiScoreResponse = async (responseId) => {
       totalScore,
       totalMaxScore,
       percentage: parseFloat(percentage),
-      scores: questionsAndAnswers.map((qa, i) => ({
-        questionId: qa.question_id,
-        questionText: qa.question_text,
-        answerText: qa.answer_text,
-        aiScore: aiScores[i].score,
-        maxScore: aiScores[i].maxScore,
-        feedback: aiScores[i].feedback
-      }))
+      scores: questionsAndAnswers
+        .filter(qa => aiScoreMap[qa.question_id])
+        .map(qa => {
+          const ai = aiScoreMap[qa.question_id];
+          return {
+            questionId: qa.question_id,
+            questionText: qa.question_text,
+            answerText: qa.answer_text,
+            aiScore: ai.score,
+            maxScore: ai.maxScore,
+            feedback: ai.feedback
+          };
+        })
     };
   } catch (error) {
     await connection.rollback();
@@ -1349,8 +1386,8 @@ const updateManualScores = async (responseId, scores) => {
   }
 
   const response = responses[0];
-  if (response.type !== 'assessment' || response.assessment_type !== 'subjective') {
-    throw new Error('Manual scoring is only available for subjective assessments');
+  if (response.type !== 'assessment' || (response.assessment_type !== 'subjective' && response.assessment_type !== 'both')) {
+    throw new Error('Manual scoring is only available for subjective and combined assessments');
   }
 
   // Check if manual_score column exists
