@@ -80,14 +80,14 @@ class ReportAnalyticsRepository {
   async getCourseCompletionData(fromDate, toDate) {
     let dateFilter = "";
     const params = [];
-    if (fromDate) { dateFilter += " AND e.enrolled_date >= ?"; params.push(fromDate); }
-    if (toDate) { dateFilter += " AND e.enrolled_date <= ?"; params.push(toDate); }
+    if (fromDate) { dateFilter += " AND e.enrolled_at >= ?"; params.push(fromDate); }
+    if (toDate) { dateFilter += " AND e.enrolled_at <= ?"; params.push(toDate); }
 
     const query = `
       SELECT
         c.id AS courseId,
         c.title AS courseTitle,
-        COALESCE(cat.category_name, 'Uncategorized') AS category,
+        COALESCE(cc.name, 'Uncategorized') AS category,
         COUNT(DISTINCT e.user_id) AS totalEnrollments,
         COUNT(DISTINCT CASE
           WHEN total_lessons.lesson_count > 0
@@ -103,33 +103,25 @@ class ReportAnalyticsRepository {
           NULLIF(COUNT(DISTINCT e.user_id), 0),
           1
         ) AS completionRate,
-        COALESCE(ROUND(AVG(cp_time.time_spent), 1), 0) AS avgTimeSpentMinutes,
+        0 AS avgTimeSpentMinutes,
         c.course_duration AS courseDuration
       FROM course c
       LEFT JOIN enrol e ON c.id = e.course_id
-      LEFT JOIN category cat ON c.category_id = cat.id
+      LEFT JOIN course_category cc ON c.category_id = cc.id
       LEFT JOIN (
         SELECT cl.course_id, COUNT(*) AS lesson_count
         FROM course_lesson cl
-        INNER JOIN course_section cs ON cl.section_id = cs.id
-        WHERE cl.is_deleted = 0
         GROUP BY cl.course_id
       ) total_lessons ON c.id = total_lessons.course_id
       LEFT JOIN (
-        SELECT cp.enroll_id, e2.course_id, COUNT(*) AS completed_count
-        FROM course_progress cp
-        INNER JOIN enrol e2 ON cp.enroll_id = e2.id
-        WHERE cp.lesson_completed = 1
-        GROUP BY cp.enroll_id, e2.course_id
-      ) completed_lessons ON e.id = completed_lessons.enroll_id AND c.id = completed_lessons.course_id
-      LEFT JOIN (
-        SELECT enroll_id, COALESCE(SUM(time_spent), 0) AS time_spent
-        FROM course_progress
-        GROUP BY enroll_id
-      ) cp_time ON e.id = cp_time.enroll_id
+        SELECT lp.course_id, lp.user_id, COUNT(*) AS completed_count
+        FROM lesson_progress lp
+        WHERE lp.completed = 1
+        GROUP BY lp.course_id, lp.user_id
+      ) completed_lessons ON e.course_id = completed_lessons.course_id AND e.user_id = completed_lessons.user_id
       WHERE c.is_deleted = 0
         ${dateFilter}
-      GROUP BY c.id, c.title, cat.category_name, c.course_duration
+      GROUP BY c.id, c.title, cc.name, c.course_duration
       ORDER BY completionRate DESC
     `;
     return this.executeQuery(query, params);
@@ -138,12 +130,12 @@ class ReportAnalyticsRepository {
   async getLoginActivity() {
     const query = `
       SELECT
-        DATE_FORMAT(ll.login_date, '%Y-%m-%d') AS date,
-        COUNT(DISTINCT ll.user_id) AS activeUsers
+        DATE_FORMAT(ll.login_time, '%Y-%m-%d') AS date,
+        COUNT(DISTINCT ll.user_uuid) AS activeUsers
       FROM user_login_log ll
-      WHERE ll.login_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-      GROUP BY DATE(ll.login_date)
-      ORDER BY DATE(ll.login_date) ASC
+      WHERE ll.login_time >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+      GROUP BY DATE(ll.login_time)
+      ORDER BY DATE(ll.login_time) ASC
     `;
     return this.executeQuery(query);
   }
@@ -178,7 +170,7 @@ class ReportAnalyticsRepository {
           DATE_SUB(DATE(lp.completed_at), INTERVAL WEEKDAY(lp.completed_at) DAY) AS week_start,
           COUNT(DISTINCT CONCAT(lp.user_id, '-', lp.course_id)) AS completions
         FROM lesson_progress lp
-        WHERE lp.status = 'completed'
+        WHERE lp.completed = 1
           AND lp.completed_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
         GROUP BY week_start
       ) comp ON DATE(dates.week_start) = DATE(comp.week_start)
@@ -209,7 +201,7 @@ class ReportAnalyticsRepository {
         SELECT e.course_id, COUNT(*) AS completed
         FROM enrol e
         INNER JOIN lesson_progress lp ON e.user_id = lp.user_id AND e.course_id = lp.course_id
-        WHERE lp.status = 'completed'
+        WHERE lp.completed = 1
         GROUP BY e.course_id
       ) comp ON c.id = comp.course_id
       WHERE c.is_deleted = 0
@@ -241,13 +233,13 @@ class ReportAnalyticsRepository {
           SELECT cl.course_id, COUNT(*) AS cnt
           FROM course_lesson cl
           INNER JOIN course_section cs ON cl.section_id = cs.id
-          WHERE cl.is_deleted = 0
+          WHERE 1=1
           GROUP BY cl.course_id
         ) total_lessons ON e.course_id = total_lessons.course_id
         LEFT JOIN (
           SELECT lp.user_id, lp.course_id, COUNT(*) AS cnt
           FROM lesson_progress lp
-          WHERE lp.status = 'completed'
+          WHERE lp.completed = 1
           GROUP BY lp.user_id, lp.course_id
         ) done_lessons ON e.user_id = done_lessons.user_id AND e.course_id = done_lessons.course_id
       ) progress_data
@@ -303,16 +295,16 @@ class ReportAnalyticsRepository {
   async getActivityHeatmap() {
     const query = `
       SELECT
-        DAYOFWEEK(ll.login_date) AS dayNum,
-        CASE DAYOFWEEK(ll.login_date)
+        DAYOFWEEK(ll.login_time) AS dayNum,
+        CASE DAYOFWEEK(ll.login_time)
           WHEN 1 THEN 'Sun' WHEN 2 THEN 'Mon' WHEN 3 THEN 'Tue'
           WHEN 4 THEN 'Wed' WHEN 5 THEN 'Thu' WHEN 6 THEN 'Fri' WHEN 7 THEN 'Sat'
         END AS day,
-        HOUR(ll.login_date) AS hour,
+        HOUR(ll.login_time) AS hour,
         COUNT(*) AS count
       FROM user_login_log ll
-      WHERE ll.login_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-      GROUP BY DAYOFWEEK(ll.login_date), HOUR(ll.login_date)
+      WHERE ll.login_time >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+      GROUP BY DAYOFWEEK(ll.login_time), HOUR(ll.login_time)
       ORDER BY dayNum, hour
     `;
     return this.executeQuery(query);
