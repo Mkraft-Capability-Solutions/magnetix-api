@@ -138,6 +138,16 @@ class CourseSectionLessonRepository {
     return result;
   }
 
+  async reorderLessons(connection, sectionId, lessonOrders) {
+    for (const { lessonId, lessonOrder } of lessonOrders) {
+      await connection.query(
+        `UPDATE course_lesson SET lesson_order = ?, last_updated = NOW()
+         WHERE id = ? AND section_id = ?`,
+        [lessonOrder, lessonId, sectionId]
+      );
+    }
+  }
+
   // ============================================================================
   // ILTS OPERATIONS
   // ============================================================================

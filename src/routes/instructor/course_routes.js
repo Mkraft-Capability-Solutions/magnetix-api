@@ -33,6 +33,10 @@ router.post(
   instructorCourseController.addSection
 );
 router.post("/courses/:courseId/lessons", instructorCourseController.addLesson);
+router.put(
+  "/courses/:courseId/lessons/reorder",
+  instructorCourseController.reorderLessons
+);
 
 // Individual section update endpoints for editing
 router.put(

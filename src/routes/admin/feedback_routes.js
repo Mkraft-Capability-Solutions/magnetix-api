@@ -26,6 +26,9 @@ router.get('/responses/:id', authorize(3, 4), feedbackController.getResponseById
 router.post('/responses/:id/ai-score', authorize(3, 4), feedbackController.aiScoreResponse);
 router.put('/responses/:id/score', authorize(3, 4), feedbackController.updateManualScores);
 
+// Share response via email
+router.post('/responses/:id/share', authorize(3, 4), feedbackController.shareResponseEmail);
+
 // Submissions - All submissions across all forms
 router.get('/submissions', authorize(3, 4), feedbackController.getAllSubmissions);
 

@@ -165,7 +165,7 @@ class CourseLessonDTO {
 
     if (lessonData.lesson_type === 'Content-Based') {
       // Map content type field names
-      this.contentType = lessonData.content_type || lessonData.contentType;
+      this.contentType = lessonData.content_type || lessonData.contentType || lessonData.lesson_content_type;
 
       // Map the appropriate URL field to contentUrl based on content type
       let contentUrl = '';

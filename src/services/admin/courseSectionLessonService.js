@@ -198,6 +198,23 @@ class CourseSectionLessonService {
     }
   }
 
+  async reorderLessons(courseId, sectionId, lessonOrders) {
+    const connection = await repository.getConnection();
+    try {
+      await connection.beginTransaction();
+      await repository.reorderLessons(connection, sectionId, lessonOrders);
+      await connection.commit();
+      logger.info("Lessons reordered", { courseId, sectionId });
+      return { success: true };
+    } catch (error) {
+      await connection.rollback();
+      logger.error("Error reordering lessons", { courseId, sectionId, error: error.message });
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
   async deleteLesson(courseId, lessonId) {
     const connection = await repository.getConnection();
     try {
