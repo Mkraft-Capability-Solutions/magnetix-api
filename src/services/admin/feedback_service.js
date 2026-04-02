@@ -1249,9 +1249,12 @@ const aiScoreResponse = async (responseId) => {
       fq.question_text,
       fq.question_type,
       fq.score as max_score,
+      fq.correct_answers,
+      fq.options,
       fa.id as answer_id,
       fa.answer_text,
-      fa.answer_rating
+      fa.answer_rating,
+      fa.answer_options
     FROM feedback_questions fq
     LEFT JOIN feedback_answers fa ON fq.id = fa.question_id AND fa.response_id = ?
     WHERE fq.form_id = ?
@@ -1326,10 +1329,28 @@ const aiScoreResponse = async (responseId) => {
         totalScore += aiResult.score;
         totalMaxScore += aiResult.maxScore;
       } else if (!aiResult) {
-        // Objective question — score based on correct answers
-        totalMaxScore += qa.max_score || 1;
-        // Objective scoring already happened at submission time, just count the score
-        // We don't modify objective answers here
+        // Objective question — recalculate score from stored answer
+        const qMaxScore = qa.max_score || 1;
+        totalMaxScore += qMaxScore;
+
+        if (qa.answer_id && qa.correct_answers) {
+          const correctAnswers = typeof qa.correct_answers === 'string' ? JSON.parse(qa.correct_answers) : qa.correct_answers;
+          const options = qa.options ? (typeof qa.options === 'string' ? JSON.parse(qa.options) : qa.options) : [];
+
+          if (correctAnswers.length > 0 && qa.answer_options) {
+            const selectedOptions = typeof qa.answer_options === 'string' ? JSON.parse(qa.answer_options) : qa.answer_options;
+            let userSelectedIndices = [];
+            if (Array.isArray(selectedOptions)) {
+              userSelectedIndices = selectedOptions.map(opt => options.findIndex(o => o === opt)).filter(idx => idx !== -1);
+            }
+            const correctAnswersSet = new Set(correctAnswers);
+            const userAnswersSet = new Set(userSelectedIndices);
+            const isCorrect = correctAnswers.length === userSelectedIndices.length &&
+              correctAnswers.every(idx => userAnswersSet.has(idx)) &&
+              userSelectedIndices.every(idx => correctAnswersSet.has(idx));
+            if (isCorrect) totalScore += qMaxScore;
+          }
+        }
       }
     }
 
@@ -1419,6 +1440,41 @@ const updateManualScores = async (responseId, scores) => {
 
       totalScore += score;
       totalMaxScore += maxScore || 1;
+    }
+
+    // For combined assessments, also include objective question scores in the total
+    if (response.assessment_type === 'both') {
+      const [objectiveQAs] = await connection.query(`
+        SELECT
+          fq.id as question_id, fq.question_type, fq.score as max_score,
+          fq.correct_answers, fq.options,
+          fa.answer_options
+        FROM feedback_questions fq
+        LEFT JOIN feedback_answers fa ON fq.id = fa.question_id AND fa.response_id = ?
+        WHERE fq.form_id = ? AND fq.question_type NOT IN ('short_text', 'paragraph', 'slider')
+        ORDER BY fq.question_order ASC
+      `, [responseId, response.form_id]);
+
+      for (const qa of objectiveQAs) {
+        const qMaxScore = qa.max_score || 1;
+        totalMaxScore += qMaxScore;
+
+        if (qa.correct_answers && qa.answer_options) {
+          const correctAnswers = typeof qa.correct_answers === 'string' ? JSON.parse(qa.correct_answers) : qa.correct_answers;
+          const options = qa.options ? (typeof qa.options === 'string' ? JSON.parse(qa.options) : qa.options) : [];
+          const selectedOptions = typeof qa.answer_options === 'string' ? JSON.parse(qa.answer_options) : qa.answer_options;
+
+          if (correctAnswers.length > 0 && Array.isArray(selectedOptions)) {
+            const userSelectedIndices = selectedOptions.map(opt => options.findIndex(o => o === opt)).filter(idx => idx !== -1);
+            const correctAnswersSet = new Set(correctAnswers);
+            const userAnswersSet = new Set(userSelectedIndices);
+            const isCorrect = correctAnswers.length === userSelectedIndices.length &&
+              correctAnswers.every(idx => userAnswersSet.has(idx)) &&
+              userSelectedIndices.every(idx => correctAnswersSet.has(idx));
+            if (isCorrect) totalScore += qMaxScore;
+          }
+        }
+      }
     }
 
     // Update overall response score using manual scores
