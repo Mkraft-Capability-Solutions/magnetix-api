@@ -80,8 +80,8 @@ exports.sendMessage = async (conversationUuid, userId, userMessage) => {
   if (convRows.length === 0) {
     throw new Error('Conversation not found');
   }
-  if (convRows[0].status !== 'active') {
-    throw new Error('Conversation is no longer active');
+  if (convRows[0].status === 'closed') {
+    throw new Error('Conversation is closed');
   }
 
   // Save user message
@@ -342,10 +342,12 @@ LIMITATIONS:
 - You CANNOT make changes to accounts, reset passwords, process refunds, or access user-specific data.
 - If you cannot find relevant information in the context, be honest about it.
 
-TICKET ESCALATION:
-When you determine you cannot help the user (after at least one attempt to assist), suggest creating a support ticket.
-If the user agrees OR explicitly asks to create a ticket / talk to someone / get human help, respond with this marker embedded in your message:
+TICKET ESCALATION — THIS IS A TWO-STEP PROCESS. NEVER skip step 1.
+Step 1: When you cannot help, ASK the user: "Would you like me to create a support ticket so our team can assist you?" Do NOT include any [TICKET_REQUEST] marker in this message. Just ask the question and wait for their reply.
+Step 2: ONLY after the user replies with confirmation (e.g. "yes", "sure", "please", "ok", "create a ticket", "talk to someone"), THEN include this marker in your response:
 [TICKET_REQUEST]{"subject":"<brief summary of the issue>","category":"<technical|account|billing|course|general>"}[/TICKET_REQUEST]
+
+CRITICAL: NEVER include [TICKET_REQUEST] in the same message where you first suggest creating a ticket. Always wait for the user to confirm first.
 
 The marker will be processed automatically — just include it naturally in your response.
 
