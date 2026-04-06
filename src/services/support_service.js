@@ -396,9 +396,9 @@ exports.closeTicket = async (ticketId, userId, roleId) => {
 
   const ticket = tickets[0];
 
-  // Check authorization (user can close own ticket, admins can close any)
-  if (ticket.user_id !== userId && ![3, 4].includes(roleId)) {
-    throw new Error('Not authorized to close this ticket');
+  // Only admins (role 3, 4) can close tickets
+  if (![3, 4].includes(roleId)) {
+    throw new Error('Only admins can close tickets');
   }
 
   // Update ticket status
