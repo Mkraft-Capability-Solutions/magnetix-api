@@ -592,9 +592,9 @@ exports.assignTicket = async (ticketId, agentId) => {
     throw new Error('Ticket not found');
   }
 
-  // Verify agent exists and is admin/super admin
+  // Verify agent exists and is trainer/admin/super admin
   const [agents] = await promisePool.query(
-    `SELECT uuid, role_id FROM users WHERE uuid = ? AND role_id IN (3, 4)`,
+    `SELECT uuid, role_id FROM users WHERE uuid = ? AND role_id IN (2, 3, 4)`,
     [agentId]
   );
 
@@ -764,6 +764,19 @@ exports.updateAgentMaxChats = async (agentId, maxChats) => {
      ON DUPLICATE KEY UPDATE max_concurrent_chats = ?`,
     [agentId, maxChats, maxChats]
   );
+};
+
+/**
+ * Get assignable staff (trainers, admins, super admins)
+ */
+exports.getAssignableStaff = async () => {
+  const [staff] = await promisePool.query(
+    `SELECT uuid, email, role_id
+     FROM users
+     WHERE role_id IN (2, 3, 4) AND is_deleted = 0
+     ORDER BY role_id DESC, email ASC`
+  );
+  return staff;
 };
 
 /**

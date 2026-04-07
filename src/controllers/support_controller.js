@@ -265,11 +265,30 @@ exports.getAllTickets = async (req, res) => {
       limit: parseInt(limit),
     };
 
+    // Trainers only see tickets assigned to them
+    if (req.user.role_id === 2) {
+      filters.assigned_to = req.user.uuid;
+    }
+
     const result = await supportService.getAllTickets(filters);
     res.json({ success: true, ...result });
   } catch (error) {
     console.error('Error in getAllTickets:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch tickets' });
+  }
+};
+
+/**
+ * GET /support/admin/staff
+ * Get all assignable staff (trainers, admins, super admins)
+ */
+exports.getAssignableStaff = async (req, res) => {
+  try {
+    const staff = await supportService.getAssignableStaff();
+    res.json({ success: true, staff });
+  } catch (error) {
+    console.error('Error in getAssignableStaff:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch staff' });
   }
 };
 
@@ -319,6 +338,16 @@ exports.updateTicketStatus = async (req, res) => {
     const validStatuses = ['open', 'assigned', 'in_progress', 'pending_user', 'resolved', 'closed'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status' });
+    }
+
+    // Trainers can only update tickets assigned to them
+    if (req.user.role_id === 2) {
+      const [ticket] = await require('../config/db').promisePool.query(
+        'SELECT assigned_to FROM support_tickets WHERE id = ?', [ticketId]
+      );
+      if (!ticket.length || ticket[0].assigned_to !== req.user.uuid) {
+        return res.status(403).json({ success: false, message: 'You can only manage tickets assigned to you' });
+      }
     }
 
     await supportService.updateTicketStatus(ticketId, status, resolution_notes);
