@@ -165,6 +165,7 @@ app.use("/api/admin/learning-items", adminLearningItemRoutes);
 app.use("/api/google/meet", googleMeetRoutes);
 app.use("/api/google/oauth", googleOAuthRoutes);
 app.use("/api/support", supportRoutes);
+app.use("/api/chatbot", require("./routes/chatbot_routes"));
 app.use("/api/admin/marketing", require("./routes/admin/marketing_routes"));
 app.use("/api/notifications", require("./routes/notification_routes"));
 app.use("/api/admin/feedback", require("./routes/admin/feedback_routes"));

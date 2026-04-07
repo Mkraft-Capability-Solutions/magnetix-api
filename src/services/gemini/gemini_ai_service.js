@@ -967,6 +967,40 @@ IMPORTANT:
       throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
     }
   }
+
+  /**
+   * Generate a chatbot response using multi-turn conversation format
+   * @param {string} systemPrompt - System instructions with knowledge context
+   * @param {Array<{role: string, content: string}>} conversationHistory - Previous messages
+   * @returns {Promise<string>} AI response text
+   */
+  async generateChatResponse(systemPrompt, conversationHistory) {
+    await this.ensureInitialized();
+
+    try {
+      // Build multi-turn contents array
+      const contents = [
+        { role: 'user', parts: [{ text: systemPrompt }] },
+        { role: 'model', parts: [{ text: 'Understood. I will act as the Mkraft LMS support assistant following these instructions.' }] },
+        ...conversationHistory.map(msg => ({
+          role: msg.role === 'user' ? 'user' : 'model',
+          parts: [{ text: msg.content }]
+        }))
+      ];
+
+      const result = await this.model.generateContent({ contents });
+      const response = await result.response;
+      return response.text();
+    } catch (error) {
+      console.error('Chatbot AI Error:', error.message);
+
+      if (error.message.includes('SAFETY')) {
+        return "I'm sorry, I couldn't process that request. Could you please rephrase your question?";
+      }
+
+      throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
+    }
+  }
 }
 
 // Export singleton instance
