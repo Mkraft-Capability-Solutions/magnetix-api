@@ -4,19 +4,13 @@ const { v4: uuidv4 } = require('uuid');
 const { parseCSV } = require('../../utils/csv_parser');
 const { generateTemporaryPassword } = require('../../utils/password_generator');
 const emailHelper = require('../../utils/email_helper');
+const { ROLE_LABELS } = require('../../utils/invitation_helper');
 const {
   validateUserRow,
   validateContentRow,
   validateAssignmentRow,
   isEmpty
 } = require('../../utils/csv_validators');
-
-const ROLE_LABELS = {
-  student: 'Learner',
-  admin: 'Administrator',
-  instructor: 'Instructor',
-  super_admin: 'Super Administrator'
-};
 
 // ==============================================
 // UPLOAD USERS SERVICE

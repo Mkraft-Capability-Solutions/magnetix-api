@@ -1,6 +1,7 @@
 const { promisePool: pool } = require('../../config/db');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
+const { sendInvitationSafely } = require('../../utils/invitation_helper');
 
 /**
  * Instructor User Management Service
@@ -137,12 +138,25 @@ const createUser = async (instructorId, userData) => {
     );
 
     const result = rows[0]?.[0];
+    const success = result?.success === 1;
+
+    let invitationSent = false;
+    if (success) {
+      const { sent } = await sendInvitationSafely({
+        email,
+        firstName,
+        password: generatedPassword,
+        roleLabel: 'Learner'
+      });
+      invitationSent = sent;
+    }
 
     return {
-      success: result?.success === 1,
+      success,
       message: result?.message || 'Student created',
       userId: uuid,
-      generatedPassword // Return this so instructor can share with student
+      generatedPassword, // Return this so instructor can share with student
+      invitationSent
     };
   } catch (error) {
     console.error('Instructor UserManagementService - createUser error:', error);

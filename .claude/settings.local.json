@@ -5,7 +5,9 @@
       "Bash(npm install:*)",
       "Bash(node:*)",
       "Bash(grep -r migrations /Volumes/Project/Mkraft/magnetix-api/src/config/*.js)",
-      "Bash(ls -la /Volumes/Project/Mkraft/magnetix-api/src/sql/*.sql)"
+      "Bash(ls -la /Volumes/Project/Mkraft/magnetix-api/src/sql/*.sql)",
+      "Bash(find:*)",
+      "Bash(grep -n \"createStudent\\\\|createInstructor\\\\|student_controller\\\\|instructor_controller\" src/routes/admin/*.js src/app.js)"
     ]
   }
 }

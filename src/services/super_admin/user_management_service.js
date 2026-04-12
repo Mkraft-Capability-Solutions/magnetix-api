@@ -1,6 +1,7 @@
 const { promisePool: pool } = require('../../config/db');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
+const { ROLE_LABELS, sendInvitationSafely } = require('../../utils/invitation_helper');
 
 /**
  * Super Admin User Management Service
@@ -108,12 +109,25 @@ const createUser = async (userData) => {
     );
 
     const result = rows[0]?.[0];
+    const success = result?.success === 1;
+
+    let invitationSent = false;
+    if (success) {
+      const { sent } = await sendInvitationSafely({
+        email,
+        firstName,
+        password: generatedPassword,
+        roleLabel: ROLE_LABELS[role?.toLowerCase()] || 'User'
+      });
+      invitationSent = sent;
+    }
 
     return {
-      success: result?.success === 1,
+      success,
       message: result?.message || 'User created',
       userId: uuid,
-      generatedPassword // Return this so super admin can share with user
+      generatedPassword, // Return this so super admin can share with user
+      invitationSent
     };
   } catch (error) {
     console.error('Super Admin UserManagementService - createUser error:', error);
