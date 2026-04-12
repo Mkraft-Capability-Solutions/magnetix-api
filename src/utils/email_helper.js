@@ -123,6 +123,51 @@ Both options will expire in 1 hour.`;
     });
   }
 
+  async sendInvitationEmail(email, firstName, { password, roleLabel }) {
+    const templateData = {
+      appName: process.env.APP_NAME || 'Learning Management System',
+      firstName: firstName || 'there',
+      email,
+      password,
+      roleLabel: roleLabel || 'User',
+      loginUrl: `${process.env.FRONTEND_URL}/login`,
+      supportEmail: process.env.SUPPORT_EMAIL || 'support@multiplierskraft.com',
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['invitation']
+      ? this.templates['invitation'](templateData)
+      : `<p>Welcome to ${templateData.appName}, ${templateData.firstName}!</p>
+         <p>You've been added as a ${templateData.roleLabel}.</p>
+         <p>Email: ${email}<br/>Temporary password: ${password}</p>
+         <p>Log in at: ${templateData.loginUrl}</p>`;
+
+    const text = `Welcome to ${templateData.appName}, ${templateData.firstName}!
+
+You've been added as a ${templateData.roleLabel}. Use the credentials below to sign in.
+
+Email: ${email}
+Temporary password: ${password}
+
+How to log in:
+1. Open ${templateData.loginUrl} in your browser.
+2. Enter the email and temporary password above.
+3. Click Log In.
+4. Go to your profile settings and change your password.
+
+For security, please change your password immediately after your first login and never share it with anyone.
+
+Need help? Contact ${templateData.supportEmail}.`;
+
+    return this.sendEmail({
+      to: email,
+      subject: `You've been invited to ${templateData.appName}`,
+      html,
+      text,
+      priority: 'high'
+    });
+  }
+
   async sendWelcomeEmail(email, firstName) {
     const templateData = {
       appName: process.env.APP_NAME || 'Learning Management System',

@@ -2,12 +2,21 @@ const { promisePool: pool } = require('../../config/db');
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
 const { parseCSV } = require('../../utils/csv_parser');
+const { generateTemporaryPassword } = require('../../utils/password_generator');
+const emailHelper = require('../../utils/email_helper');
 const {
   validateUserRow,
   validateContentRow,
   validateAssignmentRow,
   isEmpty
 } = require('../../utils/csv_validators');
+
+const ROLE_LABELS = {
+  student: 'Learner',
+  admin: 'Administrator',
+  instructor: 'Instructor',
+  super_admin: 'Super Administrator'
+};
 
 // ==============================================
 // UPLOAD USERS SERVICE
@@ -118,9 +127,9 @@ exports.uploadUsers = async (fileBuffer) => {
     // Start transaction
     await connection.beginTransaction();
 
-    try {
-      const defaultPassword = await bcrypt.hash('Welcome@123', 10);
+    const invitationsToSend = [];
 
+    try {
       // Role mapping
       const roleMap = {
         'student': 1,
@@ -147,12 +156,17 @@ exports.uploadUsers = async (fileBuffer) => {
         }
 
         // Get role_id from role name
-        const roleId = roleMap[row.role.toLowerCase()];
+        const roleKey = row.role.toLowerCase();
+        const roleId = roleMap[roleKey];
         if (!roleId) {
           warnings.push(`Row ${i + 2}: Invalid role: ${row.role}`);
           skipped++;
           continue;
         }
+
+        // Generate a unique temporary password per user
+        const tempPassword = generateTemporaryPassword();
+        const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
         // Create user
         const userId = uuidv4();
@@ -161,7 +175,7 @@ exports.uploadUsers = async (fileBuffer) => {
         await connection.query(
           `INSERT INTO users (uuid, email, password, role_id, instance, status, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-          [userId, email, defaultPassword, roleId, 'default', 'active']
+          [userId, email, hashedPassword, roleId, 'default', 'active']
         );
 
         // Insert into role-specific table
@@ -211,30 +225,63 @@ exports.uploadUsers = async (fileBuffer) => {
           );
         }
 
+        invitationsToSend.push({
+          email,
+          firstName: row.first_name,
+          password: tempPassword,
+          roleLabel: ROLE_LABELS[roleKey] || 'User'
+        });
+
         inserted++;
       }
 
       // Commit transaction
       await connection.commit();
-
-      return {
-        success: true,
-        message: `Successfully uploaded ${inserted} user(s)`,
-        data: {
-          totalRows: csvData.length,
-          validRows: inserted,
-          errorRows: errors.length,
-          warnings,
-          errors,
-          inserted,
-          skipped
-        }
-      };
     } catch (error) {
       // Rollback transaction on error
       await connection.rollback();
       throw error;
     }
+
+    // Send invitation emails after commit (best-effort — failures don't roll back inserted users)
+    let emailsSent = 0;
+    let emailsFailed = 0;
+    if (invitationsToSend.length > 0) {
+      const emailResults = await Promise.allSettled(
+        invitationsToSend.map(inv =>
+          emailHelper.sendInvitationEmail(inv.email, inv.firstName, {
+            password: inv.password,
+            roleLabel: inv.roleLabel
+          })
+        )
+      );
+
+      emailResults.forEach((result, idx) => {
+        if (result.status === 'fulfilled') {
+          emailsSent++;
+        } else {
+          emailsFailed++;
+          console.error(`Invitation email failed for ${invitationsToSend[idx].email}:`, result.reason);
+          warnings.push(`Invitation email failed for ${invitationsToSend[idx].email}`);
+        }
+      });
+    }
+
+    return {
+      success: true,
+      message: `Successfully uploaded ${inserted} user(s)`,
+      data: {
+        totalRows: csvData.length,
+        validRows: inserted,
+        errorRows: errors.length,
+        warnings,
+        errors,
+        inserted,
+        skipped,
+        emailsSent,
+        emailsFailed
+      }
+    };
   } catch (error) {
     console.error('Bulk upload users error:', error);
     throw error;

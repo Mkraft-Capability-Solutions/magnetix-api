@@ -2,6 +2,8 @@ const { promisePool: pool } = require('../../config/db');
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
 const { parseCSV } = require('../../utils/csv_parser');
+const { generateTemporaryPassword } = require('../../utils/password_generator');
+const emailHelper = require('../../utils/email_helper');
 const {
   validateUserRow,
   validateContentRow,
@@ -118,9 +120,9 @@ exports.uploadUsers = async (fileBuffer) => {
     // Start transaction
     await connection.beginTransaction();
 
-    try {
-      const defaultPassword = await bcrypt.hash('Welcome@123', 10);
+    const invitationsToSend = [];
 
+    try {
       for (let i = 0; i < csvData.length; i++) {
         const row = csvData[i];
         const email = row.email.toLowerCase().trim();
@@ -138,6 +140,10 @@ exports.uploadUsers = async (fileBuffer) => {
           continue;
         }
 
+        // Generate a unique temporary password per user
+        const tempPassword = generateTemporaryPassword();
+        const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
         // Create user
         const userId = uuidv4();
 
@@ -145,7 +151,7 @@ exports.uploadUsers = async (fileBuffer) => {
         await connection.query(
           `INSERT INTO users (uuid, email, password, role_id, created_at, updated_at)
            VALUES (?, ?, ?, 1, NOW(), NOW())`,
-          [userId, email, defaultPassword]
+          [userId, email, hashedPassword]
         );
 
         // Insert into students table
@@ -169,30 +175,63 @@ exports.uploadUsers = async (fileBuffer) => {
           ]
         );
 
+        invitationsToSend.push({
+          email,
+          firstName: row.first_name,
+          password: tempPassword,
+          roleLabel: 'Learner'
+        });
+
         inserted++;
       }
 
       // Commit transaction
       await connection.commit();
-
-      return {
-        success: true,
-        message: `Successfully uploaded ${inserted} user(s)`,
-        data: {
-          totalRows: csvData.length,
-          validRows: inserted,
-          errorRows: errors.length,
-          warnings,
-          errors,
-          inserted,
-          skipped
-        }
-      };
     } catch (error) {
       // Rollback transaction on error
       await connection.rollback();
       throw error;
     }
+
+    // Send invitation emails after commit (best-effort — failures don't roll back inserted users)
+    let emailsSent = 0;
+    let emailsFailed = 0;
+    if (invitationsToSend.length > 0) {
+      const emailResults = await Promise.allSettled(
+        invitationsToSend.map(inv =>
+          emailHelper.sendInvitationEmail(inv.email, inv.firstName, {
+            password: inv.password,
+            roleLabel: inv.roleLabel
+          })
+        )
+      );
+
+      emailResults.forEach((result, idx) => {
+        if (result.status === 'fulfilled') {
+          emailsSent++;
+        } else {
+          emailsFailed++;
+          console.error(`Invitation email failed for ${invitationsToSend[idx].email}:`, result.reason);
+          warnings.push(`Invitation email failed for ${invitationsToSend[idx].email}`);
+        }
+      });
+    }
+
+    return {
+      success: true,
+      message: `Successfully uploaded ${inserted} user(s)`,
+      data: {
+        totalRows: csvData.length,
+        validRows: inserted,
+        errorRows: errors.length,
+        warnings,
+        errors,
+        inserted,
+        skipped,
+        emailsSent,
+        emailsFailed
+      }
+    };
   } catch (error) {
     console.error('Bulk upload users error:', error);
     throw error;
