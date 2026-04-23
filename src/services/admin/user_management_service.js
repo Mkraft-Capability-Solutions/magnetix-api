@@ -332,12 +332,26 @@ const createUser = async (userData) => {
     const success = result?.success === 1;
 
     // If user created successfully and organizationId provided, assign to organization
-    if (success && organizationId) {
+    if (success && organizationId && organizationId !== '') {
       try {
-        await pool.query(
-          'INSERT INTO user_organizations (user_id, organization_id) VALUES (?, ?)',
-          [uuid, organizationId]
+        // Convert organizationId to integer
+        const orgId = parseInt(organizationId);
+
+        // Verify organization exists and is active
+        const [orgCheck] = await pool.query(
+          'SELECT id, is_active FROM organizations WHERE id = ?',
+          [orgId]
         );
+
+        if (orgCheck.length > 0 && orgCheck[0].is_active === 1) {
+          await pool.query(
+            'INSERT INTO user_organizations (user_id, organization_id) VALUES (?, ?)',
+            [uuid, orgId]
+          );
+          console.log(`User ${uuid} assigned to organization ${orgId}`);
+        } else {
+          console.warn(`Organization ${orgId} not found or inactive`);
+        }
       } catch (orgError) {
         console.error('Failed to assign user to organization:', orgError);
         // Don't fail user creation if organization assignment fails
