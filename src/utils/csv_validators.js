@@ -152,6 +152,24 @@ const validateUserRow = (row, rowIndex) => {
     });
   }
 
+  // Organization ID format (optional but must be numeric if provided)
+  if (!isEmpty(row.organization_id) && isNaN(parseInt(row.organization_id))) {
+    errors.push({
+      row: rowIndex,
+      field: 'organization_id',
+      message: 'Organization ID must be a number'
+    });
+  }
+
+  // Organization name format (optional but must be non-empty string if provided)
+  if (!isEmpty(row.organization_name) && typeof row.organization_name !== 'string') {
+    errors.push({
+      row: rowIndex,
+      field: 'organization_name',
+      message: 'Organization name must be a valid string'
+    });
+  }
+
   return {
     valid: errors.length === 0,
     errors

@@ -1,0 +1,471 @@
+const { promisePool: pool } = require('../../config/db');
+
+/**
+ * Organization Service
+ * Handles all business logic for organization management
+ */
+
+/**
+ * Get all organizations with optional filters
+ */
+const getAllOrganizations = async (filters = {}) => {
+  try {
+    const { search, isActive, page = 1, limit = 10 } = filters;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Build WHERE clauses
+    let whereConditions = ['1=1'];
+    let queryParams = [];
+
+    // Search filter
+    if (search && search !== '') {
+      whereConditions.push('name LIKE ?');
+      queryParams.push(`%${search}%`);
+    }
+
+    // Active status filter
+    if (isActive !== undefined && isActive !== null && isActive !== '') {
+      whereConditions.push('is_active = ?');
+      queryParams.push(isActive === 'true' || isActive === true || isActive === 1 ? 1 : 0);
+    }
+
+    const whereClause = whereConditions.join(' AND ');
+
+    // Get total count
+    const countQuery = `
+      SELECT COUNT(*) as total_count
+      FROM organizations
+      WHERE ${whereClause}
+    `;
+
+    const [countResult] = await pool.query(countQuery, queryParams);
+    const totalCount = countResult[0]?.total_count || 0;
+
+    // Get paginated organizations with user count
+    const orgsQuery = `
+      SELECT
+        o.id,
+        o.name,
+        o.is_active as isActive,
+        o.created_at as createdAt,
+        o.updated_at as updatedAt,
+        COALESCE(user_count.total, 0) as userCount
+      FROM organizations o
+      LEFT JOIN (
+        SELECT organization_id, COUNT(*) as total
+        FROM user_organizations
+        GROUP BY organization_id
+      ) user_count ON o.id = user_count.organization_id
+      WHERE ${whereClause}
+      ORDER BY o.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const [organizations] = await pool.query(orgsQuery, [...queryParams, parseInt(limit), offset]);
+
+    return {
+      organizations,
+      pagination: {
+        total: totalCount,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(totalCount / parseInt(limit))
+      }
+    };
+  } catch (error) {
+    console.error('OrganizationService - getAllOrganizations error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get organization by ID with user details
+ */
+const getOrganizationById = async (id) => {
+  try {
+    const orgQuery = `
+      SELECT
+        o.id,
+        o.name,
+        o.is_active as isActive,
+        o.created_at as createdAt,
+        o.updated_at as updatedAt,
+        COALESCE(user_count.total, 0) as userCount
+      FROM organizations o
+      LEFT JOIN (
+        SELECT organization_id, COUNT(*) as total
+        FROM user_organizations
+        GROUP BY organization_id
+      ) user_count ON o.id = user_count.organization_id
+      WHERE o.id = ?
+    `;
+
+    const [rows] = await pool.query(orgQuery, [id]);
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    return rows[0];
+  } catch (error) {
+    console.error('OrganizationService - getOrganizationById error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Create a new organization
+ */
+const createOrganization = async (data) => {
+  try {
+    const { name, isActive = true } = data;
+
+    // Check if organization name already exists
+    const [existing] = await pool.query(
+      'SELECT id FROM organizations WHERE name = ?',
+      [name]
+    );
+
+    if (existing.length > 0) {
+      return {
+        success: false,
+        message: 'Organization with this name already exists'
+      };
+    }
+
+    // Insert new organization
+    const [result] = await pool.query(
+      'INSERT INTO organizations (name, is_active) VALUES (?, ?)',
+      [name, isActive ? 1 : 0]
+    );
+
+    return {
+      success: true,
+      message: 'Organization created successfully',
+      organizationId: result.insertId
+    };
+  } catch (error) {
+    console.error('OrganizationService - createOrganization error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update an organization
+ */
+const updateOrganization = async (id, data) => {
+  try {
+    const { name, isActive } = data;
+
+    // Check if organization exists
+    const org = await getOrganizationById(id);
+    if (!org) {
+      return {
+        success: false,
+        message: 'Organization not found'
+      };
+    }
+
+    // Check if new name conflicts with another organization
+    if (name && name !== org.name) {
+      const [existing] = await pool.query(
+        'SELECT id FROM organizations WHERE name = ? AND id != ?',
+        [name, id]
+      );
+
+      if (existing.length > 0) {
+        return {
+          success: false,
+          message: 'Organization with this name already exists'
+        };
+      }
+    }
+
+    // Build update query dynamically
+    const updates = [];
+    const values = [];
+
+    if (name !== undefined) {
+      updates.push('name = ?');
+      values.push(name);
+    }
+
+    if (isActive !== undefined) {
+      updates.push('is_active = ?');
+      values.push(isActive ? 1 : 0);
+    }
+
+    if (updates.length === 0) {
+      return {
+        success: false,
+        message: 'No fields to update'
+      };
+    }
+
+    values.push(id);
+
+    await pool.query(
+      `UPDATE organizations SET ${updates.join(', ')} WHERE id = ?`,
+      values
+    );
+
+    return {
+      success: true,
+      message: 'Organization updated successfully'
+    };
+  } catch (error) {
+    console.error('OrganizationService - updateOrganization error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete an organization (with cascade delete of user assignments)
+ */
+const deleteOrganization = async (id) => {
+  try {
+    // Check if organization exists
+    const org = await getOrganizationById(id);
+    if (!org) {
+      return {
+        success: false,
+        message: 'Organization not found'
+      };
+    }
+
+    // Delete organization (CASCADE will delete user_organizations entries)
+    const [result] = await pool.query(
+      'DELETE FROM organizations WHERE id = ?',
+      [id]
+    );
+
+    if (result.affectedRows === 0) {
+      return {
+        success: false,
+        message: 'Failed to delete organization'
+      };
+    }
+
+    return {
+      success: true,
+      message: 'Organization deleted successfully'
+    };
+  } catch (error) {
+    console.error('OrganizationService - deleteOrganization error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Toggle organization active status
+ */
+const toggleOrganizationStatus = async (id, isActive) => {
+  try {
+    const [result] = await pool.query(
+      'UPDATE organizations SET is_active = ? WHERE id = ?',
+      [isActive ? 1 : 0, id]
+    );
+
+    if (result.affectedRows === 0) {
+      return {
+        success: false,
+        message: 'Organization not found'
+      };
+    }
+
+    return {
+      success: true,
+      message: `Organization ${isActive ? 'activated' : 'deactivated'} successfully`
+    };
+  } catch (error) {
+    console.error('OrganizationService - toggleOrganizationStatus error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get users in an organization
+ */
+const getOrganizationUsers = async (organizationId, filters = {}) => {
+  try {
+    const { page = 1, limit = 10 } = filters;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get total count
+    const [countResult] = await pool.query(
+      'SELECT COUNT(*) as total_count FROM user_organizations WHERE organization_id = ?',
+      [organizationId]
+    );
+    const totalCount = countResult[0]?.total_count || 0;
+
+    // Get users
+    const usersQuery = `
+      SELECT
+        u.uuid as id,
+        CONCAT(profile.first_name, ' ', profile.last_name) as name,
+        u.email,
+        CASE u.role_id
+          WHEN 1 THEN 'student'
+          WHEN 2 THEN 'instructor'
+          WHEN 3 THEN 'admin'
+        END as role,
+        uo.assigned_at as assignedAt
+      FROM user_organizations uo
+      INNER JOIN users u ON uo.user_id = u.uuid
+      LEFT JOIN (
+        SELECT user_id, first_name, last_name FROM students
+        UNION ALL
+        SELECT user_id, first_name, last_name FROM instructors
+        UNION ALL
+        SELECT user_id, first_name, last_name FROM admins
+      ) profile ON u.uuid = profile.user_id
+      WHERE uo.organization_id = ?
+      ORDER BY uo.assigned_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const [users] = await pool.query(usersQuery, [organizationId, parseInt(limit), offset]);
+
+    return {
+      users,
+      pagination: {
+        total: totalCount,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(totalCount / parseInt(limit))
+      }
+    };
+  } catch (error) {
+    console.error('OrganizationService - getOrganizationUsers error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Assign user to organization
+ */
+const assignUserToOrganization = async (userId, organizationId) => {
+  try {
+    // Get user role
+    const [userRows] = await pool.query(
+      'SELECT role_id FROM users WHERE uuid = ?',
+      [userId]
+    );
+
+    if (userRows.length === 0) {
+      return {
+        success: false,
+        message: 'User not found'
+      };
+    }
+
+    const roleId = userRows[0].role_id;
+
+    // For students and instructors (role_id 1 and 2), check if they already have an organization
+    if (roleId === 1 || roleId === 2) {
+      const [existing] = await pool.query(
+        'SELECT id FROM user_organizations WHERE user_id = ?',
+        [userId]
+      );
+
+      if (existing.length > 0) {
+        return {
+          success: false,
+          message: 'Students and instructors can only belong to one organization. Please remove current organization first.'
+        };
+      }
+    }
+
+    // Check if already assigned to this organization
+    const [alreadyAssigned] = await pool.query(
+      'SELECT id FROM user_organizations WHERE user_id = ? AND organization_id = ?',
+      [userId, organizationId]
+    );
+
+    if (alreadyAssigned.length > 0) {
+      return {
+        success: false,
+        message: 'User is already assigned to this organization'
+      };
+    }
+
+    // Assign user to organization
+    await pool.query(
+      'INSERT INTO user_organizations (user_id, organization_id) VALUES (?, ?)',
+      [userId, organizationId]
+    );
+
+    return {
+      success: true,
+      message: 'User assigned to organization successfully'
+    };
+  } catch (error) {
+    console.error('OrganizationService - assignUserToOrganization error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Remove user from organization
+ */
+const removeUserFromOrganization = async (userId, organizationId) => {
+  try {
+    const [result] = await pool.query(
+      'DELETE FROM user_organizations WHERE user_id = ? AND organization_id = ?',
+      [userId, organizationId]
+    );
+
+    if (result.affectedRows === 0) {
+      return {
+        success: false,
+        message: 'User is not assigned to this organization'
+      };
+    }
+
+    return {
+      success: true,
+      message: 'User removed from organization successfully'
+    };
+  } catch (error) {
+    console.error('OrganizationService - removeUserFromOrganization error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get user's organizations
+ */
+const getUserOrganizations = async (userId) => {
+  try {
+    const query = `
+      SELECT
+        o.id,
+        o.name,
+        o.is_active as isActive,
+        uo.assigned_at as assignedAt
+      FROM user_organizations uo
+      INNER JOIN organizations o ON uo.organization_id = o.id
+      WHERE uo.user_id = ?
+      ORDER BY uo.assigned_at DESC
+    `;
+
+    const [organizations] = await pool.query(query, [userId]);
+    return organizations;
+  } catch (error) {
+    console.error('OrganizationService - getUserOrganizations error:', error);
+    throw error;
+  }
+};
+
+module.exports = {
+  getAllOrganizations,
+  getOrganizationById,
+  createOrganization,
+  updateOrganization,
+  deleteOrganization,
+  toggleOrganizationStatus,
+  getOrganizationUsers,
+  assignUserToOrganization,
+  removeUserFromOrganization,
+  getUserOrganizations
+};

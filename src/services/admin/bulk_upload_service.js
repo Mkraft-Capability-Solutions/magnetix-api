@@ -219,6 +219,56 @@ exports.uploadUsers = async (fileBuffer) => {
           );
         }
 
+        // Handle organization assignment (optional)
+        if (!isEmpty(row.organization_id) || !isEmpty(row.organization_name)) {
+          let organizationId = null;
+
+          // Get organization ID
+          if (!isEmpty(row.organization_id)) {
+            organizationId = parseInt(row.organization_id);
+          } else if (!isEmpty(row.organization_name)) {
+            // Look up organization by name
+            const [orgResults] = await connection.query(
+              'SELECT id, is_active FROM organizations WHERE name = ?',
+              [row.organization_name.trim()]
+            );
+
+            if (orgResults.length === 0) {
+              warnings.push(`Row ${i + 2}: Organization "${row.organization_name}" not found`);
+            } else if (orgResults[0].is_active === 0) {
+              warnings.push(`Row ${i + 2}: Organization "${row.organization_name}" is inactive`);
+            } else {
+              organizationId = orgResults[0].id;
+            }
+          }
+
+          // Assign to organization if valid
+          if (organizationId) {
+            // Verify organization exists and is active
+            const [orgCheck] = await connection.query(
+              'SELECT id, is_active FROM organizations WHERE id = ?',
+              [organizationId]
+            );
+
+            if (orgCheck.length === 0) {
+              warnings.push(`Row ${i + 2}: Organization with ID ${organizationId} not found`);
+            } else if (orgCheck[0].is_active === 0) {
+              warnings.push(`Row ${i + 2}: Organization with ID ${organizationId} is inactive`);
+            } else {
+              // Note: For bulk upload, we enforce one organization per student/instructor
+              // Admins can have multiple organizations but we only assign one here
+              try {
+                await connection.query(
+                  'INSERT INTO user_organizations (user_id, organization_id) VALUES (?, ?)',
+                  [userId, organizationId]
+                );
+              } catch (orgError) {
+                warnings.push(`Row ${i + 2}: Failed to assign organization: ${orgError.message}`);
+              }
+            }
+          }
+        }
+
         invitationsToSend.push({
           email,
           firstName: row.first_name,

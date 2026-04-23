@@ -311,7 +311,8 @@ const createUser = async (userData) => {
       role = 'student',
       department,
       jobTitle,
-      instance = 'default'
+      instance = 'default',
+      organizationId // New optional field
     } = userData;
 
     // Generate UUID and password
@@ -329,6 +330,19 @@ const createUser = async (userData) => {
 
     const result = rows[0]?.[0];
     const success = result?.success === 1;
+
+    // If user created successfully and organizationId provided, assign to organization
+    if (success && organizationId) {
+      try {
+        await pool.query(
+          'INSERT INTO user_organizations (user_id, organization_id) VALUES (?, ?)',
+          [uuid, organizationId]
+        );
+      } catch (orgError) {
+        console.error('Failed to assign user to organization:', orgError);
+        // Don't fail user creation if organization assignment fails
+      }
+    }
 
     let invitationSent = false;
     if (success) {

@@ -84,6 +84,8 @@ const supportRoutes = require("./routes/support_routes");
 const adminDashboardRoutes = require("./routes/admin/dashboard_routes");
 const adminSettingsRoutes = require("./routes/admin/settings_routes");
 const adminUserManagementRoutes = require("./routes/admin/user_management_routes");
+const adminOrganizationRoutes = require("./routes/admin/organization_routes");
+const adminUserOrganizationRoutes = require("./routes/admin/user_organization_routes");
 const adminReportRoutes = require("./routes/admin/report_routes");
 const adminReportSchedulerRoutes = require("./routes/admin/report_scheduler_routes");
 const adminCustomReportRoutes = require("./routes/admin/custom_report_routes");
@@ -154,6 +156,8 @@ app.use("/api/admin", require("./routes/admin/external_certificates_routes"));
 app.use("/api/admin/dashboard", adminDashboardRoutes);
 app.use("/api/admin/settings", adminSettingsRoutes);
 app.use("/api/admin/users", adminUserManagementRoutes);
+app.use("/api/admin/users", adminUserOrganizationRoutes); // User-Organization assignment
+app.use("/api/admin/organizations", adminOrganizationRoutes);
 app.use("/api/admin/reports/schedules", adminReportSchedulerRoutes);
 app.use("/api/admin/reports", adminReportRoutes);
 app.use("/api/admin/custom-reports", adminCustomReportRoutes);
