@@ -1,6 +1,7 @@
 const { promisePool } = require('../config/db');
 const bcrypt = require('bcryptjs');
 const UserDTO = require('../dto/user_dto');
+const authService = require('./auth_service');
 
 class UserService {
   // Get user by UUID with complete details using stored procedure
@@ -97,6 +98,9 @@ class UserService {
       if (!isMatch) {
         throw new Error('Current password is incorrect');
       }
+
+      // Validate new password complexity
+      authService.validatePasswordComplexity(newPassword);
 
       // Hash new password
       const hashedPassword = await bcrypt.hash(newPassword, 10);
