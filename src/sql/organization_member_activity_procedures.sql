@@ -13,10 +13,18 @@ DROP PROCEDURE IF EXISTS get_member_enrolled_courses;
 DELIMITER //
 CREATE PROCEDURE get_member_enrolled_courses(IN p_user_id VARCHAR(36))
 BEGIN
+  -- status is derived rather than read from enrol.status, because some
+  -- deployments of this DB do not have the status column on `enrol`.
   SELECT
     c.id AS course_id,
     c.title AS title,
-    e.status AS status,
+    CASE
+      WHEN e.completed_at IS NOT NULL THEN 'completed'
+      WHEN COALESCE(e.progress, 0) > 0
+        OR EXISTS (SELECT 1 FROM course_progress cp WHERE cp.enroll_id = e.id)
+        THEN 'in_progress'
+      ELSE 'enrolled'
+    END AS status,
     COALESCE(e.progress, 0) AS progress,
     e.enrolled_date AS enrolled_date,
     e.completed_at AS completed_at,

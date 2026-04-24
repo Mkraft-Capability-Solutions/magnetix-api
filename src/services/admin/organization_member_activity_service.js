@@ -137,9 +137,11 @@ const enrollMemberInCourse = async (userId, courseId) => {
     return { success: false, error: { message: 'User is already enrolled in this course' } };
   }
 
+  // Note: we deliberately don't write the `status` column — some deployments
+  // of this DB drop it; progress + completed_at are enough to derive state.
   const [insert] = await promisePool.query(
-    `INSERT INTO enrol (user_id, course_id, status, progress, enrolled_date)
-     VALUES (?, ?, 'enrolled', 0, CURDATE())`,
+    `INSERT INTO enrol (user_id, course_id, progress, enrolled_date)
+     VALUES (?, ?, 0, CURDATE())`,
     [userId, courseId]
   );
 
