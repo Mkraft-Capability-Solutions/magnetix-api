@@ -20,6 +20,7 @@ router.post('/', userManagementController.createUser);
 // Dynamic routes with :id
 router.get('/:id', userManagementController.getUserById);
 router.put('/:id', userManagementController.updateUser);
+router.delete('/:id', userManagementController.deleteUser);
 router.post('/:id/deactivate', userManagementController.deactivateUser);
 router.post('/:id/reactivate', userManagementController.reactivateUser);
 

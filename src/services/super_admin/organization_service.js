@@ -43,7 +43,7 @@ const getAllOrganizations = async (filters = {}) => {
     const [countResult] = await pool.query(countQuery, queryParams);
     const totalCount = countResult[0]?.total_count || 0;
 
-    // Get paginated organizations with user count
+    // Get paginated organizations with user count (only active and not deleted users)
     const orgsQuery = `
       SELECT
         o.id,
@@ -54,9 +54,12 @@ const getAllOrganizations = async (filters = {}) => {
         COALESCE(user_count.total, 0) as userCount
       FROM organizations o
       LEFT JOIN (
-        SELECT organization_id, COUNT(*) as total
-        FROM user_organizations
-        GROUP BY organization_id
+        SELECT uo.organization_id, COUNT(*) as total
+        FROM user_organizations uo
+        INNER JOIN users u ON uo.user_id = u.uuid
+        WHERE (u.is_deleted IS NULL OR u.is_deleted = 0)
+          AND u.status = 'active'
+        GROUP BY uo.organization_id
       ) user_count ON o.id = user_count.organization_id
       WHERE ${whereClause}
       ORDER BY o.created_at DESC
@@ -81,7 +84,7 @@ const getAllOrganizations = async (filters = {}) => {
 };
 
 /**
- * Get organization by ID with user details
+ * Get organization by ID with user details (only active and not deleted users)
  */
 const getOrganizationById = async (id) => {
   try {
@@ -95,9 +98,12 @@ const getOrganizationById = async (id) => {
         COALESCE(user_count.total, 0) as userCount
       FROM organizations o
       LEFT JOIN (
-        SELECT organization_id, COUNT(*) as total
-        FROM user_organizations
-        GROUP BY organization_id
+        SELECT uo.organization_id, COUNT(*) as total
+        FROM user_organizations uo
+        INNER JOIN users u ON uo.user_id = u.uuid
+        WHERE (u.is_deleted IS NULL OR u.is_deleted = 0)
+          AND u.status = 'active'
+        GROUP BY uo.organization_id
       ) user_count ON o.id = user_count.organization_id
       WHERE o.id = ?
     `;
@@ -292,17 +298,52 @@ const toggleOrganizationStatus = async (id, isActive) => {
  */
 const getOrganizationUsers = async (organizationId, filters = {}) => {
   try {
-    const { page = 1, limit = 10 } = filters;
+    const { page = 1, limit = 10, search = '' } = filters;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    // Get total count
-    const [countResult] = await pool.query(
-      'SELECT COUNT(*) as total_count FROM user_organizations WHERE organization_id = ?',
-      [organizationId]
-    );
+    // Build search condition
+    let searchCondition = '';
+    let queryParams = [organizationId];
+
+    if (search && search.trim() !== '') {
+      searchCondition = `
+        AND (
+          profile.first_name LIKE ? OR
+          profile.last_name LIKE ? OR
+          u.email LIKE ? OR
+          CASE u.role_id
+            WHEN 1 THEN 'student'
+            WHEN 2 THEN 'instructor'
+            WHEN 3 THEN 'admin'
+            WHEN 4 THEN 'super_admin'
+          END LIKE ?
+        )
+      `;
+      const searchTerm = `%${search.trim()}%`;
+      queryParams.push(searchTerm, searchTerm, searchTerm, searchTerm);
+    }
+
+    // Get total count (only active and not deleted users)
+    const countQuery = `
+      SELECT COUNT(*) as total_count
+      FROM user_organizations uo
+      INNER JOIN users u ON uo.user_id = u.uuid
+      LEFT JOIN (
+        SELECT user_id, first_name, last_name FROM students
+        UNION ALL
+        SELECT user_id, first_name, last_name FROM instructors
+        UNION ALL
+        SELECT user_id, first_name, last_name FROM admins
+      ) profile ON u.uuid = profile.user_id
+      WHERE uo.organization_id = ?
+        AND (u.is_deleted IS NULL OR u.is_deleted = 0)
+        AND u.status = 'active'
+        ${searchCondition}
+    `;
+    const [countResult] = await pool.query(countQuery, queryParams);
     const totalCount = countResult[0]?.total_count || 0;
 
-    // Get users
+    // Get users (only active and not deleted)
     const usersQuery = `
       SELECT
         u.uuid as id,
@@ -328,11 +369,14 @@ const getOrganizationUsers = async (organizationId, filters = {}) => {
         SELECT user_id, first_name, last_name FROM admins
       ) profile ON u.uuid = profile.user_id
       WHERE uo.organization_id = ?
+        AND (u.is_deleted IS NULL OR u.is_deleted = 0)
+        AND u.status = 'active'
+        ${searchCondition}
       ORDER BY uo.assigned_at DESC
       LIMIT ? OFFSET ?
     `;
 
-    const [users] = await pool.query(usersQuery, [organizationId, parseInt(limit), offset]);
+    const [users] = await pool.query(usersQuery, [...queryParams, parseInt(limit), offset]);
 
     return {
       users,

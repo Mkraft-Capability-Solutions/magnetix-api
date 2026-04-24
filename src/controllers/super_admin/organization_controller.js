@@ -167,11 +167,12 @@ const toggleOrganizationStatus = async (req, res, next) => {
 const getOrganizationUsers = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { page, limit } = req.query;
+    const { page, limit, search } = req.query;
 
     const result = await organizationService.getOrganizationUsers(id, {
       page,
-      limit
+      limit,
+      search
     });
 
     res.status(200).json({

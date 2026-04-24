@@ -169,6 +169,49 @@ const updateUser = async (userId, userData) => {
 };
 
 /**
+ * Delete user (soft delete with is_deleted=1)
+ */
+const deleteUser = async (userId, deletedBy) => {
+  try {
+    // Check if user exists
+    const [userRows] = await pool.query(
+      'SELECT uuid, role_id FROM users WHERE uuid = ? AND (is_deleted IS NULL OR is_deleted = 0)',
+      [userId]
+    );
+
+    if (userRows.length === 0) {
+      return {
+        success: false,
+        message: 'User not found or already deleted'
+      };
+    }
+
+    const roleId = userRows[0].role_id;
+
+    // Soft delete the user by setting is_deleted = 1
+    const [result] = await pool.query(
+      'UPDATE users SET is_deleted = 1 WHERE uuid = ?',
+      [userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return {
+        success: false,
+        message: 'Failed to delete user'
+      };
+    }
+
+    return {
+      success: true,
+      message: 'User deleted successfully'
+    };
+  } catch (error) {
+    console.error('Super Admin UserManagementService - deleteUser error:', error);
+    throw error;
+  }
+};
+
+/**
  * Deactivate user
  */
 const deactivateUser = async (userId, deactivatedBy, reason) => {
@@ -340,6 +383,7 @@ module.exports = {
   getUserById,
   createUser,
   updateUser,
+  deleteUser,
   deactivateUser,
   reactivateUser,
   getDeactivationLog,
