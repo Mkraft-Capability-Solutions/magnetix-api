@@ -94,10 +94,10 @@ const generateSampleCSV = (type) => {
     users:
 `first_name,last_name,email,role,department,job_title,organization_name,manager_email,phone,location
 John,Doe,john.doe@company.com,student,Engineering,Software Engineer,Acme Corporation,jane.smith@company.com,9876543210,New York
-Jane,Smith,jane.smith@company.com,admin,Engineering,Senior Developer,,9123456789,San Francisco
+Jane,Smith,jane.smith@company.com,admin,Engineering,Senior Developer,"Acme Corporation, Tech Solutions",,9123456789,San Francisco
 Bob,Johnson,bob.johnson@company.com,instructor,Marketing,Marketing Manager,Tech Solutions,,8765432109,Chicago
 Alice,Williams,alice.williams@company.com,student,Sales,Sales Representative,Acme Corporation,bob.johnson@company.com,7654321098,Boston
-Charlie,Brown,charlie.brown@company.com,super_admin,IT,System Administrator,,,5551234567,Seattle
+Charlie,Brown,charlie.brown@company.com,admin,IT,System Administrator,"Acme Corporation, Tech Solutions, Global Industries",,5551234567,Seattle
 `,
     content:
 `content_id,field,new_value

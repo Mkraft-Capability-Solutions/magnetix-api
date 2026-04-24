@@ -115,13 +115,13 @@ const validateUserRow = (row, rowIndex) => {
     });
   }
 
-  // Validate role value
-  const validRoles = ['student', 'admin', 'instructor', 'super_admin'];
+  // Validate role value (STRICT: only student, admin, instructor)
+  const validRoles = ['student', 'admin', 'instructor'];
   if (!isEmpty(row.role) && !validRoles.includes(row.role.toLowerCase())) {
     errors.push({
       row: rowIndex,
       field: 'role',
-      message: `Invalid role. Allowed: ${validRoles.join(', ')}`
+      message: `Invalid role. Allowed values are: ${validRoles.join(', ')}`
     });
   }
 

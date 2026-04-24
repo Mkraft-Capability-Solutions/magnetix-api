@@ -124,12 +124,11 @@ exports.uploadUsers = async (fileBuffer) => {
     const invitationsToSend = [];
 
     try {
-      // Role mapping
+      // Role mapping (STRICT: only student, admin, instructor allowed)
       const roleMap = {
         'student': 1,
         'admin': 2,
-        'instructor': 3,
-        'super_admin': 4
+        'instructor': 3
       };
 
       for (let i = 0; i < csvData.length; i++) {
@@ -210,61 +209,99 @@ exports.uploadUsers = async (fileBuffer) => {
              VALUES (?, ?, ?, ?)`,
             [userId, row.first_name, row.last_name, row.phone || null]
           );
-        } else if (roleId === 4) {
-          // Super Admin
-          await connection.query(
-            `INSERT INTO super_admins (user_id, first_name, last_name, contact)
-             VALUES (?, ?, ?, ?)`,
-            [userId, row.first_name, row.last_name, row.phone || null]
-          );
         }
 
-        // Handle organization assignment (optional)
-        if (!isEmpty(row.organization_id) || !isEmpty(row.organization_name)) {
-          let organizationId = null;
+        // Increment counter after successful user creation
+        inserted++;
 
-          // Get organization ID
-          if (!isEmpty(row.organization_id)) {
-            organizationId = parseInt(row.organization_id);
-          } else if (!isEmpty(row.organization_name)) {
+        // Handle organization assignment (optional but validated if provided)
+        if (!isEmpty(row.organization_name)) {
+          // Split by comma to support multiple organizations for admins
+          const orgNames = row.organization_name.split(',').map(name => name.trim()).filter(name => name !== '');
+
+          // For students/instructors, only use first organization
+          const organizationsToAssign = (roleId === 1 || roleId === 3) ? orgNames.slice(0, 1) : orgNames;
+
+          // Warn if student/instructor has multiple organizations listed
+          if ((roleId === 1 || roleId === 3) && orgNames.length > 1) {
+            warnings.push(`Row ${i + 2}: Students and instructors can only belong to one organization. Using "${orgNames[0]}" only.`);
+          }
+
+          let organizationValidationFailed = false;
+          const validOrganizationIds = [];
+
+          // Validate all organization names first
+          for (const orgName of organizationsToAssign) {
             // Look up organization by name
             const [orgResults] = await connection.query(
               'SELECT id, is_active FROM organizations WHERE name = ?',
-              [row.organization_name.trim()]
+              [orgName]
             );
 
             if (orgResults.length === 0) {
-              warnings.push(`Row ${i + 2}: Organization "${row.organization_name}" not found`);
+              // Organization not found - this is an ERROR
+              errors.push({
+                row: i + 2,
+                field: 'organization_name',
+                message: `Organization "${orgName}" not found. Please check the organization name and try again.`
+              });
+              organizationValidationFailed = true;
             } else if (orgResults[0].is_active === 0) {
-              warnings.push(`Row ${i + 2}: Organization "${row.organization_name}" is inactive`);
+              // Organization is inactive - this is an ERROR
+              errors.push({
+                row: i + 2,
+                field: 'organization_name',
+                message: `Organization "${orgName}" is inactive and cannot be assigned.`
+              });
+              organizationValidationFailed = true;
             } else {
-              organizationId = orgResults[0].id;
+              validOrganizationIds.push(orgResults[0].id);
             }
           }
 
-          // Assign to organization if valid
-          if (organizationId) {
-            // Verify organization exists and is active
-            const [orgCheck] = await connection.query(
-              'SELECT id, is_active FROM organizations WHERE id = ?',
-              [organizationId]
-            );
+          // If organization validation failed, rollback this user creation
+          if (organizationValidationFailed) {
+            // Delete the user that was just created
+            await connection.query('DELETE FROM users WHERE uuid = ?', [userId]);
 
-            if (orgCheck.length === 0) {
-              warnings.push(`Row ${i + 2}: Organization with ID ${organizationId} not found`);
-            } else if (orgCheck[0].is_active === 0) {
-              warnings.push(`Row ${i + 2}: Organization with ID ${organizationId} is inactive`);
-            } else {
-              // Note: For bulk upload, we enforce one organization per student/instructor
-              // Admins can have multiple organizations but we only assign one here
-              try {
+            // Delete from role-specific table
+            if (roleId === 1) {
+              await connection.query('DELETE FROM students WHERE user_id = ?', [userId]);
+              await connection.query('DELETE FROM student_corporate_info WHERE user_id = ?', [userId]);
+            } else if (roleId === 2) {
+              await connection.query('DELETE FROM admins WHERE user_id = ?', [userId]);
+            } else if (roleId === 3) {
+              await connection.query('DELETE FROM instructors WHERE user_id = ?', [userId]);
+            }
+
+            // Remove from invitations list
+            const invitationIndex = invitationsToSend.findIndex(inv => inv.email === email);
+            if (invitationIndex !== -1) {
+              invitationsToSend.splice(invitationIndex, 1);
+            }
+
+            inserted--;
+            skipped++;
+            continue; // Skip to next row
+          }
+
+          // Assign valid organizations
+          for (const organizationId of validOrganizationIds) {
+            try {
+              // Check if already assigned (to avoid duplicate key errors)
+              const [existing] = await connection.query(
+                'SELECT id FROM user_organizations WHERE user_id = ? AND organization_id = ?',
+                [userId, organizationId]
+              );
+
+              if (existing.length === 0) {
                 await connection.query(
                   'INSERT INTO user_organizations (user_id, organization_id) VALUES (?, ?)',
                   [userId, organizationId]
                 );
-              } catch (orgError) {
-                warnings.push(`Row ${i + 2}: Failed to assign organization: ${orgError.message}`);
               }
+            } catch (orgError) {
+              console.error(`Failed to assign organization ${organizationId} to user ${userId}:`, orgError);
             }
           }
         }
@@ -275,8 +312,6 @@ exports.uploadUsers = async (fileBuffer) => {
           password: tempPassword,
           roleLabel: ROLE_LABELS[roleKey] || 'User'
         });
-
-        inserted++;
       }
 
       // Commit transaction
