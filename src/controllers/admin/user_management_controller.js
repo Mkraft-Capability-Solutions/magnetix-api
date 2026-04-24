@@ -110,7 +110,7 @@ const getUserLearningHistory = async (req, res) => {
  */
 const createUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, role, department, jobTitle } = req.body;
+    const { firstName, lastName, email, role, department, jobTitle, organizationId } = req.body;
 
     // Validation
     if (!firstName || !lastName || !email) {
@@ -136,6 +136,7 @@ const createUser = async (req, res) => {
       role: role || 'student',
       department,
       jobTitle,
+      organizationId,
       instance: req.user?.instance || 'default'
     });
 

@@ -179,6 +179,37 @@ const updateUser = async (req, res) => {
 };
 
 /**
+ * Delete user (soft delete with is_delete=1)
+ */
+const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deletedBy = req.user.uuid;
+
+    const result = await userManagementService.deleteUser(id, deletedBy);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error('Super Admin UserManagementController - deleteUser error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete user',
+      error: error.message
+    });
+  }
+};
+
+/**
  * Deactivate user
  */
 const deactivateUser = async (req, res) => {
@@ -345,6 +376,7 @@ module.exports = {
   getUserById,
   createUser,
   updateUser,
+  deleteUser,
   deactivateUser,
   reactivateUser,
   getDeactivationLog,

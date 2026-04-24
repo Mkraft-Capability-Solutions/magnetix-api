@@ -87,7 +87,7 @@ exports.getTopCourses = async (req, res) => {
 exports.getTasks = async (req, res) => {
   try {
     const { startDate, endDate, limit } = req.query;
-    const adminId = req.user?.userId || null;
+    const adminId = req.user?.uuid || req.user?.userId || null;
 
     const tasks = await dashboardService.getTasks(
       adminId,
@@ -172,7 +172,7 @@ exports.performTaskAction = async (req, res) => {
   try {
     const { taskId } = req.params;
     const { action } = req.body;
-    const adminId = req.user?.userId || null;
+    const adminId = req.user?.uuid || req.user?.userId || null;
 
     if (!taskId) {
       return res.status(400).json({
@@ -248,6 +248,117 @@ exports.getTaskById = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch task',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get organizations that the admin belongs to
+ * GET /api/admin/dashboard/organizations
+ */
+exports.getAdminOrganizations = async (req, res) => {
+  try {
+    // Auth middleware stores user ID as 'uuid', not 'userId'
+    const userId = req.user?.uuid || req.user?.userId;
+
+    console.log('🔍 getAdminOrganizations - req.user:', req.user);
+    console.log('🔍 getAdminOrganizations - userId (uuid):', userId);
+
+    if (!userId) {
+      console.error('❌ User not authenticated - userId/uuid is missing');
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+
+    const organizations = await dashboardService.getAdminOrganizations(userId);
+
+    console.log('✅ Organizations fetched:', organizations.length, 'organizations');
+    console.log('📊 Organizations:', JSON.stringify(organizations, null, 2));
+
+    res.json({
+      success: true,
+      data: organizations
+    });
+  } catch (error) {
+    console.error('❌ Dashboard Controller - getAdminOrganizations error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch organizations',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get organization-specific dashboard statistics
+ * GET /api/admin/dashboard/organization/:organizationId/stats
+ */
+exports.getOrganizationStats = async (req, res) => {
+  try {
+    const { organizationId } = req.params;
+
+    if (!organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Organization ID is required'
+      });
+    }
+
+    const stats = await dashboardService.getOrganizationStats(parseInt(organizationId));
+
+    res.json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    console.error('Dashboard Controller - getOrganizationStats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch organization statistics',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get all users in an organization
+ * GET /api/admin/dashboard/organization/:organizationId/users
+ */
+exports.getOrganizationUsers = async (req, res) => {
+  try {
+    const { organizationId } = req.params;
+    const { page, limit, search, roleFilter } = req.query;
+
+    if (!organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Organization ID is required'
+      });
+    }
+
+    const result = await dashboardService.getOrganizationUsers(
+      parseInt(organizationId),
+      {
+        page: page ? parseInt(page) : 1,
+        limit: limit ? parseInt(limit) : 10,
+        search: search || '',
+        roleFilter: roleFilter ? parseInt(roleFilter) : null
+      }
+    );
+
+    res.json({
+      success: true,
+      data: result.users,
+      pagination: result.pagination
+    });
+  } catch (error) {
+    console.error('Dashboard Controller - getOrganizationUsers error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch organization users',
       error: error.message
     });
   }

@@ -101,6 +101,8 @@ const superAdminMarketingRoutes = require("./routes/super_admin/marketing_routes
 const superAdminILTRoutes = require("./routes/super_admin/ilt_routes");
 const superAdminReportRoutes = require("./routes/super_admin/report_routes");
 const superAdminLessonRoutes = require("./routes/super_admin/lesson_routes");
+const superAdminOrganizationRoutes = require("./routes/super_admin/organization_routes");
+const superAdminUserOrganizationRoutes = require("./routes/super_admin/user_organization_routes");
 
 // Use routes with API prefixes
 app.use("/api/landing", landingRoutes);
@@ -184,6 +186,8 @@ app.use("/api/super-admin/reports", superAdminReportRoutes);
 app.use("/api/super-admin/content", superAdminLessonRoutes);
 app.use("/api/super-admin/catalog", require("./routes/super_admin/catalog_routes"));
 app.use("/api/super-admin/group-projects", require("./routes/super_admin/group_project_routes"));
+app.use("/api/super-admin/organizations", superAdminOrganizationRoutes);
+app.use("/api/super-admin/users", superAdminUserOrganizationRoutes);
 
 // SCORM manifest API endpoint
 const { getScormEntryPoint, parseScormManifest } = require("./utils/scormManifestParser");

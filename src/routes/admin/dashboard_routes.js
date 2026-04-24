@@ -62,4 +62,23 @@ router.get('/learning-hours', dashboardController.getLearningHours);
  */
 router.get('/learning-progress', dashboardController.getLearningProgress);
 
+/**
+ * GET /api/admin/dashboard/organizations
+ * Get organizations that the admin belongs to
+ */
+router.get('/organizations', dashboardController.getAdminOrganizations);
+
+/**
+ * GET /api/admin/dashboard/organization/:organizationId/stats
+ * Get organization-specific dashboard statistics
+ */
+router.get('/organization/:organizationId/stats', dashboardController.getOrganizationStats);
+
+/**
+ * GET /api/admin/dashboard/organization/:organizationId/users
+ * Get all users in an organization
+ * Query params: page, limit, search, roleFilter
+ */
+router.get('/organization/:organizationId/users', dashboardController.getOrganizationUsers);
+
 module.exports = router;

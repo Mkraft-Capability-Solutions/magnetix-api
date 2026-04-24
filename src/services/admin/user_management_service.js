@@ -311,7 +311,8 @@ const createUser = async (userData) => {
       role = 'student',
       department,
       jobTitle,
-      instance = 'default'
+      instance = 'default',
+      organizationId // New optional field
     } = userData;
 
     // Generate UUID and password
@@ -329,6 +330,60 @@ const createUser = async (userData) => {
 
     const result = rows[0]?.[0];
     const success = result?.success === 1;
+
+    // If user created successfully and organizationId provided, assign to organization(s)
+    if (success && organizationId) {
+      try {
+        // Convert to array if single value
+        let orgIds = Array.isArray(organizationId) ? organizationId : [organizationId];
+
+        // Filter out empty strings
+        orgIds = orgIds.filter(id => id !== '' && id !== null && id !== undefined);
+
+        if (orgIds.length > 0) {
+          // Get role_id to check constraints
+          const roleId = role === 'admin' ? 3 : role === 'instructor' ? 2 : 1;
+
+          // For students/instructors, only allow one organization
+          if ((roleId === 1 || roleId === 2) && orgIds.length > 1) {
+            console.warn(`Students and instructors can only belong to one organization. Using first organization only.`);
+            orgIds = [orgIds[0]];
+          }
+
+          // Process each organization ID
+          for (const orgIdRaw of orgIds) {
+            const orgId = parseInt(orgIdRaw);
+
+            // Verify organization exists and is active
+            const [orgCheck] = await pool.query(
+              'SELECT id, is_active FROM organizations WHERE id = ?',
+              [orgId]
+            );
+
+            if (orgCheck.length > 0 && orgCheck[0].is_active === 1) {
+              // Check if already assigned (to avoid duplicate key errors)
+              const [existing] = await pool.query(
+                'SELECT id FROM user_organizations WHERE user_id = ? AND organization_id = ?',
+                [uuid, orgId]
+              );
+
+              if (existing.length === 0) {
+                await pool.query(
+                  'INSERT INTO user_organizations (user_id, organization_id) VALUES (?, ?)',
+                  [uuid, orgId]
+                );
+                console.log(`User ${uuid} assigned to organization ${orgId}`);
+              }
+            } else {
+              console.warn(`Organization ${orgId} not found or inactive`);
+            }
+          }
+        }
+      } catch (orgError) {
+        console.error('Failed to assign user to organization:', orgError);
+        // Don't fail user creation if organization assignment fails
+      }
+    }
 
     let invitationSent = false;
     if (success) {

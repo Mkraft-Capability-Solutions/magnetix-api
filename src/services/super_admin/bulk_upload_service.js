@@ -8,6 +8,7 @@ const {
   validateUserRow,
   validateContentRow,
   validateAssignmentRow,
+  validateOrganizationRow,
   isEmpty
 } = require('../../utils/csv_validators');
 
@@ -15,10 +16,32 @@ const {
 // UPLOAD USERS SERVICE
 // ==============================================
 
-exports.uploadUsers = async (fileBuffer) => {
+exports.uploadUsers = async (fileBuffer, organizationId) => {
   const connection = await pool.getConnection();
 
   try {
+    // Validate organization exists
+    const [orgRows] = await connection.query(
+      'SELECT id, name FROM organizations WHERE id = ? AND is_active = 1',
+      [organizationId]
+    );
+
+    if (orgRows.length === 0) {
+      return {
+        success: false,
+        message: 'Invalid or inactive organization',
+        data: {
+          totalRows: 0,
+          validRows: 0,
+          errorRows: 0,
+          warnings: [],
+          errors: [{ row: 0, field: 'organization', message: 'Organization not found or inactive' }],
+          inserted: 0,
+          skipped: 0
+        }
+      };
+    }
+
     // Parse CSV
     const csvData = await parseCSV(fileBuffer);
 
@@ -149,9 +172,9 @@ exports.uploadUsers = async (fileBuffer) => {
 
         // Insert into users table
         await connection.query(
-          `INSERT INTO users (uuid, email, password, role_id, created_at, updated_at)
-           VALUES (?, ?, ?, 1, NOW(), NOW())`,
-          [userId, email, hashedPassword]
+          `INSERT INTO users (uuid, email, password, role_id, instance, status, created_at, updated_at)
+           VALUES (?, ?, ?, 1, ?, ?, NOW(), NOW())`,
+          [userId, email, hashedPassword, 'default', 'active']
         );
 
         // Insert into students table
@@ -173,6 +196,13 @@ exports.uploadUsers = async (fileBuffer) => {
             row.location || null,
             row.manager_email || null
           ]
+        );
+
+        // Assign user to organization
+        await connection.query(
+          `INSERT INTO user_organizations (user_id, organization_id, assigned_at)
+           VALUES (?, ?, NOW())`,
+          [userId, organizationId]
         );
 
         invitationsToSend.push({

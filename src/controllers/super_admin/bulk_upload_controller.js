@@ -31,8 +31,17 @@ exports.uploadUsers = async (req, res) => {
       });
     }
 
+    // Check if organizationId is provided
+    const { organizationId } = req.body;
+    if (!organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Organization ID is required'
+      });
+    }
+
     // Process upload
-    const result = await bulkUploadService.uploadUsers(req.file.buffer);
+    const result = await bulkUploadService.uploadUsers(req.file.buffer, organizationId);
 
     if (!result.success) {
       return res.status(400).json(result);

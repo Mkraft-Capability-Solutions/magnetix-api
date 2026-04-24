@@ -97,7 +97,7 @@ John,Doe,john.doe@company.com,student,Engineering,Software Engineer,jane.smith@c
 Jane,Smith,jane.smith@company.com,admin,Engineering,Senior Developer,,9123456789,San Francisco
 Bob,Johnson,bob.johnson@company.com,instructor,Marketing,Marketing Manager,,8765432109,Chicago
 Alice,Williams,alice.williams@company.com,student,Sales,Sales Representative,bob.johnson@company.com,7654321098,Boston
-Charlie,Brown,charlie.brown@company.com,super_admin,IT,System Administrator,,5551234567,Seattle
+Charlie,Brown,charlie.brown@company.com,admin,IT,System Administrator,,5551234567,Seattle
 `,
     content:
 `content_id,field,new_value

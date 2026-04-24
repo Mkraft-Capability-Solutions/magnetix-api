@@ -115,13 +115,13 @@ const validateUserRow = (row, rowIndex) => {
     });
   }
 
-  // Validate role value
-  const validRoles = ['student', 'admin', 'instructor', 'super_admin'];
+  // Validate role value (STRICT: only student, admin, instructor)
+  const validRoles = ['student', 'admin', 'instructor'];
   if (!isEmpty(row.role) && !validRoles.includes(row.role.toLowerCase())) {
     errors.push({
       row: rowIndex,
       field: 'role',
-      message: `Invalid role. Allowed: ${validRoles.join(', ')}`
+      message: `Invalid role. Allowed values are: ${validRoles.join(', ')}`
     });
   }
 
@@ -149,6 +149,24 @@ const validateUserRow = (row, rowIndex) => {
       row: rowIndex,
       field: 'hire_date',
       message: 'Invalid date format (expected YYYY-MM-DD)'
+    });
+  }
+
+  // Organization ID format (optional but must be numeric if provided)
+  if (!isEmpty(row.organization_id) && isNaN(parseInt(row.organization_id))) {
+    errors.push({
+      row: rowIndex,
+      field: 'organization_id',
+      message: 'Organization ID must be a number'
+    });
+  }
+
+  // Organization name format (optional but must be non-empty string if provided)
+  if (!isEmpty(row.organization_name) && typeof row.organization_name !== 'string') {
+    errors.push({
+      row: rowIndex,
+      field: 'organization_name',
+      message: 'Organization name must be a valid string'
     });
   }
 
@@ -283,6 +301,63 @@ const validateAssignmentRow = (row, rowIndex) => {
   };
 };
 
+/**
+ * Validate a single organization row
+ * @param {Object} row - Organization row object
+ * @param {number} rowIndex - Row number (for error reporting)
+ * @returns {Object} - { valid: boolean, errors: Array }
+ */
+const validateOrganizationRow = (row, rowIndex) => {
+  const errors = [];
+
+  // Required fields
+  const missing = validateRequiredFields(row, ['name']);
+  if (missing.length > 0) {
+    errors.push({
+      row: rowIndex,
+      field: missing.join(', '),
+      message: `Required field(s) missing: ${missing.join(', ')}`
+    });
+  }
+
+  // Organization name format (must be non-empty string and not too long)
+  if (!isEmpty(row.name)) {
+    if (typeof row.name !== 'string') {
+      errors.push({
+        row: rowIndex,
+        field: 'name',
+        message: 'Organization name must be a valid string'
+      });
+    } else if (row.name.trim().length < 2) {
+      errors.push({
+        row: rowIndex,
+        field: 'name',
+        message: 'Organization name must be at least 2 characters'
+      });
+    } else if (row.name.trim().length > 255) {
+      errors.push({
+        row: rowIndex,
+        field: 'name',
+        message: 'Organization name must not exceed 255 characters'
+      });
+    }
+  }
+
+  // Status validation (optional but must be yes/no if provided)
+  if (!isEmpty(row.is_active) && !isValidYesNo(row.is_active)) {
+    errors.push({
+      row: rowIndex,
+      field: 'is_active',
+      message: 'Status must be Yes/No (yes, no, y, n, true, false, 1, 0)'
+    });
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors
+  };
+};
+
 module.exports = {
   isValidEmail,
   isValidDate,
@@ -293,5 +368,6 @@ module.exports = {
   validateRequiredFields,
   validateUserRow,
   validateContentRow,
-  validateAssignmentRow
+  validateAssignmentRow,
+  validateOrganizationRow
 };
