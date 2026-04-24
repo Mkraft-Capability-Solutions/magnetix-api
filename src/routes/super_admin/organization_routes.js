@@ -14,6 +14,19 @@ router.use(authorize(4)); // Only Super Admins can manage organizations
 // Bulk upload route (must be before /:id routes)
 router.post('/bulk-upload', upload.single('file'), organizationController.uploadOrganizations);
 
+// User-Organization Management Routes (must be before /:id routes to avoid conflicts)
+// Get all active users (for assigning to organizations)
+router.get('/users/active', organizationController.getAllActiveUsers);
+
+// Get user's organizations
+router.get('/users/:userId/organizations', organizationController.getUserOrganizations);
+
+// Assign user to organization
+router.post('/users/:userId/organizations/:organizationId', organizationController.assignUserToOrganization);
+
+// Remove user from organization
+router.delete('/users/:userId/organizations/:organizationId', organizationController.removeUserFromOrganization);
+
 // Organization CRUD routes
 router.get('/', organizationController.getAllOrganizations);
 router.get('/:id', organizationController.getOrganizationById);
@@ -26,5 +39,8 @@ router.patch('/:id/toggle-status', organizationController.toggleOrganizationStat
 
 // Get users in an organization
 router.get('/:id/users', organizationController.getOrganizationUsers);
+
+// Bulk assign users to organization
+router.post('/:organizationId/users/bulk-assign', organizationController.bulkAssignUsersToOrganization);
 
 module.exports = router;

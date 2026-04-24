@@ -187,6 +187,24 @@ const getOrganizationUsers = async (req, res, next) => {
 };
 
 /**
+ * Get all active users (for assigning to organizations)
+ * GET /super-admin/users/active
+ */
+const getAllActiveUsers = async (req, res, next) => {
+  try {
+    const users = await organizationService.getAllActiveUsers();
+
+    res.status(200).json({
+      success: true,
+      message: 'Active users retrieved successfully',
+      data: users
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Assign user to organization
  * POST /super-admin/users/:userId/organizations/:organizationId
  */
@@ -199,6 +217,30 @@ const assignUserToOrganization = async (req, res, next) => {
     if (!result.success) {
       return res.status(400).json(result);
     }
+
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Bulk assign users to organization
+ * POST /super-admin/organizations/:organizationId/users/bulk-assign
+ */
+const bulkAssignUsersToOrganization = async (req, res, next) => {
+  try {
+    const { organizationId } = req.params;
+    const { userIds } = req.body;
+
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'userIds array is required and must not be empty'
+      });
+    }
+
+    const result = await organizationService.bulkAssignUsersToOrganization(userIds, parseInt(organizationId));
 
     res.status(200).json(result);
   } catch (error) {
@@ -275,7 +317,9 @@ module.exports = {
   deleteOrganization,
   toggleOrganizationStatus,
   getOrganizationUsers,
+  getAllActiveUsers,
   assignUserToOrganization,
+  bulkAssignUsersToOrganization,
   removeUserFromOrganization,
   getUserOrganizations,
   uploadOrganizations

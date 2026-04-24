@@ -351,6 +351,241 @@ const logLearningHours = async (userId, logDate, hours, courseId = null) => {
   }
 };
 
+/**
+ * Get organizations that the admin belongs to
+ * @param {string} userId - Admin user UUID
+ * @returns {Promise<Array>} Array of organization objects
+ */
+const getAdminOrganizations = async (userId) => {
+  try {
+    console.log('🔍 Service - getAdminOrganizations called with userId:', userId);
+
+    const [rows] = await pool.query(
+      `SELECT
+        o.id,
+        o.name,
+        o.is_active,
+        o.created_at,
+        uo.assigned_at
+      FROM user_organizations uo
+      INNER JOIN organizations o ON uo.organization_id = o.id
+      WHERE uo.user_id = ?
+      ORDER BY uo.assigned_at DESC`,
+      [userId]
+    );
+
+    console.log('📊 Service - Query returned', rows.length, 'organizations');
+
+    if (rows.length === 0) {
+      console.warn('⚠️ No organizations found for userId:', userId);
+      console.warn('💡 This admin user may not be assigned to any organization in user_organizations table');
+    }
+
+    return rows || [];
+  } catch (error) {
+    console.error('❌ Dashboard Service - getAdminOrganizations error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get organization-specific dashboard statistics
+ * @param {number} organizationId - Organization ID
+ * @returns {Promise<Object>} Organization stats object
+ */
+const getOrganizationStats = async (organizationId) => {
+  try {
+    // Total users in the organization
+    const [[{ total_users }]] = await pool.query(
+      `SELECT COUNT(DISTINCT uo.user_id) as total_users
+       FROM user_organizations uo
+       INNER JOIN users u ON uo.user_id = u.uuid
+       WHERE uo.organization_id = ?
+         AND u.is_deleted = 0`,
+      [organizationId]
+    );
+
+    // Active users (status='active')
+    const [[{ active_users }]] = await pool.query(
+      `SELECT COUNT(DISTINCT uo.user_id) as active_users
+       FROM user_organizations uo
+       INNER JOIN users u ON uo.user_id = u.uuid
+       WHERE uo.organization_id = ?
+         AND u.status = 'active'
+         AND u.is_deleted = 0`,
+      [organizationId]
+    );
+
+    // Inactive users (status='inactive')
+    const [[{ inactive_users }]] = await pool.query(
+      `SELECT COUNT(DISTINCT uo.user_id) as inactive_users
+       FROM user_organizations uo
+       INNER JOIN users u ON uo.user_id = u.uuid
+       WHERE uo.organization_id = ?
+         AND u.status = 'inactive'
+         AND u.is_deleted = 0`,
+      [organizationId]
+    );
+
+    // Users by role - using CASE to map role_id to role names
+    const [usersByRole] = await pool.query(
+      `SELECT
+        CASE u.role_id
+          WHEN 1 THEN 'Student'
+          WHEN 2 THEN 'Instructor'
+          WHEN 3 THEN 'Admin'
+          WHEN 4 THEN 'Super Admin'
+          ELSE 'Unknown'
+        END as role_name,
+        COUNT(DISTINCT uo.user_id) as count
+       FROM user_organizations uo
+       INNER JOIN users u ON uo.user_id = u.uuid
+       WHERE uo.organization_id = ?
+         AND u.is_deleted = 0
+       GROUP BY u.role_id
+       ORDER BY u.role_id`,
+      [organizationId]
+    );
+
+    // Organization details
+    const [[organization]] = await pool.query(
+      `SELECT
+        id,
+        name,
+        is_active,
+        created_at
+      FROM organizations
+      WHERE id = ?`,
+      [organizationId]
+    );
+
+    return {
+      organization: organization || null,
+      totalUsers: total_users || 0,
+      activeUsers: active_users || 0,
+      inactiveUsers: inactive_users || 0,
+      usersByRole: usersByRole || [],
+      stats: [
+        {
+          title: 'Total Users',
+          value: total_users || 0,
+          iconType: 'users'
+        },
+        {
+          title: 'Active Users',
+          value: active_users || 0,
+          iconType: 'user-check'
+        },
+        {
+          title: 'Inactive Users',
+          value: inactive_users || 0,
+          iconType: 'user-x'
+        },
+        {
+          title: 'Organization Status',
+          value: organization?.is_active ? 'Active' : 'Inactive',
+          iconType: organization?.is_active ? 'check-circle' : 'alert-circle'
+        }
+      ]
+    };
+  } catch (error) {
+    console.error('Dashboard Service - getOrganizationStats error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all users in an organization
+ * @param {number} organizationId - Organization ID
+ * @param {Object} options - Query options (page, limit, search, roleFilter)
+ * @returns {Promise<Object>} Users data with pagination
+ */
+const getOrganizationUsers = async (organizationId, options = {}) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      search = '',
+      roleFilter = null
+    } = options;
+
+    const offset = (page - 1) * limit;
+
+    // Build WHERE clause conditions
+    const conditions = ['uo.organization_id = ?', 'u.is_deleted = 0'];
+    const params = [organizationId];
+
+    // Add search filter
+    if (search) {
+      conditions.push('(s.first_name LIKE ? OR s.last_name LIKE ? OR i.first_name LIKE ? OR i.last_name LIKE ? OR a.first_name LIKE ? OR a.last_name LIKE ? OR u.email LIKE ?)');
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
+    }
+
+    // Add role filter
+    if (roleFilter) {
+      conditions.push('u.role_id = ?');
+      params.push(roleFilter);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    // Get total count
+    const [[{ total }]] = await pool.query(
+      `SELECT COUNT(DISTINCT uo.user_id) as total
+       FROM user_organizations uo
+       INNER JOIN users u ON uo.user_id = u.uuid
+       LEFT JOIN students s ON u.uuid = s.user_id AND u.role_id = 1
+       LEFT JOIN admins a ON u.uuid = a.user_id AND u.role_id = 2
+       LEFT JOIN instructors i ON u.uuid = i.user_id AND u.role_id = 3
+       WHERE ${whereClause}`,
+      params
+    );
+
+    // Get users with pagination
+    const [users] = await pool.query(
+      `SELECT
+        u.uuid as id,
+        COALESCE(s.first_name, a.first_name, i.first_name, '') as first_name,
+        COALESCE(s.last_name, a.last_name, i.last_name, '') as last_name,
+        u.email,
+        u.role_id,
+        CASE u.role_id
+          WHEN 1 THEN 'Student'
+          WHEN 2 THEN 'Admin'
+          WHEN 3 THEN 'Instructor'
+          WHEN 4 THEN 'Super Admin'
+          ELSE 'Unknown'
+        END as role_name,
+        u.status,
+        u.created_at,
+        uo.assigned_at
+      FROM user_organizations uo
+      INNER JOIN users u ON uo.user_id = u.uuid
+      LEFT JOIN students s ON u.uuid = s.user_id AND u.role_id = 1
+      LEFT JOIN admins a ON u.uuid = a.user_id AND u.role_id = 2
+      LEFT JOIN instructors i ON u.uuid = i.user_id AND u.role_id = 3
+      WHERE ${whereClause}
+      ORDER BY u.created_at DESC
+      LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    return {
+      users: users || [],
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: total || 0,
+        totalPages: Math.ceil((total || 0) / limit)
+      }
+    };
+  } catch (error) {
+    console.error('Dashboard Service - getOrganizationUsers error:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   getStats,
   calculateAndSaveDailyStats,
@@ -360,5 +595,8 @@ module.exports = {
   getLearningProgress,
   performTaskAction,
   getTaskById,
-  logLearningHours
+  logLearningHours,
+  getAdminOrganizations,
+  getOrganizationStats,
+  getOrganizationUsers
 };

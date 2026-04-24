@@ -394,6 +394,48 @@ const getOrganizationUsers = async (organizationId, filters = {}) => {
 };
 
 /**
+ * Get all active users (not deleted, status = active)
+ * This is used for assigning users to organizations
+ * Excludes Super Admin users (only returns Students, Admins, and Instructors)
+ */
+const getAllActiveUsers = async () => {
+  try {
+    const query = `
+      SELECT DISTINCT
+        u.uuid as id,
+        u.uuid,
+        profile.first_name as firstName,
+        profile.last_name as lastName,
+        u.email,
+        CASE u.role_id
+          WHEN 1 THEN 'Student'
+          WHEN 2 THEN 'Instructor'
+          WHEN 3 THEN 'Admin'
+        END as role,
+        u.role_id as roleId
+      FROM users u
+      LEFT JOIN (
+        SELECT user_id, first_name, last_name FROM students
+        UNION
+        SELECT user_id, first_name, last_name FROM admins
+        UNION
+        SELECT user_id, first_name, last_name FROM instructors
+      ) profile ON u.uuid = profile.user_id
+      WHERE (u.is_deleted IS NULL OR u.is_deleted = 0)
+        AND u.status = 'active'
+        AND u.role_id IN (1, 2, 3)
+      ORDER BY profile.first_name, profile.last_name, u.email
+    `;
+
+    const [users] = await pool.query(query);
+    return users;
+  } catch (error) {
+    console.error('OrganizationService - getAllActiveUsers error:', error);
+    throw error;
+  }
+};
+
+/**
  * Assign user to organization
  */
 const assignUserToOrganization = async (userId, organizationId) => {
@@ -454,6 +496,94 @@ const assignUserToOrganization = async (userId, organizationId) => {
   } catch (error) {
     console.error('OrganizationService - assignUserToOrganization error:', error);
     throw error;
+  }
+};
+
+/**
+ * Bulk assign users to organization
+ */
+const bulkAssignUsersToOrganization = async (userIds, organizationId) => {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const results = {
+      success: [],
+      failed: [],
+      skipped: []
+    };
+
+    for (const userId of userIds) {
+      try {
+        // Get user role
+        const [userRows] = await connection.query(
+          'SELECT role_id FROM users WHERE uuid = ?',
+          [userId]
+        );
+
+        if (userRows.length === 0) {
+          results.failed.push({ userId, reason: 'User not found' });
+          continue;
+        }
+
+        const roleId = userRows[0].role_id;
+
+        // For students and instructors (role_id 1 and 2), check if they already have an organization
+        if (roleId === 1 || roleId === 2) {
+          const [existing] = await connection.query(
+            'SELECT id FROM user_organizations WHERE user_id = ?',
+            [userId]
+          );
+
+          if (existing.length > 0) {
+            results.skipped.push({ userId, reason: 'User already belongs to another organization' });
+            continue;
+          }
+        }
+
+        // Check if already assigned to this organization
+        const [alreadyAssigned] = await connection.query(
+          'SELECT id FROM user_organizations WHERE user_id = ? AND organization_id = ?',
+          [userId, organizationId]
+        );
+
+        if (alreadyAssigned.length > 0) {
+          results.skipped.push({ userId, reason: 'Already assigned to this organization' });
+          continue;
+        }
+
+        // Assign user to organization
+        await connection.query(
+          'INSERT INTO user_organizations (user_id, organization_id) VALUES (?, ?)',
+          [userId, organizationId]
+        );
+
+        results.success.push(userId);
+      } catch (error) {
+        console.error(`Error assigning user ${userId}:`, error);
+        results.failed.push({ userId, reason: error.message });
+      }
+    }
+
+    await connection.commit();
+
+    return {
+      success: true,
+      message: `Assigned ${results.success.length} user(s) successfully`,
+      data: {
+        successCount: results.success.length,
+        failedCount: results.failed.length,
+        skippedCount: results.skipped.length,
+        details: results
+      }
+    };
+  } catch (error) {
+    await connection.rollback();
+    console.error('OrganizationService - bulkAssignUsersToOrganization error:', error);
+    throw error;
+  } finally {
+    connection.release();
   }
 };
 
@@ -692,7 +822,9 @@ module.exports = {
   deleteOrganization,
   toggleOrganizationStatus,
   getOrganizationUsers,
+  getAllActiveUsers,
   assignUserToOrganization,
+  bulkAssignUsersToOrganization,
   removeUserFromOrganization,
   getUserOrganizations,
   bulkUploadOrganizations
