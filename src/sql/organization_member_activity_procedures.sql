@@ -117,7 +117,7 @@ BEGIN
     aic.id AS id,
     aic.certificate_name AS certificate_name,
     aic.status AS status,
-    aic.issued_date AS issued_date,
+    aic.issue_date AS issued_date,
     aic.expiry_date AS expiry_date,
     NULL AS link
   FROM admin_issued_certificates aic
@@ -149,7 +149,7 @@ BEGIN
     dr.day,
     COALESCE(SUM(lhl.hours_spent), 0) AS hours
   FROM date_range dr
-  LEFT JOIN learner_hours_log lhl
+  LEFT JOIN learning_hours_log lhl
     ON lhl.log_date = dr.day
     AND lhl.user_id = p_user_id
   GROUP BY dr.day
