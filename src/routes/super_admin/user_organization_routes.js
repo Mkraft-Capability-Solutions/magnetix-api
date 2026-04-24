@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const organizationController = require('../../controllers/admin/organization_controller');
+const organizationController = require('../../controllers/super_admin/organization_controller');
 const { authenticate, authorize } = require('../../middleware/auth_middleware');
 
-// All routes require authentication and admin role
+// All routes require authentication and super admin role
 router.use(authenticate);
-router.use(authorize(3));
+router.use(authorize(4)); // Only Super Admins can manage user-organization assignments
 
 // User-Organization assignment routes
 router.post('/:userId/organizations/:organizationId', organizationController.assignUserToOrganization);

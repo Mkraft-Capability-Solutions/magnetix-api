@@ -8,6 +8,7 @@ const {
   validateUserRow,
   validateContentRow,
   validateAssignmentRow,
+  validateOrganizationRow,
   isEmpty
 } = require('../../utils/csv_validators');
 

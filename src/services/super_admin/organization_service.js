@@ -1,4 +1,6 @@
 const { promisePool: pool } = require('../../config/db');
+const { parseCSV } = require('../../utils/csv_parser');
+const { validateOrganizationRow, isEmpty } = require('../../utils/csv_validators');
 
 /**
  * Organization Service
@@ -142,7 +144,9 @@ const createOrganization = async (data) => {
     return {
       success: true,
       message: 'Organization created successfully',
-      organizationId: result.insertId
+      data: {
+        id: result.insertId
+      }
     };
   } catch (error) {
     console.error('OrganizationService - createOrganization error:', error);
@@ -302,13 +306,17 @@ const getOrganizationUsers = async (organizationId, filters = {}) => {
     const usersQuery = `
       SELECT
         u.uuid as id,
-        CONCAT(profile.first_name, ' ', profile.last_name) as name,
+        u.uuid,
+        profile.first_name as firstName,
+        profile.last_name as lastName,
         u.email,
         CASE u.role_id
           WHEN 1 THEN 'student'
           WHEN 2 THEN 'instructor'
           WHEN 3 THEN 'admin'
+          WHEN 4 THEN 'super_admin'
         END as role,
+        u.role_id as roleId,
         uo.assigned_at as assignedAt
       FROM user_organizations uo
       INNER JOIN users u ON uo.user_id = u.uuid
@@ -442,6 +450,8 @@ const getUserOrganizations = async (userId) => {
         o.id,
         o.name,
         o.is_active as isActive,
+        o.created_at as createdAt,
+        o.updated_at as updatedAt,
         uo.assigned_at as assignedAt
       FROM user_organizations uo
       INNER JOIN organizations o ON uo.organization_id = o.id
@@ -457,6 +467,179 @@ const getUserOrganizations = async (userId) => {
   }
 };
 
+/**
+ * Bulk upload organizations from CSV
+ */
+const bulkUploadOrganizations = async (fileBuffer) => {
+  const connection = await pool.getConnection();
+
+  try {
+    // Parse CSV
+    const csvData = await parseCSV(fileBuffer);
+
+    if (csvData.length === 0) {
+      return {
+        success: false,
+        message: 'CSV file is empty',
+        data: {
+          totalRows: 0,
+          validRows: 0,
+          errorRows: 0,
+          warnings: [],
+          errors: [],
+          inserted: 0,
+          skipped: 0
+        }
+      };
+    }
+
+    // Enforce max 1000 rows
+    if (csvData.length > 1000) {
+      return {
+        success: false,
+        message: 'CSV file exceeds maximum 1000 rows',
+        data: {
+          totalRows: csvData.length,
+          validRows: 0,
+          errorRows: csvData.length,
+          warnings: [],
+          errors: [{ row: 0, field: 'file', message: 'Maximum 1000 rows allowed' }],
+          inserted: 0,
+          skipped: csvData.length
+        }
+      };
+    }
+
+    const errors = [];
+    const warnings = [];
+    let inserted = 0;
+    let skipped = 0;
+
+    // Validate all rows first
+    for (let i = 0; i < csvData.length; i++) {
+      const row = csvData[i];
+      const validation = validateOrganizationRow(row, i + 2); // +2 because row 1 is headers, and array is 0-indexed
+
+      if (!validation.valid) {
+        errors.push(...validation.errors);
+        skipped++;
+      }
+    }
+
+    // If there are validation errors, return without inserting
+    if (errors.length > 0) {
+      return {
+        success: false,
+        message: `Validation failed for ${errors.length} row(s)`,
+        data: {
+          totalRows: csvData.length,
+          validRows: csvData.length - skipped,
+          errorRows: skipped,
+          warnings,
+          errors,
+          inserted: 0,
+          skipped
+        }
+      };
+    }
+
+    // Check for duplicate names in CSV
+    const namesInCSV = csvData.map(row => row.name.toLowerCase().trim());
+    const duplicateNamesInCSV = namesInCSV.filter((name, index) => namesInCSV.indexOf(name) !== index);
+
+    if (duplicateNamesInCSV.length > 0) {
+      duplicateNamesInCSV.forEach(name => {
+        const rowIndices = csvData
+          .map((row, index) => row.name.toLowerCase().trim() === name ? index + 2 : -1)
+          .filter(index => index !== -1);
+
+        errors.push({
+          row: rowIndices[1],
+          field: 'name',
+          message: `Duplicate organization name in CSV: ${name} (also in row ${rowIndices[0]})`
+        });
+      });
+
+      skipped += duplicateNamesInCSV.length;
+    }
+
+    // Check for existing organization names in database
+    const nameList = csvData.map(row => row.name.toLowerCase().trim());
+    const [existingOrgs] = await connection.query(
+      'SELECT name FROM organizations WHERE LOWER(name) IN (?)',
+      [nameList]
+    );
+
+    const existingNames = new Set(existingOrgs.map(org => org.name.toLowerCase()));
+
+    // Start transaction
+    await connection.beginTransaction();
+
+    try {
+      for (let i = 0; i < csvData.length; i++) {
+        const row = csvData[i];
+        const name = row.name.trim();
+        const nameLower = name.toLowerCase();
+
+        // Skip if organization name already exists in database
+        if (existingNames.has(nameLower)) {
+          warnings.push(`Row ${i + 2}: Organization name already exists in system: ${name}`);
+          skipped++;
+          continue;
+        }
+
+        // Skip if duplicate in CSV
+        if (duplicateNamesInCSV.includes(nameLower)) {
+          skipped++;
+          continue;
+        }
+
+        // Determine is_active status (default to true/1 if not provided)
+        let isActive = 1; // Default to active
+        if (!isEmpty(row.is_active)) {
+          const statusValue = row.is_active.toLowerCase().trim();
+          isActive = ['yes', 'y', 'true', '1'].includes(statusValue) ? 1 : 0;
+        }
+
+        // Insert into organizations table
+        await connection.query(
+          `INSERT INTO organizations (name, is_active, created_at, updated_at)
+           VALUES (?, ?, NOW(), NOW())`,
+          [name, isActive]
+        );
+
+        inserted++;
+      }
+
+      // Commit transaction
+      await connection.commit();
+
+      return {
+        success: true,
+        message: `Successfully uploaded ${inserted} organization(s)`,
+        data: {
+          totalRows: csvData.length,
+          validRows: inserted,
+          errorRows: errors.length,
+          warnings,
+          errors,
+          inserted,
+          skipped
+        }
+      };
+    } catch (error) {
+      // Rollback transaction on error
+      await connection.rollback();
+      throw error;
+    }
+  } catch (error) {
+    console.error('OrganizationService - bulkUploadOrganizations error:', error);
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
 module.exports = {
   getAllOrganizations,
   getOrganizationById,
@@ -467,5 +650,6 @@ module.exports = {
   getOrganizationUsers,
   assignUserToOrganization,
   removeUserFromOrganization,
-  getUserOrganizations
+  getUserOrganizations,
+  bulkUploadOrganizations
 };

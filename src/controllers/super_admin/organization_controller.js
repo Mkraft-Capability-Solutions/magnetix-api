@@ -1,4 +1,4 @@
-const organizationService = require('../../services/admin/organization_service');
+const organizationService = require('../../services/super_admin/organization_service');
 
 /**
  * Organization Controller
@@ -7,7 +7,7 @@ const organizationService = require('../../services/admin/organization_service')
 
 /**
  * Get all organizations
- * GET /admin/organizations
+ * GET /super-admin/organizations
  */
 const getAllOrganizations = async (req, res, next) => {
   try {
@@ -33,7 +33,7 @@ const getAllOrganizations = async (req, res, next) => {
 
 /**
  * Get organization by ID
- * GET /admin/organizations/:id
+ * GET /super-admin/organizations/:id
  */
 const getOrganizationById = async (req, res, next) => {
   try {
@@ -60,7 +60,7 @@ const getOrganizationById = async (req, res, next) => {
 
 /**
  * Create a new organization
- * POST /admin/organizations
+ * POST /super-admin/organizations
  */
 const createOrganization = async (req, res, next) => {
   try {
@@ -90,7 +90,7 @@ const createOrganization = async (req, res, next) => {
 
 /**
  * Update an organization
- * PUT /admin/organizations/:id
+ * PUT /super-admin/organizations/:id
  */
 const updateOrganization = async (req, res, next) => {
   try {
@@ -114,7 +114,7 @@ const updateOrganization = async (req, res, next) => {
 
 /**
  * Delete an organization
- * DELETE /admin/organizations/:id
+ * DELETE /super-admin/organizations/:id
  */
 const deleteOrganization = async (req, res, next) => {
   try {
@@ -134,7 +134,7 @@ const deleteOrganization = async (req, res, next) => {
 
 /**
  * Toggle organization status
- * PATCH /admin/organizations/:id/toggle-status
+ * PATCH /super-admin/organizations/:id/toggle-status
  */
 const toggleOrganizationStatus = async (req, res, next) => {
   try {
@@ -162,7 +162,7 @@ const toggleOrganizationStatus = async (req, res, next) => {
 
 /**
  * Get users in an organization
- * GET /admin/organizations/:id/users
+ * GET /super-admin/organizations/:id/users
  */
 const getOrganizationUsers = async (req, res, next) => {
   try {
@@ -187,7 +187,7 @@ const getOrganizationUsers = async (req, res, next) => {
 
 /**
  * Assign user to organization
- * POST /admin/users/:userId/organizations/:organizationId
+ * POST /super-admin/users/:userId/organizations/:organizationId
  */
 const assignUserToOrganization = async (req, res, next) => {
   try {
@@ -207,7 +207,7 @@ const assignUserToOrganization = async (req, res, next) => {
 
 /**
  * Remove user from organization
- * DELETE /admin/users/:userId/organizations/:organizationId
+ * DELETE /super-admin/users/:userId/organizations/:organizationId
  */
 const removeUserFromOrganization = async (req, res, next) => {
   try {
@@ -227,7 +227,7 @@ const removeUserFromOrganization = async (req, res, next) => {
 
 /**
  * Get user's organizations
- * GET /admin/users/:userId/organizations
+ * GET /super-admin/users/:userId/organizations
  */
 const getUserOrganizations = async (req, res, next) => {
   try {
@@ -245,6 +245,27 @@ const getUserOrganizations = async (req, res, next) => {
   }
 };
 
+/**
+ * Bulk upload organizations from CSV
+ * POST /super-admin/organizations/bulk-upload
+ */
+const uploadOrganizations = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    const result = await organizationService.bulkUploadOrganizations(req.file.buffer);
+
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getAllOrganizations,
   getOrganizationById,
@@ -255,5 +276,6 @@ module.exports = {
   getOrganizationUsers,
   assignUserToOrganization,
   removeUserFromOrganization,
-  getUserOrganizations
+  getUserOrganizations,
+  uploadOrganizations
 };

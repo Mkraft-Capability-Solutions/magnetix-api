@@ -1,11 +1,18 @@
 const express = require('express');
 const router = express.Router();
-const organizationController = require('../../controllers/admin/organization_controller');
+const multer = require('multer');
+const organizationController = require('../../controllers/super_admin/organization_controller');
 const { authenticate, authorize } = require('../../middleware/auth_middleware');
 
-// All routes require authentication and admin role (role_id = 3)
+// Configure multer for file upload
+const upload = multer({ storage: multer.memoryStorage() });
+
+// All routes require authentication and super admin role (role_id = 4)
 router.use(authenticate);
-router.use(authorize(3)); // Only admins can manage organizations
+router.use(authorize(4)); // Only Super Admins can manage organizations
+
+// Bulk upload route (must be before /:id routes)
+router.post('/bulk-upload', upload.single('file'), organizationController.uploadOrganizations);
 
 // Organization CRUD routes
 router.get('/', organizationController.getAllOrganizations);
