@@ -13,13 +13,14 @@ DROP PROCEDURE IF EXISTS get_member_enrolled_courses;
 DELIMITER //
 CREATE PROCEDURE get_member_enrolled_courses(IN p_user_id VARCHAR(36))
 BEGIN
-  -- status is derived rather than read from enrol.status, because some
-  -- deployments of this DB do not have the status column on `enrol`.
+  -- Status and completion are both derived from `progress` + `course_progress`
+  -- because some deployments of this DB lack the `status` and `completed_at`
+  -- columns on `enrol`. The shipping student dashboard proc uses the same pattern.
   SELECT
     c.id AS course_id,
     c.title AS title,
     CASE
-      WHEN e.completed_at IS NOT NULL THEN 'completed'
+      WHEN COALESCE(e.progress, 0) >= 100 THEN 'completed'
       WHEN COALESCE(e.progress, 0) > 0
         OR EXISTS (SELECT 1 FROM course_progress cp WHERE cp.enroll_id = e.id)
         THEN 'in_progress'
@@ -27,7 +28,14 @@ BEGIN
     END AS status,
     COALESCE(e.progress, 0) AS progress,
     e.enrolled_date AS enrolled_date,
-    e.completed_at AS completed_at,
+    CASE
+      WHEN COALESCE(e.progress, 0) >= 100 THEN (
+        SELECT MAX(cp.completed_at)
+        FROM course_progress cp
+        WHERE cp.enroll_id = e.id AND cp.lesson_completed = 1
+      )
+      ELSE NULL
+    END AS completed_at,
     (
       SELECT MAX(cp.completed_at)
       FROM course_progress cp
@@ -68,9 +76,13 @@ BEGIN
     NULL AS assigned_at,
     NULL AS due_date,
     fr.submitted_at AS submitted_at,
-    fr.score AS score,
-    fr.max_score AS max_score,
-    fr.percentage AS percentage
+    -- Score columns on feedback_responses are optional across deployments
+    -- (added via ALTER TABLE in some DBs, absent in others). Shipping code
+    -- in feedback_service.js probes INFORMATION_SCHEMA at runtime; stored
+    -- procedures can't do that cleanly, so we surface NULL here.
+    NULL AS score,
+    NULL AS max_score,
+    NULL AS percentage
   FROM feedback_responses fr
   INNER JOIN feedback_forms ff ON ff.id = fr.form_id
   WHERE fr.respondent_email = p_email
