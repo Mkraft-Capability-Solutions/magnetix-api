@@ -38,12 +38,15 @@
     "nodemailer": "^7.0.3",
     "pdfkit": "^0.17.2",
     "redis": "^5.5.6",
+    "sequelize": "^6.37.8",
     "socket.io": "^4.8.3",
+    "umzug": "^3.8.2",
     "uuid": "^11.1.0",
     "winston": "^3.19.0",
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.10",
+    "sequelize-cli": "^6.6.5"
   }
 }

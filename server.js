@@ -2,6 +2,7 @@ require('dotenv').config();
 const http = require('http');
 const app = require('./src/app');
 const { promisePool } = require('./src/config/db');
+const { runPendingMigrations } = require('./src/config/run_migrations');
 const eventReminderScheduler = require('./src/schedulers/event_reminder_scheduler');
 const reportScheduler = require('./src/schedulers/report_scheduler');
 const { initializeSocketIO } = require('./src/socket/socketServer');
@@ -73,6 +74,20 @@ server.listen(PORT, async () => {
 
   // Test database connection on startup
   await testDatabaseConnection();
+
+  // Apply pending DB migrations (Sequelize/Umzug). Fail fast on error so a broken
+  // deploy is visible rather than silently serving 500s from missing schema.
+  try {
+    const { applied } = await runPendingMigrations();
+    if (applied.length > 0) {
+      console.log(`✅ Applied ${applied.length} migration(s): ${applied.join(', ')}`);
+    } else {
+      console.log('✅ Database migrations up-to-date');
+    }
+  } catch (err) {
+    console.error('❌ Migration failed on startup:', err);
+    process.exit(1);
+  }
 
   // Start event reminder scheduler
   try {

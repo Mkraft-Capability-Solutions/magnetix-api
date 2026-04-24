@@ -164,6 +164,7 @@ app.use("/api/admin/ilt", adminILTRoutes);
 app.use("/api/admin/bulk-upload", adminBulkUploadRoutes);
 app.use("/api/admin/content", adminLessonRoutes);
 app.use("/api/admin/learning-items", adminLearningItemRoutes);
+app.use("/api/admin/organization-members", require("./routes/admin/organization_member_activity_routes"));
 app.use("/api/google/meet", googleMeetRoutes);
 app.use("/api/google/oauth", googleOAuthRoutes);
 app.use("/api/support", supportRoutes);
