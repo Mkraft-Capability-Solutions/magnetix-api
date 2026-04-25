@@ -79,6 +79,13 @@ router.put('/:id', teamController.updateTeam);
 router.delete('/:id', teamController.deleteTeam);
 
 /**
+ * PATCH /api/admin/teams/:id/manager
+ * Set or change a team's manager
+ * Body: { managerId: string|null }
+ */
+router.patch('/:id/manager', teamController.setTeamManager);
+
+/**
  * POST /api/admin/teams/:id/members
  * Add members to a team
  * Body: { userIds: string[] }

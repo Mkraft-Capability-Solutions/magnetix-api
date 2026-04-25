@@ -167,6 +167,18 @@ class AuthService {
       console.error('Failed to log user login:', loginLogError);
     }
 
+    // Look up teams this user manages so the frontend can show the Manager UI.
+    let managedTeamIds = [];
+    try {
+      const [mgrRows] = await promisePool.query(
+        'SELECT id FROM teams WHERE manager_id = ? AND is_deleted = 0',
+        [user.uuid]
+      );
+      managedTeamIds = mgrRows.map(r => r.id);
+    } catch (mgrErr) {
+      console.error('Failed to load managedTeamIds:', mgrErr);
+    }
+
     // Return user and tokens
     return {
       user: {
@@ -178,6 +190,7 @@ class AuthService {
         dp: user.dp || null,
         status: user.status,
         instance: user.instance,
+        managedTeamIds,
       },
       ...this.generateTokens(user, sessionId),
     };

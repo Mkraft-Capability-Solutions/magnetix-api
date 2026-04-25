@@ -1,9 +1,81 @@
 const { promisePool: pool } = require('../../config/db');
+const emailHelper = require('../../utils/email_helper');
+const notificationService = require('../../services/notification_service');
 
 /**
  * Admin Team Service
  * Handles all business logic for team management
  */
+
+/**
+ * Resolve the user's display name + email + the team's metadata so we can
+ * send the manager-assigned email/notification with useful content.
+ */
+const _fetchManagerNotificationContext = async (teamId, managerUserId) => {
+  const [teamRows] = await pool.query(
+    `SELECT t.id, t.name, t.organization_id, o.name AS organization_name,
+            (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.id) AS member_count
+       FROM teams t
+       LEFT JOIN organizations o ON t.organization_id = o.id
+       WHERE t.id = ? AND t.is_deleted = 0`,
+    [teamId]
+  );
+  const team = teamRows[0] || null;
+  if (!team) return null;
+
+  const [userRows] = await pool.query(
+    `SELECT u.uuid, u.email,
+            COALESCE(s.first_name, a.first_name, i.first_name, sa.first_name) AS first_name,
+            COALESCE(s.last_name,  a.last_name,  i.last_name,  sa.last_name)  AS last_name
+       FROM users u
+       LEFT JOIN students s        ON u.uuid = s.user_id
+       LEFT JOIN admins a          ON u.uuid = a.user_id
+       LEFT JOIN instructors i     ON u.uuid = i.user_id
+       LEFT JOIN super_admins sa   ON u.uuid = sa.user_id
+       WHERE u.uuid = ? AND u.is_deleted = 0
+       LIMIT 1`,
+    [managerUserId]
+  );
+  const user = userRows[0] || null;
+  if (!user) return { team, user: null };
+
+  return { team, user };
+};
+
+const _notifyManagerAssigned = async (teamId, managerUserId) => {
+  try {
+    const ctx = await _fetchManagerNotificationContext(teamId, managerUserId);
+    if (!ctx || !ctx.user) return;
+    const fullName = [ctx.user.first_name, ctx.user.last_name].filter(Boolean).join(' ') || 'there';
+
+    // Email
+    try {
+      await emailHelper.sendManagerAssignedEmail(ctx.user.email, fullName, {
+        name: ctx.team.name,
+        memberCount: ctx.team.member_count,
+        organizationName: ctx.team.organization_name
+      });
+    } catch (err) {
+      console.error('Manager-assigned email failed:', err && err.message);
+    }
+
+    // In-app
+    try {
+      await notificationService.createSystemNotification(
+        ctx.user.uuid,
+        `You're now managing ${ctx.team.name}`,
+        `You have been assigned as the manager of "${ctx.team.name}". You can now create assignments and review submissions for this team.`,
+        'assignment',
+        `${process.env.FRONTEND_URL || ''}/manager`,
+        { teamId: ctx.team.id }
+      );
+    } catch (err) {
+      console.error('Manager-assigned in-app notification failed:', err && err.message);
+    }
+  } catch (err) {
+    console.error('_notifyManagerAssigned error:', err && err.message);
+  }
+};
 
 /**
  * Get all teams with member count
@@ -37,16 +109,30 @@ const getTeamById = async (teamId) => {
 };
 
 /**
- * Create a new team
- * @param {string} name - Team name
- * @param {string} description - Team description
- * @param {string} createdBy - User ID who created the team
- * @returns {Promise<Object>} Created team ID
+ * Create a new team. organizationId/managerId are optional.
  */
-const createTeam = async (name, description, createdBy) => {
+const createTeam = async (name, description, createdBy, organizationId = null, managerId = null) => {
   try {
-    const [rows] = await pool.query('CALL sp_create_team(?, ?, ?)', [name, description, createdBy]);
-    return rows[0]?.[0] || null;
+    if (managerId && organizationId) {
+      const [memberRows] = await pool.query(
+        'SELECT 1 FROM user_organizations WHERE user_id = ? AND organization_id = ? LIMIT 1',
+        [managerId, organizationId]
+      );
+      if (memberRows.length === 0) {
+        throw new Error('Manager must be a member of the team\'s organization');
+      }
+    }
+
+    const [rows] = await pool.query(
+      'CALL sp_create_team(?, ?, ?, ?, ?)',
+      [name, description, createdBy, organizationId, managerId]
+    );
+    const result = rows[0]?.[0] || null;
+
+    if (result && result.id && managerId) {
+      _notifyManagerAssigned(result.id, managerId).catch(() => {});
+    }
+    return result;
   } catch (error) {
     console.error('Team Service - createTeam error:', error);
     throw error;
@@ -54,18 +140,70 @@ const createTeam = async (name, description, createdBy) => {
 };
 
 /**
- * Update a team
- * @param {number} teamId - Team ID
- * @param {string} name - Team name
- * @param {string} description - Team description
- * @returns {Promise<Object>} Affected rows
+ * Update a team's name/description (and optionally org/manager).
+ * Pass null for organizationId/managerId to leave unchanged.
  */
-const updateTeam = async (teamId, name, description) => {
+const updateTeam = async (teamId, name, description, organizationId = null, managerId = null) => {
   try {
-    const [rows] = await pool.query('CALL sp_update_team(?, ?, ?)', [teamId, name, description]);
-    return rows[0]?.[0] || { affectedRows: 0 };
+    let previousManagerId = null;
+    if (managerId !== null) {
+      const [prevRows] = await pool.query('SELECT manager_id FROM teams WHERE id = ?', [teamId]);
+      previousManagerId = (prevRows[0] && prevRows[0].manager_id) || null;
+    }
+
+    const [rows] = await pool.query(
+      'CALL sp_update_team(?, ?, ?, ?, ?)',
+      [teamId, name, description, organizationId, managerId]
+    );
+    const result = rows[0]?.[0] || { affectedRows: 0 };
+
+    if (managerId && managerId !== previousManagerId) {
+      _notifyManagerAssigned(teamId, managerId).catch(() => {});
+    }
+    return result;
   } catch (error) {
     console.error('Team Service - updateTeam error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Swap or set a team's manager. Validates manager belongs to the team's org.
+ */
+const setTeamManager = async (teamId, managerId) => {
+  try {
+    const [teamRows] = await pool.query(
+      'SELECT id, organization_id, manager_id FROM teams WHERE id = ? AND is_deleted = 0',
+      [teamId]
+    );
+    if (teamRows.length === 0) {
+      return { affectedRows: 0, message: 'Team not found' };
+    }
+    const team = teamRows[0];
+
+    if (managerId && team.organization_id) {
+      const [memberRows] = await pool.query(
+        'SELECT 1 FROM user_organizations WHERE user_id = ? AND organization_id = ? LIMIT 1',
+        [managerId, team.organization_id]
+      );
+      if (memberRows.length === 0) {
+        const err = new Error('Manager must be a member of the team\'s organization');
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+
+    const [result] = await pool.query(
+      'UPDATE teams SET manager_id = ? WHERE id = ? AND is_deleted = 0',
+      [managerId, teamId]
+    );
+
+    if (result.affectedRows > 0 && managerId && managerId !== team.manager_id) {
+      _notifyManagerAssigned(teamId, managerId).catch(() => {});
+    }
+    return { affectedRows: result.affectedRows };
+  } catch (error) {
+    console.error('Team Service - setTeamManager error:', error);
     throw error;
   }
 };
@@ -294,6 +432,7 @@ module.exports = {
   getTeamById,
   createTeam,
   updateTeam,
+  setTeamManager,
   deleteTeam,
   getTeamStats,
   getTeamMembers,

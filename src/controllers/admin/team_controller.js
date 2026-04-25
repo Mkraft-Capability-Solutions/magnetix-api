@@ -62,7 +62,7 @@ exports.getTeamById = async (req, res) => {
  */
 exports.createTeam = async (req, res) => {
   try {
-    const { name, description } = req.body;
+    const { name, description, organizationId, managerId } = req.body;
     const createdBy = req.user.uuid;
 
     if (!name) {
@@ -72,7 +72,13 @@ exports.createTeam = async (req, res) => {
       });
     }
 
-    const result = await teamService.createTeam(name, description, createdBy);
+    const result = await teamService.createTeam(
+      name,
+      description,
+      createdBy,
+      organizationId || null,
+      managerId || null
+    );
 
     res.status(201).json({
       success: true,
@@ -81,9 +87,9 @@ exports.createTeam = async (req, res) => {
     });
   } catch (error) {
     console.error('Team Controller - createTeam error:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to create team',
+      message: error.message || 'Failed to create team',
       error: error.message
     });
   }
@@ -96,7 +102,7 @@ exports.createTeam = async (req, res) => {
 exports.updateTeam = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description } = req.body;
+    const { name, description, organizationId, managerId } = req.body;
 
     if (!name) {
       return res.status(400).json({
@@ -105,7 +111,13 @@ exports.updateTeam = async (req, res) => {
       });
     }
 
-    const result = await teamService.updateTeam(id, name, description);
+    const result = await teamService.updateTeam(
+      id,
+      name,
+      description,
+      organizationId === undefined ? null : organizationId,
+      managerId === undefined ? null : managerId
+    );
 
     if (result.affectedRows === 0) {
       return res.status(404).json({
@@ -120,9 +132,48 @@ exports.updateTeam = async (req, res) => {
     });
   } catch (error) {
     console.error('Team Controller - updateTeam error:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to update team',
+      message: error.message || 'Failed to update team',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Set or change a team's manager
+ * PATCH /api/admin/teams/:id/manager
+ */
+exports.setTeamManager = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { managerId } = req.body;
+
+    if (managerId !== null && (typeof managerId !== 'string' || managerId.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        message: 'managerId must be a user UUID or null to clear'
+      });
+    }
+
+    const result = await teamService.setTeamManager(id, managerId || null);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: result.message || 'Team not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: managerId ? 'Team manager assigned' : 'Team manager cleared'
+    });
+  } catch (error) {
+    console.error('Team Controller - setTeamManager error:', error);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to set team manager',
       error: error.message
     });
   }

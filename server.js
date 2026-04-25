@@ -5,6 +5,7 @@ const { promisePool } = require('./src/config/db');
 const { runPendingMigrations } = require('./src/config/run_migrations');
 const eventReminderScheduler = require('./src/schedulers/event_reminder_scheduler');
 const reportScheduler = require('./src/schedulers/report_scheduler');
+const assignmentReminderScheduler = require('./src/schedulers/assignment_reminder_scheduler');
 const { initializeSocketIO } = require('./src/socket/socketServer');
 const PORT = process.env.PORT || 3000;
 
@@ -28,6 +29,7 @@ function setupShutdownHandlers() {
     try {
       // Stop event reminder scheduler
       eventReminderScheduler.stop();
+      assignmentReminderScheduler.stop();
 
       // Close Socket.io connections
       io.close(() => {
@@ -101,6 +103,13 @@ server.listen(PORT, async () => {
     await reportScheduler.start();
   } catch (error) {
     console.error('⚠️  Failed to start report scheduler:', error);
+  }
+
+  // Start assignment reminder + escalation scheduler
+  try {
+    await assignmentReminderScheduler.start();
+  } catch (error) {
+    console.error('⚠️  Failed to start assignment reminder scheduler:', error);
   }
 
   // Setup shutdown handlers

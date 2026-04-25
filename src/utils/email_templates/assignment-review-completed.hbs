@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Your submission has been reviewed</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333; max-width: 640px; margin: 0 auto; padding: 20px; background: #f6f8fa; }
+    .card { background: #ffffff; padding: 28px 32px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .header { color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 12px; margin-bottom: 18px; }
+    .header h2 { margin: 0; }
+    .meta { background: #f1f5f9; padding: 16px 18px; border-left: 4px solid #3498db; border-radius: 4px; margin: 18px 0; font-size: 14px; }
+    .meta div { margin: 4px 0; }
+    .meta strong { color: #111; }
+    .feedback { background: #fffaf0; padding: 14px 18px; border-left: 4px solid #f1c40f; border-radius: 4px; margin: 18px 0; font-size: 14px; white-space: pre-wrap; }
+    .button { background: #3498db; color: #ffffff !important; padding: 12px 22px; text-decoration: none; border-radius: 4px; display: inline-block; margin: 18px 0; font-weight: 600; }
+    .footer { margin-top: 24px; font-size: 12px; color: #777; border-top: 1px solid #eee; padding-top: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h2>Your submission has been reviewed</h2>
+    </div>
+
+    <p>Hi {{firstName}},</p>
+    <p>Your submission for <strong>{{assignmentTitle}}</strong> has been reviewed.</p>
+
+    <div class="meta">
+      <div><strong>Status:</strong> {{statusLabel}}</div>
+      {{#if reviewerName}}<div><strong>Reviewed by:</strong> {{reviewerName}}</div>{{/if}}
+      <div><strong>Reviewed at:</strong> {{reviewedAt}}</div>
+    </div>
+
+    {{#if feedback}}
+    <p><strong>Feedback:</strong></p>
+    <div class="feedback">{{feedback}}</div>
+    {{/if}}
+
+    <p style="text-align:center;">
+      <a href="{{assignmentUrl}}" class="button">View Submission</a>
+    </p>
+
+    <div class="footer">
+      <p>&copy; {{year}} {{appName}}. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>
