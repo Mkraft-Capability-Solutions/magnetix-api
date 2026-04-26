@@ -440,6 +440,72 @@ View it: ${templateData.assignmentUrl}`;
     });
   }
 
+  /**
+   * Email a learner the per-question result of an assessment submission.
+   * payload: { assignmentTitle, assignmentUuid, score, maxScore, percentage,
+   *            questionsAndAnswers[], showCorrect, appUrl }
+   */
+  async sendAssessmentResultEmail(email, firstName, payload) {
+    const safeQA = Array.isArray(payload.questionsAndAnswers) ? payload.questionsAndAnswers : [];
+    const templateData = {
+      appName: process.env.APP_NAME || 'Learning Management System',
+      firstName: firstName || 'there',
+      assignmentTitle: payload.assignmentTitle || 'Assessment',
+      score: payload.score != null ? payload.score : '-',
+      maxScore: payload.maxScore != null ? payload.maxScore : '-',
+      percentage: payload.percentage != null ? `${payload.percentage}%` : '-',
+      questions: safeQA.map((q, idx) => {
+        const userAnswerDisplay = q.answerText
+          || (Array.isArray(q.answerOptions) ? q.answerOptions.join(', ') : '')
+          || (q.answerRating != null ? `Rating: ${q.answerRating}` : '(no answer)');
+        const correctAnswerDisplay = (payload.showCorrect && Array.isArray(q.correct_answers) && Array.isArray(q.options))
+          ? q.correct_answers.map(idx => q.options[idx]).filter(Boolean).join(', ')
+          : '';
+        return {
+          number: idx + 1,
+          questionText: q.questionText,
+          userAnswer: userAnswerDisplay,
+          correctAnswer: correctAnswerDisplay,
+          aiScore: q.aiScore != null ? `${q.aiScore} / ${q.questionMaxScore || q.aiMaxScore || ''}` : '',
+          aiFeedback: q.aiFeedback || ''
+        };
+      }),
+      assignmentUrl: payload.assignmentUuid
+        ? `${payload.appUrl || process.env.FRONTEND_URL || ''}/learner/assignments/${payload.assignmentUuid}`
+        : '',
+      supportEmail: process.env.SUPPORT_EMAIL || 'support@multiplierskraft.com',
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['assignment-assessment-result']
+      ? this.templates['assignment-assessment-result'](templateData)
+      : `<p>Hi ${templateData.firstName},</p><p>Your result for "${templateData.assignmentTitle}": ${templateData.score} / ${templateData.maxScore} (${templateData.percentage})</p>`;
+
+    const textLines = [
+      `Hi ${templateData.firstName},`,
+      ``,
+      `Your assessment result for "${templateData.assignmentTitle}":`,
+      `Score: ${templateData.score} / ${templateData.maxScore} (${templateData.percentage})`,
+      ``,
+      ...templateData.questions.flatMap((q) => [
+        `Q${q.number}. ${q.questionText}`,
+        `   Your answer: ${q.userAnswer}`,
+        ...(q.correctAnswer ? [`   Correct: ${q.correctAnswer}`] : []),
+        ...(q.aiScore ? [`   AI score: ${q.aiScore}`] : []),
+        ...(q.aiFeedback ? [`   Feedback: ${q.aiFeedback}`] : []),
+        ``
+      ]),
+      templateData.assignmentUrl ? `View online: ${templateData.assignmentUrl}` : ''
+    ];
+
+    return this.sendEmail({
+      to: email,
+      subject: `Assessment result: ${templateData.assignmentTitle}`,
+      html,
+      text: textLines.filter(Boolean).join('\n')
+    });
+  }
+
   async sendManagerAssignedEmail(managerEmail, managerName, team) {
     const templateData = {
       appName: process.env.APP_NAME || 'Learning Management System',

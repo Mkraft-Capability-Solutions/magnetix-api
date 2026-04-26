@@ -312,7 +312,22 @@ async function submitAssessment(userId, assignment, answers, notes) {
 
   const learner = await _resolveLearner(userId);
   if (learner) {
+    // Internal email always includes the score (even when showReport=false the
+    // admin/system still wants the audit trail). Only the learner-facing
+    // response below is gated.
     _notifyOnSubmission(assignment, { ...submission, assessment_score: `${result.score}/${result.maxScore} (${result.percentage}%)` }, learner).catch(() => {});
+  }
+
+  // Respect feedback_forms.show_report. When false, the learner gets only
+  // an "accepted" acknowledgement — no score, percentage, or per-question
+  // AI feedback. Admin/email flows still see everything because they call
+  // submitAssessmentStandalone or its result-detail endpoint directly.
+  if (!result.showReport) {
+    return {
+      submission,
+      accepted: true,
+      showReport: false
+    };
   }
 
   return {
@@ -320,7 +335,8 @@ async function submitAssessment(userId, assignment, answers, notes) {
     score: result.score,
     maxScore: result.maxScore,
     percentage: result.percentage,
-    aiScoringResults: result.aiScoringResults
+    aiScoringResults: result.aiScoringResults,
+    showReport: true
   };
 }
 

@@ -586,6 +586,210 @@ const getOrganizationUsers = async (organizationId, options = {}) => {
   }
 };
 
+/**
+ * Comprehensive org-centered overview for the admin dashboard.
+ *
+ * @param {string} callerUuid
+ * @param {number} roleId
+ * @param {number|null} focusOrgId — when set, scope to a single org (still
+ *        gated by caller membership unless super-admin).
+ *
+ * Returns:
+ *   {
+ *     scope: { orgIds, organizationId, organizationName },
+ *     members:    { totalUsers, activeUsers, inactiveUsers, newThisMonth },
+ *     teams:      { totalTeams, withManager, withoutManager },
+ *     assignments:{ active, upcoming, expired, total, pendingSubmissions },
+ *     recent:     { assignments: [...], submissions: [...] }
+ *   }
+ */
+const ROLE_SUPER_ADMIN = 4;
+
+const _getCallerOrgIds = async (uuid) => {
+  const [rows] = await pool.query(
+    'SELECT organization_id FROM user_organizations WHERE user_id = ?',
+    [uuid]
+  );
+  return rows.map((r) => r.organization_id);
+};
+
+const getOrgOverview = async (callerUuid, roleId, focusOrgId = null) => {
+  // 1) Resolve which org IDs we're aggregating over.
+  let orgIds;
+  let scopeOrgRow = null;
+
+  if (focusOrgId) {
+    const id = Number(focusOrgId);
+    if (roleId !== ROLE_SUPER_ADMIN) {
+      const callerOrgs = await _getCallerOrgIds(callerUuid);
+      if (!callerOrgs.includes(id)) {
+        const err = new Error('You do not have access to this organization');
+        err.statusCode = 403;
+        throw err;
+      }
+    }
+    orgIds = [id];
+    const [rows] = await pool.query('SELECT id, name FROM organizations WHERE id = ?', [id]);
+    scopeOrgRow = rows[0] || null;
+  } else if (roleId === ROLE_SUPER_ADMIN) {
+    // Super-admin without focusOrgId → aggregate across the whole platform
+    orgIds = null;
+  } else {
+    orgIds = await _getCallerOrgIds(callerUuid);
+    if (orgIds.length === 0) {
+      // Admin not yet assigned any org — return zeroed shape rather than 500.
+      return {
+        scope: { orgIds: [], organizationId: null, organizationName: null },
+        members: { totalUsers: 0, activeUsers: 0, inactiveUsers: 0, newThisMonth: 0 },
+        teams: { totalTeams: 0, withManager: 0, withoutManager: 0 },
+        assignments: { active: 0, upcoming: 0, expired: 0, total: 0, pendingSubmissions: 0 },
+        recent: { assignments: [], submissions: [] }
+      };
+    }
+  }
+
+  // SQL fragment: filter by orgIds (or no-op for super-admin global).
+  // For "users who are in the org" we go via user_organizations.
+  const userInOrgFilter = orgIds && orgIds.length > 0
+    ? `AND u.uuid IN (
+         SELECT user_id FROM user_organizations
+         WHERE organization_id IN (${orgIds.map(() => '?').join(',')})
+       )`
+    : '';
+  const userInOrgParams = orgIds && orgIds.length > 0 ? orgIds : [];
+
+  // For "teams in the org" — direct on teams.organization_id.
+  const teamInOrgFilter = orgIds && orgIds.length > 0
+    ? `AND t.organization_id IN (${orgIds.map(() => '?').join(',')})`
+    : '';
+  const teamInOrgParams = orgIds && orgIds.length > 0 ? orgIds : [];
+
+  // For "assignments in the org" — by scope=organization OR team in org.
+  // Plus, assignments created by an admin in our orgs.
+  const assignmentInOrgFilter = orgIds && orgIds.length > 0
+    ? `AND (
+         a.organization_id IN (${orgIds.map(() => '?').join(',')})
+         OR a.team_id IN (
+           SELECT id FROM teams WHERE organization_id IN (${orgIds.map(() => '?').join(',')})
+         )
+       )`
+    : '';
+  const assignmentInOrgParams = orgIds && orgIds.length > 0 ? [...orgIds, ...orgIds] : [];
+
+  // 2) Members
+  const [memberRows] = await pool.query(
+    `SELECT
+        COUNT(*) AS totalUsers,
+        SUM(CASE WHEN u.status = 'active' THEN 1 ELSE 0 END) AS activeUsers,
+        SUM(CASE WHEN u.status != 'active' THEN 1 ELSE 0 END) AS inactiveUsers,
+        SUM(CASE WHEN u.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS newThisMonth
+       FROM users u
+       WHERE u.is_deleted = 0 ${userInOrgFilter}`,
+    userInOrgParams
+  );
+  const members = {
+    totalUsers: Number(memberRows[0]?.totalUsers) || 0,
+    activeUsers: Number(memberRows[0]?.activeUsers) || 0,
+    inactiveUsers: Number(memberRows[0]?.inactiveUsers) || 0,
+    newThisMonth: Number(memberRows[0]?.newThisMonth) || 0
+  };
+
+  // 3) Teams
+  const [teamRows] = await pool.query(
+    `SELECT
+        COUNT(*) AS totalTeams,
+        SUM(CASE WHEN t.manager_id IS NOT NULL THEN 1 ELSE 0 END) AS withManager,
+        SUM(CASE WHEN t.manager_id IS NULL THEN 1 ELSE 0 END) AS withoutManager
+       FROM teams t
+       WHERE t.is_deleted = 0 ${teamInOrgFilter}`,
+    teamInOrgParams
+  );
+  const teams = {
+    totalTeams: Number(teamRows[0]?.totalTeams) || 0,
+    withManager: Number(teamRows[0]?.withManager) || 0,
+    withoutManager: Number(teamRows[0]?.withoutManager) || 0
+  };
+
+  // 4) Assignments — counts by lifecycle bucket
+  const [assignmentRows] = await pool.query(
+    `SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN NOW() BETWEEN a.start_date AND a.end_date THEN 1 ELSE 0 END) AS active,
+        SUM(CASE WHEN a.start_date > NOW() THEN 1 ELSE 0 END) AS upcoming,
+        SUM(CASE WHEN a.end_date < NOW() THEN 1 ELSE 0 END) AS expired
+       FROM assignments a
+       WHERE a.is_deleted = 0 ${assignmentInOrgFilter}`,
+    assignmentInOrgParams
+  );
+
+  // 4b) Pending submissions — submissions in 'submitted' state for assignments in scope.
+  const [pendingRows] = await pool.query(
+    `SELECT COUNT(*) AS pending
+       FROM assignment_submissions s
+       INNER JOIN assignments a ON s.assignment_id = a.id
+       WHERE s.status = 'submitted' AND a.is_deleted = 0 ${assignmentInOrgFilter}`,
+    assignmentInOrgParams
+  );
+
+  const assignments = {
+    total: Number(assignmentRows[0]?.total) || 0,
+    active: Number(assignmentRows[0]?.active) || 0,
+    upcoming: Number(assignmentRows[0]?.upcoming) || 0,
+    expired: Number(assignmentRows[0]?.expired) || 0,
+    pendingSubmissions: Number(pendingRows[0]?.pending) || 0
+  };
+
+  // 5) Recent assignments (last 5)
+  const [recentAssignments] = await pool.query(
+    `SELECT a.id, a.uuid, a.title, a.type, a.scope, a.start_date, a.end_date, a.created_at,
+            (SELECT COUNT(*) FROM assignment_submissions s WHERE s.assignment_id = a.id) AS submission_count
+       FROM assignments a
+       WHERE a.is_deleted = 0 ${assignmentInOrgFilter}
+       ORDER BY a.created_at DESC
+       LIMIT 5`,
+    assignmentInOrgParams
+  );
+
+  // 6) Recent submissions (last 10)
+  const [recentSubmissions] = await pool.query(
+    `SELECT
+        s.id, s.uuid, s.assignment_id, s.user_id,
+        s.submission_type, s.status, s.submitted_at,
+        a.uuid AS assignment_uuid, a.title AS assignment_title,
+        u.email AS user_email,
+        COALESCE(NULLIF(TRIM(CONCAT_WS(' ',
+          COALESCE(st.first_name, ad.first_name, ins.first_name, sa.first_name),
+          COALESCE(st.last_name,  ad.last_name,  ins.last_name,  sa.last_name)
+        )), ''), u.email) AS user_name
+       FROM assignment_submissions s
+       INNER JOIN assignments a ON s.assignment_id = a.id
+       INNER JOIN users u ON s.user_id = u.uuid
+       LEFT JOIN students      st  ON u.uuid = st.user_id
+       LEFT JOIN admins        ad  ON u.uuid = ad.user_id
+       LEFT JOIN instructors   ins ON u.uuid = ins.user_id
+       LEFT JOIN super_admins  sa  ON u.uuid = sa.user_id
+       WHERE a.is_deleted = 0 ${assignmentInOrgFilter}
+       ORDER BY s.submitted_at DESC
+       LIMIT 10`,
+    assignmentInOrgParams
+  );
+
+  return {
+    scope: {
+      orgIds: orgIds || [],
+      organizationId: scopeOrgRow ? scopeOrgRow.id : (orgIds && orgIds.length === 1 ? orgIds[0] : null),
+      organizationName: scopeOrgRow ? scopeOrgRow.name : null
+    },
+    members,
+    teams,
+    assignments,
+    recent: {
+      assignments: recentAssignments,
+      submissions: recentSubmissions
+    }
+  };
+};
+
 module.exports = {
   getStats,
   calculateAndSaveDailyStats,
@@ -598,5 +802,6 @@ module.exports = {
   logLearningHours,
   getAdminOrganizations,
   getOrganizationStats,
-  getOrganizationUsers
+  getOrganizationUsers,
+  getOrgOverview
 };

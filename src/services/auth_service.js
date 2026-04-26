@@ -179,6 +179,31 @@ class AuthService {
       console.error('Failed to load managedTeamIds:', mgrErr);
     }
 
+    // Look up the user's organization(s) so the frontend can show "Org: X"
+    // in the header without a second round-trip after login.
+    let organizations = [];
+    try {
+      const [orgRows] = await promisePool.query(
+        `SELECT o.id, o.name, o.is_active, uo.assigned_at
+           FROM user_organizations uo
+           INNER JOIN organizations o ON uo.organization_id = o.id
+           WHERE uo.user_id = ? AND o.is_active = 1
+           ORDER BY uo.assigned_at ASC`,
+        [user.uuid]
+      );
+      organizations = orgRows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        isActive: r.is_active === 1
+      }));
+    } catch (orgErr) {
+      console.error('Failed to load user organizations:', orgErr);
+    }
+    // The "primary" org is the one we display prominently. Today's data model
+    // typically has one org per user; if there are multiple, pick the oldest
+    // assignment (most stable over time).
+    const primaryOrganization = organizations[0] || null;
+
     // Return user and tokens
     return {
       user: {
@@ -191,6 +216,8 @@ class AuthService {
         status: user.status,
         instance: user.instance,
         managedTeamIds,
+        organizations,
+        primaryOrganization,
       },
       ...this.generateTokens(user, sessionId),
     };

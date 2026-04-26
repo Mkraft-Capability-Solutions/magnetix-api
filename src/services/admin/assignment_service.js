@@ -261,12 +261,118 @@ async function getSubmissionById(id) {
   return rows[0] || null;
 }
 
+/**
+ * Admin/manager submission-detail loader for the new SubmissionDetail page.
+ * Joins assignment_submissions with assignments + learner identity, and for
+ * `submission_type='assessment'` enriches with the full per-question
+ * breakdown via feedbackService.getResponseByIdWithScoring().
+ *
+ * @param {number} assignmentId
+ * @param {string} userId — learner uuid
+ * @returns {Promise<{
+ *   submission: object|null,
+ *   assignment: object|null,
+ *   learner: object|null,
+ *   response: object|null
+ * }>}
+ */
+async function getSubmissionDetail(assignmentId, userId) {
+  const [subRows] = await promisePool.query(
+    `SELECT s.*, a.title AS assignment_title, a.uuid AS assignment_uuid, a.type AS assignment_type
+       FROM assignment_submissions s
+       INNER JOIN assignments a ON s.assignment_id = a.id
+      WHERE s.assignment_id = ? AND s.user_id = ?
+      ORDER BY s.submitted_at DESC
+      LIMIT 1`,
+    [assignmentId, userId]
+  );
+  const submission = subRows[0] || null;
+  if (!submission) return { submission: null, assignment: null, learner: null, response: null };
+
+  // Learner identity (best-effort across role-specific profile tables)
+  const [userRows] = await promisePool.query(
+    `SELECT u.uuid, u.email,
+            COALESCE(s.first_name, a.first_name, i.first_name, sa.first_name) AS first_name,
+            COALESCE(s.last_name,  a.last_name,  i.last_name,  sa.last_name)  AS last_name
+       FROM users u
+       LEFT JOIN students s     ON u.uuid = s.user_id
+       LEFT JOIN admins a       ON u.uuid = a.user_id
+       LEFT JOIN instructors i  ON u.uuid = i.user_id
+       LEFT JOIN super_admins sa ON u.uuid = sa.user_id
+      WHERE u.uuid = ? LIMIT 1`,
+    [userId]
+  );
+  const learner = userRows[0] || null;
+
+  let response = null;
+  if (submission.submission_type === 'assessment' && submission.assessment_response_id) {
+    try {
+      // Lazy require to avoid a circular import (admin/feedback_service ->
+      // notification_service -> potentially back to here).
+      const feedbackService = require('./feedback_service');
+      response = await feedbackService.getResponseByIdWithScoring(submission.assessment_response_id);
+    } catch (err) {
+      console.error('getSubmissionDetail: failed to load response detail:', err && err.message);
+    }
+  }
+
+  return {
+    submission,
+    assignment: { id: submission.assignment_id, uuid: submission.assignment_uuid, title: submission.assignment_title, type: submission.assignment_type },
+    learner,
+    response
+  };
+}
+
+/**
+ * Send the learner an "assessment result" email with per-question breakdown,
+ * AI scores, and overall percentage. Idempotency is via assignment_email_log
+ * `email_type='review_completed'`. Caller must have admin/manager visibility
+ * over the assignment (gated at the route level).
+ */
+async function emailSubmissionResult(submissionId) {
+  const submission = await getSubmissionById(submissionId);
+  if (!submission) {
+    const err = new Error('Submission not found'); err.statusCode = 404; throw err;
+  }
+  const detail = await getSubmissionDetail(submission.assignment_id, submission.user_id);
+  if (!detail.response) {
+    const err = new Error('No assessment response is attached to this submission'); err.statusCode = 400; throw err;
+  }
+  if (!detail.learner || !detail.learner.email) {
+    const err = new Error('Could not resolve learner email'); err.statusCode = 400; throw err;
+  }
+
+  const firstName = detail.learner.first_name || 'there';
+  const payload = {
+    assignmentTitle: detail.assignment.title,
+    assignmentUuid: detail.assignment.uuid,
+    score: detail.response.score,
+    maxScore: detail.response.maxScore,
+    percentage: detail.response.percentage,
+    questionsAndAnswers: detail.response.questionsAndAnswers || [],
+    showCorrect: detail.response.showCorrectAnswers !== 0,
+    appUrl: process.env.FRONTEND_URL || ''
+  };
+
+  await sendAssignmentEmailSafely({
+    email_type: 'review_completed',
+    assignmentId: submission.assignment_id,
+    userId: submission.user_id,
+    fn: () => emailHelper.sendAssessmentResultEmail(detail.learner.email, firstName, payload)
+  });
+
+  return { sent: true, email: detail.learner.email };
+}
+
 module.exports = {
   listAssignments,
   getAssignmentDetail,
   listSubmissions,
   reviewSubmission,
   getSubmissionById,
+  getSubmissionDetail,
+  emailSubmissionResult,
   dispatchCreatedNotifications,
   ADMIN_ROLES
 };

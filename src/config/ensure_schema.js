@@ -1,0 +1,158 @@
+/**
+ * Boot-time schema integrity check.
+ *
+ * Runs AFTER umzug.up() and INDEPENDENT of SequelizeMeta state. For every
+ * critical table the app expects, verify it exists; if not, create it on the
+ * spot via the same `promisePool` the rest of the app uses for runtime queries.
+ *
+ * Why we need this:
+ *   The umzug + Sequelize migration runner has, on at least one machine,
+ *   silently marked migrations as applied without actually executing their
+ *   `up()` body. We never reproduced the exact cause and chasing it further
+ *   isn't worth the time. This module is the safety net: even if `SequelizeMeta`
+ *   is in a wrong state, the schema is what the app actually queries — verify
+ *   it directly.
+ *
+ * How to add a table:
+ *   Append to `EXPECTED_TABLES` below, in dependency order (FK referenced
+ *   tables first). Each entry is `{ name, createSql }`. Use IF NOT EXISTS in
+ *   the SQL — the check runs every boot and must be idempotent.
+ */
+
+const { promisePool } = require('./db');
+
+const EXPECTED_TABLES = [
+  // NOTE: We deliberately omit FOREIGN KEY constraints from these tables.
+  // MySQL FK creation is fragile across charset/collation/engine drift between
+  // parent and child columns, and on this DB the parent tables (`teams`,
+  // `users`, `feedback_forms`, etc.) were created out-of-band with assorted
+  // historical settings. Trying to declare FKs here throws ER_FK_CANNOT_OPEN_PARENT.
+  // Referential integrity is enforced at the service layer (see
+  // `src/services/assignment_service.js`), and we keep an INDEX on every
+  // would-be-FK column for query performance.
+  {
+    name: 'assignments',
+    createSql: `
+      CREATE TABLE IF NOT EXISTS \`assignments\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`uuid\` VARCHAR(36) NOT NULL UNIQUE,
+        \`title\` VARCHAR(255) NOT NULL,
+        \`description\` TEXT,
+        \`type\` ENUM('document','assessment') NOT NULL,
+        \`assessment_id\` INT NULL,
+        \`doc_instructions\` TEXT NULL,
+        \`allow_resubmission\` TINYINT(1) DEFAULT 0,
+        \`max_file_size_mb\` INT DEFAULT 25,
+        \`allowed_file_types\` VARCHAR(255) DEFAULT 'pdf,doc,docx,ppt,pptx,xls,xlsx,jpg,png',
+        \`scope\` ENUM('organization','team') NOT NULL,
+        \`organization_id\` INT NULL,
+        \`team_id\` INT NULL,
+        \`start_date\` DATETIME NOT NULL,
+        \`end_date\` DATETIME NOT NULL,
+        \`created_by\` VARCHAR(36) NOT NULL,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        \`is_deleted\` TINYINT(1) DEFAULT 0,
+        INDEX \`idx_assignments_assessment\` (\`assessment_id\`),
+        INDEX \`idx_assignments_team\`   (\`team_id\`, \`end_date\`),
+        INDEX \`idx_assignments_org\`    (\`organization_id\`, \`end_date\`),
+        INDEX \`idx_assignments_window\` (\`start_date\`, \`end_date\`),
+        INDEX \`idx_assignments_creator\` (\`created_by\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `
+  },
+  {
+    name: 'assignment_submissions',
+    createSql: `
+      CREATE TABLE IF NOT EXISTS \`assignment_submissions\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`uuid\` VARCHAR(36) NOT NULL UNIQUE,
+        \`assignment_id\` INT NOT NULL,
+        \`user_id\` VARCHAR(36) NOT NULL,
+        \`submission_type\` ENUM('document','assessment') NOT NULL,
+        \`file_url\` VARCHAR(500) NULL,
+        \`file_name\` VARCHAR(255) NULL,
+        \`file_size_bytes\` BIGINT NULL,
+        \`assessment_response_id\` INT NULL,
+        \`notes\` TEXT NULL,
+        \`status\` ENUM('submitted','reviewed','rejected') DEFAULT 'submitted',
+        \`reviewed_by\` VARCHAR(36) NULL,
+        \`reviewed_at\` TIMESTAMP NULL,
+        \`feedback\` TEXT NULL,
+        \`submitted_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY \`uniq_submission_assignment_user\` (\`assignment_id\`, \`user_id\`),
+        INDEX \`idx_submission_user\` (\`user_id\`, \`submitted_at\`),
+        INDEX \`idx_submission_assignment_status\` (\`assignment_id\`, \`status\`, \`submitted_at\`),
+        INDEX \`idx_submission_response\` (\`assessment_response_id\`),
+        INDEX \`idx_submission_reviewer\` (\`reviewed_by\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `
+  },
+  {
+    name: 'assignment_email_log',
+    createSql: `
+      CREATE TABLE IF NOT EXISTS \`assignment_email_log\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`assignment_id\` INT NOT NULL,
+        \`user_id\` VARCHAR(36) NOT NULL,
+        \`email_type\` ENUM(
+          'created','reminder_48h','reminder_24h','missed_learner',
+          'missed_escalation','submission_confirm','submission_received',
+          'review_completed','manager_assigned'
+        ) NOT NULL,
+        \`sent_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        \`message_id\` VARCHAR(255) NULL,
+        UNIQUE KEY \`uniq_email\` (\`assignment_id\`, \`user_id\`, \`email_type\`),
+        INDEX \`idx_log_assignment\` (\`assignment_id\`),
+        INDEX \`idx_log_user\` (\`user_id\`, \`email_type\`, \`sent_at\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `
+  }
+];
+
+async function tableExists(name) {
+  const [rows] = await promisePool.query(
+    `SELECT COUNT(*) AS n
+       FROM information_schema.tables
+      WHERE table_schema = DATABASE()
+        AND table_name = ?`,
+    [name]
+  );
+  return rows[0].n > 0;
+}
+
+async function ensureSchema() {
+  console.log('🔍 ensureSchema: verifying critical tables exist...');
+  let createdCount = 0;
+  let alreadyOkCount = 0;
+
+  for (const { name, createSql } of EXPECTED_TABLES) {
+    const exists = await tableExists(name);
+    if (exists) {
+      alreadyOkCount++;
+      continue;
+    }
+    console.log(`  ⚠ Missing table \`${name}\` — creating now...`);
+    try {
+      await promisePool.query(createSql);
+    } catch (err) {
+      console.error(`  ❌ Failed to create \`${name}\`:`, err.message);
+      throw err;
+    }
+    const verified = await tableExists(name);
+    if (!verified) {
+      throw new Error(
+        `ensureSchema: created \`${name}\` but post-create verification still shows it missing — DDL succeeded but table not found in DATABASE() scope`
+      );
+    }
+    console.log(`  ✅ Created \`${name}\``);
+    createdCount++;
+  }
+
+  console.log(
+    `🔍 ensureSchema: ${alreadyOkCount} table(s) already present, ${createdCount} table(s) just created`
+  );
+}
+
+module.exports = { ensureSchema, EXPECTED_TABLES };

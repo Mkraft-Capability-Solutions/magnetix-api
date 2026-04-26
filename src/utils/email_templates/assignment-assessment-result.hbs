@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Assessment result — {{assignmentTitle}}</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111827;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f3f4f6;padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+          <tr>
+            <td style="padding:28px 32px 20px 32px;border-bottom:1px solid #e5e7eb;">
+              <div style="font-size:13px;color:#6b7280;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;">{{appName}}</div>
+              <h1 style="margin:0;font-size:22px;line-height:1.3;color:#111827;">Your assessment result</h1>
+              <div style="margin-top:6px;font-size:14px;color:#6b7280;">{{assignmentTitle}}</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px;">
+              <p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;">Hi {{firstName}},</p>
+              <p style="margin:0 0 20px 0;font-size:15px;line-height:1.55;">Here's the breakdown of your submission. Subjective answers were scored by AI as a primary check; an instructor may still review and adjust.</p>
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin:0 0 24px 0;">
+                <tr>
+                  <td style="padding:18px 20px;">
+                    <div style="font-size:13px;color:#6b7280;letter-spacing:0.5px;text-transform:uppercase;">Score</div>
+                    <div style="font-size:28px;font-weight:600;color:#111827;margin-top:4px;">{{score}} / {{maxScore}}</div>
+                    <div style="font-size:14px;color:#374151;margin-top:2px;">{{percentage}}</div>
+                  </td>
+                </tr>
+              </table>
+
+              {{#each questions}}
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e5e7eb;border-radius:8px;margin-bottom:14px;">
+                  <tr>
+                    <td style="padding:14px 18px;">
+                      <div style="font-size:12px;color:#6b7280;letter-spacing:0.4px;text-transform:uppercase;">Question {{number}}</div>
+                      <div style="font-size:15px;font-weight:600;color:#111827;margin-top:4px;">{{questionText}}</div>
+
+                      <div style="margin-top:12px;font-size:14px;color:#374151;">
+                        <div style="font-weight:600;color:#6b7280;font-size:12px;letter-spacing:0.4px;text-transform:uppercase;">Your answer</div>
+                        <div style="margin-top:3px;line-height:1.5;">{{userAnswer}}</div>
+                      </div>
+
+                      {{#if correctAnswer}}
+                        <div style="margin-top:10px;font-size:14px;color:#374151;">
+                          <div style="font-weight:600;color:#059669;font-size:12px;letter-spacing:0.4px;text-transform:uppercase;">Correct answer</div>
+                          <div style="margin-top:3px;line-height:1.5;">{{correctAnswer}}</div>
+                        </div>
+                      {{/if}}
+
+                      {{#if aiScore}}
+                        <div style="margin-top:10px;display:inline-block;background:#eff6ff;color:#1d4ed8;font-size:13px;padding:4px 10px;border-radius:999px;font-weight:600;">AI score: {{aiScore}}</div>
+                      {{/if}}
+
+                      {{#if aiFeedback}}
+                        <div style="margin-top:10px;font-size:13px;color:#4338ca;background:#eef2ff;border-left:3px solid #6366f1;padding:8px 12px;border-radius:4px;line-height:1.5;">
+                          {{aiFeedback}}
+                        </div>
+                      {{/if}}
+                    </td>
+                  </tr>
+                </table>
+              {{/each}}
+
+              {{#if assignmentUrl}}
+                <p style="margin:24px 0 0 0;font-size:14px;">
+                  <a href="{{assignmentUrl}}" style="color:#2563eb;text-decoration:none;font-weight:600;">View this assignment online →</a>
+                </p>
+              {{/if}}
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:18px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;line-height:1.5;">
+              Need help? Reach out at
+              <a href="mailto:{{supportEmail}}" style="color:#2563eb;text-decoration:none;">{{supportEmail}}</a>.
+              <div style="margin-top:6px;">© {{year}} {{appName}}</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

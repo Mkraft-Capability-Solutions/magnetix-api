@@ -8,15 +8,21 @@ const SUBJECTIVE_TYPES = new Set(['short_text', 'paragraph', 'slider']);
  * Submit answers to a feedback_forms (type='assessment') without requiring
  * course enrollment. Used by the assignment-as-assessment flow.
  *
- * Mirrors the scoring/insert behavior of submitLessonAssessment() but
- * without the course/lesson/enrollment checks and without auto-completing
- * a lesson. Returns the inserted response id so the caller can link it
- * from assignment_submissions.assessment_response_id.
+ * Behavior:
+ *   - Auto-grades objective questions via calculateAssessmentScore.
+ *   - For subjective/combined assessments, calls Gemini for per-question
+ *     subjective scoring + reasoning, then PERSISTS the result onto each
+ *     feedback_answers row (ai_score / ai_feedback / max_score).
+ *   - Reads `feedback_forms.show_report`; when 0 the caller may strip score
+ *     details from the learner-facing return value (we surface the flag here
+ *     but keep the totals so admin/email flows still have access).
  *
- * @param {string} userId
- * @param {number} formId
- * @param {Array<{questionId:number, text?:string, options?:any, rating?:number}>} answers
- * @returns {Promise<{ responseId:number, score:number, maxScore:number, percentage:number, aiScoringResults:any }>}
+ * @returns {Promise<{
+ *   responseId:number,
+ *   score:number, maxScore:number, percentage:number,
+ *   aiScoringResults:object|null,
+ *   showReport:boolean
+ * }>}
  */
 async function submitAssessmentStandalone(userId, formId, answers) {
   if (!userId) throw new Error('userId required');
@@ -28,7 +34,7 @@ async function submitAssessmentStandalone(userId, formId, answers) {
     await connection.beginTransaction();
 
     const [forms] = await connection.query(
-      `SELECT id, type, assessment_type, show_correct_answers
+      `SELECT id, type, assessment_type, show_correct_answers, show_report
          FROM feedback_forms
         WHERE id = ? AND is_deleted = 0`,
       [formId]
@@ -40,6 +46,7 @@ async function submitAssessmentStandalone(userId, formId, answers) {
     if (form.type !== 'assessment') {
       throw new Error('Form is not an assessment');
     }
+    const showReport = form.show_report !== 0; // default true if column missing
     const isSubjective = form.assessment_type === 'subjective' || form.assessment_type === 'both';
 
     const [rawQuestions] = await connection.query(
@@ -59,6 +66,14 @@ async function submitAssessmentStandalone(userId, formId, answers) {
         ? (typeof q.correct_answers === 'string' ? JSON.parse(q.correct_answers) : q.correct_answers)
         : []
     }));
+
+    // Build a per-question score lookup so we can persist scoring data
+    // alongside each feedback_answers row. Keys: questionId.
+    // Values: { score, maxScore, aiFeedback }.
+    const perQuestionScore = new Map();
+    for (const q of questionsForScoring) {
+      perQuestionScore.set(q.id, { score: 0, maxScore: q.score || 1, aiFeedback: null });
+    }
 
     let scoreData;
     let aiScoringResults = null;
@@ -92,12 +107,17 @@ async function submitAssessmentStandalone(userId, formId, answers) {
 
         for (let i = 0; i < questionsForAI.length; i++) {
           const qId = questionsForAI[i].questionId;
-          const aiResult = aiScores[i];
+          const aiResult = aiScores[i] || { score: 0, maxScore: questionsForAI[i].maxScore, feedback: null };
           aiScoringResults[qId] = {
             score: aiResult.score,
             maxScore: aiResult.maxScore,
             feedback: aiResult.feedback
           };
+          perQuestionScore.set(qId, {
+            score: aiResult.score,
+            maxScore: aiResult.maxScore,
+            aiFeedback: aiResult.feedback || null
+          });
           totalScore += aiResult.score;
           totalMaxScore += aiResult.maxScore;
         }
@@ -108,6 +128,7 @@ async function submitAssessmentStandalone(userId, formId, answers) {
           const userAnswer = answers.find(a => a.questionId === question.id);
           const qMax = question.score || 1;
           totalMaxScore += qMax;
+          let isCorrect = false;
           if (userAnswer && question.correct_answers && question.correct_answers.length > 0) {
             let userIdx = [];
             if (userAnswer.options) {
@@ -122,11 +143,16 @@ async function submitAssessmentStandalone(userId, formId, answers) {
             }
             const correctSet = new Set(question.correct_answers);
             const userSet = new Set(userIdx);
-            const isCorrect = question.correct_answers.length === userIdx.length
+            isCorrect = question.correct_answers.length === userIdx.length
               && question.correct_answers.every(idx => userSet.has(idx))
               && userIdx.every(idx => correctSet.has(idx));
             if (isCorrect) totalScore += qMax;
           }
+          perQuestionScore.set(question.id, {
+            score: isCorrect ? qMax : 0,
+            maxScore: qMax,
+            aiFeedback: null
+          });
         }
 
         scoreData = {
@@ -138,9 +164,46 @@ async function submitAssessmentStandalone(userId, formId, answers) {
         console.error('AI scoring failed, falling back to objective scoring only:', aiError && aiError.message);
         scoreData = calculateAssessmentScore(questionsForScoring, answers);
         aiScoringResults = { _error: 'AI scoring unavailable. Subjective answers will be reviewed manually.' };
+        // Per-question scores: zero out subjective, record correctness for objective
+        for (const question of questionsForScoring) {
+          if (SUBJECTIVE_TYPES.has(question.question_type)) {
+            perQuestionScore.set(question.id, { score: 0, maxScore: question.score || 1, aiFeedback: '(Awaiting manual review — AI scoring unavailable)' });
+          }
+        }
       }
     } else {
       scoreData = calculateAssessmentScore(questionsForScoring, answers);
+      // Pure-objective assessment: derive per-question correctness from
+      // the same logic calculateAssessmentScore uses, so feedback_answers
+      // gets accurate per-row scores too.
+      for (const question of questionsForScoring) {
+        const userAnswer = answers.find(a => a.questionId === question.id);
+        const qMax = question.score || 1;
+        let isCorrect = false;
+        if (userAnswer && question.correct_answers && question.correct_answers.length > 0) {
+          let userIdx = [];
+          if (userAnswer.options) {
+            const sel = typeof userAnswer.options === 'string'
+              ? JSON.parse(userAnswer.options)
+              : userAnswer.options;
+            if (Array.isArray(sel)) {
+              userIdx = sel
+                .map(opt => question.options.findIndex(o => o === opt))
+                .filter(idx => idx !== -1);
+            }
+          }
+          const correctSet = new Set(question.correct_answers);
+          const userSet = new Set(userIdx);
+          isCorrect = question.correct_answers.length === userIdx.length
+            && question.correct_answers.every(idx => userSet.has(idx))
+            && userIdx.every(idx => correctSet.has(idx));
+        }
+        perQuestionScore.set(question.id, {
+          score: isCorrect ? qMax : 0,
+          maxScore: qMax,
+          aiFeedback: null
+        });
+      }
     }
 
     const [scoreCols] = await connection.query(
@@ -165,18 +228,50 @@ async function submitAssessmentStandalone(userId, formId, answers) {
     const [responseResult] = await connection.query(insertQuery, insertParams);
     const responseId = responseResult.insertId;
 
+    // Detect whether feedback_answers has the per-row scoring columns
+    // (ai_score / ai_feedback / max_score). On older schemas they may
+    // be missing — fall back to the legacy 5-column INSERT.
+    const [answerScoreCols] = await connection.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'feedback_answers'
+          AND COLUMN_NAME IN ('ai_score','ai_feedback','max_score')`
+    );
+    const hasAnswerScoreCols = answerScoreCols.length >= 3;
+
     for (const answer of answers) {
-      await connection.query(
-        `INSERT INTO feedback_answers (response_id, question_id, answer_text, answer_options, answer_rating)
-         VALUES (?, ?, ?, ?, ?)`,
-        [
-          responseId,
-          answer.questionId,
-          answer.text || null,
-          answer.options ? JSON.stringify(answer.options) : null,
-          answer.rating !== undefined ? answer.rating : null
-        ]
-      );
+      const ps = perQuestionScore.get(answer.questionId) || { score: null, maxScore: null, aiFeedback: null };
+      if (hasAnswerScoreCols) {
+        await connection.query(
+          `INSERT INTO feedback_answers
+             (response_id, question_id, answer_text, answer_options, answer_rating,
+              ai_score, ai_feedback, max_score)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            responseId,
+            answer.questionId,
+            answer.text || null,
+            answer.options ? JSON.stringify(answer.options) : null,
+            answer.rating !== undefined ? answer.rating : null,
+            ps.score != null ? ps.score : null,
+            ps.aiFeedback,
+            ps.maxScore != null ? ps.maxScore : null
+          ]
+        );
+      } else {
+        await connection.query(
+          `INSERT INTO feedback_answers
+             (response_id, question_id, answer_text, answer_options, answer_rating)
+           VALUES (?, ?, ?, ?, ?)`,
+          [
+            responseId,
+            answer.questionId,
+            answer.text || null,
+            answer.options ? JSON.stringify(answer.options) : null,
+            answer.rating !== undefined ? answer.rating : null
+          ]
+        );
+      }
     }
 
     await connection.commit();
@@ -186,7 +281,8 @@ async function submitAssessmentStandalone(userId, formId, answers) {
       score: scoreData.score,
       maxScore: scoreData.maxScore,
       percentage: scoreData.percentage,
-      aiScoringResults
+      aiScoringResults,
+      showReport
     };
   } catch (error) {
     try { await connection.rollback(); } catch (_) { /* ignore */ }
