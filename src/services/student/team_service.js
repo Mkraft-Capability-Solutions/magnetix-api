@@ -38,4 +38,44 @@ async function getMyTeams(userUuid) {
   return rows;
 }
 
-module.exports = { getMyTeams };
+/**
+ * Return the roster of a team a learner belongs to. Only identity-level fields
+ * (name + role + manager flag) — no progress, no scores, no contact details.
+ *
+ * Access check: the caller must themselves be a member of the team. The
+ * EXISTS clause enforces that — if it doesn't hold, the result set is empty.
+ */
+async function getMyTeamMembers(userUuid, teamId) {
+  if (!userUuid || !teamId) return [];
+  const [rows] = await pool.query(
+    `SELECT
+        u.uuid AS id,
+        TRIM(CONCAT(COALESCE(s.first_name, a.first_name, i.first_name, ''), ' ',
+                    COALESCE(s.last_name,  a.last_name,  i.last_name,  ''))) AS name,
+        UPPER(LEFT(COALESCE(s.first_name, a.first_name, i.first_name, u.email), 1)) AS initial,
+        CASE u.role_id
+          WHEN 1 THEN 'Learner'
+          WHEN 2 THEN 'Instructor'
+          WHEN 3 THEN 'Admin'
+          WHEN 4 THEN 'Super Admin'
+          ELSE 'Unknown'
+        END AS role_label,
+        CASE WHEN t.manager_id = u.uuid THEN 1 ELSE 0 END AS is_manager
+       FROM team_members tm
+       INNER JOIN users u ON u.uuid = tm.user_id AND u.is_deleted = 0
+       INNER JOIN teams t ON t.id = tm.team_id AND t.is_deleted = 0
+       LEFT JOIN students s    ON s.user_id = u.uuid
+       LEFT JOIN admins a      ON a.user_id = u.uuid
+       LEFT JOIN instructors i ON i.user_id = u.uuid
+      WHERE tm.team_id = ?
+        AND EXISTS (
+          SELECT 1 FROM team_members me
+           WHERE me.team_id = ? AND me.user_id = ?
+        )
+      ORDER BY (t.manager_id = u.uuid) DESC, name`,
+    [teamId, teamId, userUuid]
+  );
+  return rows;
+}
+
+module.exports = { getMyTeams, getMyTeamMembers };
