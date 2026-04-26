@@ -7,9 +7,13 @@ const ROLE_LABELS = {
   super_admin: 'Super Administrator'
 };
 
-const sendInvitationSafely = async ({ email, firstName, password, roleLabel }) => {
+const sendInvitationSafely = async ({ email, firstName, password, roleLabel, organizationNames = [] }) => {
   try {
-    await emailHelper.sendInvitationEmail(email, firstName, { password, roleLabel });
+    await emailHelper.sendInvitationEmail(email, firstName, {
+      password,
+      roleLabel,
+      organizationNames: Array.isArray(organizationNames) ? organizationNames : []
+    });
     return { sent: true };
   } catch (error) {
     console.error(`Invitation email failed for ${email}:`, error);

@@ -371,6 +371,10 @@ const createUser = async (userData) => {
     const result = rows[0]?.[0];
     const success = result?.success === 1;
 
+    // Collected org names so the invitation email can mention which orgs the
+    // new user was added to ("You've been added to: Acme, Globex as Administrator").
+    const assignedOrgNames = [];
+
     // If user created successfully and organizationId provided, assign to organization(s)
     if (success && organizationId) {
       try {
@@ -396,7 +400,7 @@ const createUser = async (userData) => {
 
             // Verify organization exists and is active
             const [orgCheck] = await pool.query(
-              'SELECT id, is_active FROM organizations WHERE id = ?',
+              'SELECT id, name, is_active FROM organizations WHERE id = ?',
               [orgId]
             );
 
@@ -414,6 +418,7 @@ const createUser = async (userData) => {
                 );
                 console.log(`User ${uuid} assigned to organization ${orgId}`);
               }
+              assignedOrgNames.push(orgCheck[0].name);
             } else {
               console.warn(`Organization ${orgId} not found or inactive`);
             }
@@ -431,7 +436,8 @@ const createUser = async (userData) => {
         email,
         firstName,
         password: generatedPassword,
-        roleLabel: ROLE_LABELS[role?.toLowerCase()] || 'User'
+        roleLabel: ROLE_LABELS[role?.toLowerCase()] || 'User',
+        organizationNames: assignedOrgNames
       });
       invitationSent = sent;
     }
