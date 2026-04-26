@@ -6,5 +6,6 @@ const teamController = require('../../controllers/student/team_controller');
 router.use(authenticate);
 
 router.get('/my-teams', teamController.getMyTeams);
+router.get('/:teamId/members', teamController.getMyTeamMembers);
 
 module.exports = router;

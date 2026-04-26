@@ -46,6 +46,20 @@ async function listManagedAssignments(userId, filters = {}) {
   return adminAssignmentService.listAssignments(filters, { restrictTeamIds: teamIds });
 }
 
+/**
+ * List assignments for a single team that the caller manages. Intersects the
+ * requested teamId with the caller's managed-team set so a forged param can't
+ * widen scope.
+ */
+async function listManagedAssignmentsForTeam(userId, teamId, filters = {}) {
+  const managed = await getManagedTeamIds(userId);
+  const numericTeamId = Number(teamId);
+  if (!managed.includes(numericTeamId)) {
+    return { rows: [], total: 0 };
+  }
+  return adminAssignmentService.listAssignments(filters, { restrictTeamIds: [numericTeamId] });
+}
+
 async function listManagedSubmissions(userId, assignmentId, filters = {}) {
   const memberIds = await getManagedTeamMemberIds(userId);
   return adminAssignmentService.listSubmissions(assignmentId, filters, { restrictUserIds: memberIds });
@@ -56,5 +70,6 @@ module.exports = {
   getManagedTeamMemberIds,
   listManagedTeams,
   listManagedAssignments,
+  listManagedAssignmentsForTeam,
   listManagedSubmissions
 };

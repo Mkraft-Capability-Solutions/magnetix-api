@@ -1,6 +1,7 @@
 const { promisePool } = require('../../config/db');
 const adminTeamService = require('../../services/admin/team_service');
 const managerAssignmentService = require('../../services/manager/assignment_service');
+const teamInsights = require('../../services/manager/team_insights_service');
 
 const sendError = (res, error) => {
   const status = error.statusCode || 500;
@@ -49,6 +50,68 @@ exports.getTeamLearningHistory = async (req, res) => {
       req.user.role_id
     );
     res.json({ success: true, data });
+  } catch (error) {
+    sendError(res, error);
+  }
+};
+
+exports.getTeamOverview = async (req, res) => {
+  try {
+    const teamId = parseInt(req.params.teamId, 10);
+    if (Number.isNaN(teamId)) {
+      return res.status(400).json({ success: false, message: 'Invalid teamId' });
+    }
+    const data = await teamInsights.getTeamOverview(teamId);
+    if (!data) return res.status(404).json({ success: false, message: 'Team not found' });
+    res.json({ success: true, data });
+  } catch (error) {
+    sendError(res, error);
+  }
+};
+
+exports.getTeamSubmissions = async (req, res) => {
+  try {
+    const teamId = parseInt(req.params.teamId, 10);
+    if (Number.isNaN(teamId)) {
+      return res.status(400).json({ success: false, message: 'Invalid teamId' });
+    }
+    const { status, type, user_id, limit, offset } = req.query;
+    const data = await teamInsights.getTeamSubmissionsRollup(teamId, {
+      status, type, user_id, limit, offset
+    });
+    res.json({ success: true, data: data.rows, total: data.total });
+  } catch (error) {
+    sendError(res, error);
+  }
+};
+
+exports.getTeamAnalytics = async (req, res) => {
+  try {
+    const teamId = parseInt(req.params.teamId, 10);
+    if (Number.isNaN(teamId)) {
+      return res.status(400).json({ success: false, message: 'Invalid teamId' });
+    }
+    const data = await teamInsights.getTeamAnalytics(teamId);
+    if (!data) return res.status(404).json({ success: false, message: 'Team not found' });
+    res.json({ success: true, data });
+  } catch (error) {
+    sendError(res, error);
+  }
+};
+
+exports.getTeamAssignments = async (req, res) => {
+  try {
+    const teamId = parseInt(req.params.teamId, 10);
+    if (Number.isNaN(teamId)) {
+      return res.status(400).json({ success: false, message: 'Invalid teamId' });
+    }
+    const { status, type, q, limit, offset } = req.query;
+    const result = await managerAssignmentService.listManagedAssignmentsForTeam(
+      req.user.uuid,
+      teamId,
+      { status, type, q, limit, offset }
+    );
+    res.json({ success: true, data: result.rows, total: result.total });
   } catch (error) {
     sendError(res, error);
   }
