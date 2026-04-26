@@ -226,6 +226,33 @@ const getTeamById = async (teamId, callerUuid, roleId) => {
     const [rows] = await pool.query('CALL sp_get_team_by_id(?)', [teamId]);
     const team = rows[0]?.[0] || null;
     const members = rows[1] || [];
+
+    // sp_get_team_by_id doesn't return manager_id/manager_name — patch them in
+    // from the teams table directly so the admin "Manager: …" UI and the per-row
+    // pill can detect the current manager. Same JOINs we use in getAllTeams.
+    if (team) {
+      const [mgrRows] = await pool.query(
+        `SELECT
+            t.manager_id,
+            NULLIF(TRIM(CONCAT_WS(' ',
+              COALESCE(s.first_name, a.first_name, i.first_name, sa.first_name),
+              COALESCE(s.last_name,  a.last_name,  i.last_name,  sa.last_name)
+            )), '') AS manager_name
+          FROM teams t
+          LEFT JOIN students s      ON t.manager_id = s.user_id
+          LEFT JOIN admins a        ON t.manager_id = a.user_id
+          LEFT JOIN instructors i   ON t.manager_id = i.user_id
+          LEFT JOIN super_admins sa ON t.manager_id = sa.user_id
+          WHERE t.id = ? AND t.is_deleted = 0
+          LIMIT 1`,
+        [teamId]
+      );
+      if (mgrRows[0]) {
+        team.manager_id = mgrRows[0].manager_id;
+        team.manager_name = mgrRows[0].manager_name;
+      }
+    }
+
     return { team, members };
   } catch (error) {
     console.error('Team Service - getTeamById error:', error);
