@@ -543,33 +543,55 @@ const getOrganizationUsers = async (organizationId, options = {}) => {
     );
 
     // Get users with pagination
-    const [users] = await pool.query(
-      `SELECT
+    // NOTE: role_id mapping is 1=Learner, 2=Instructor, 3=Admin, 4=Super Admin.
+    // The previous code had 2 and 3 swapped (and used "Student" instead of "Learner").
+    const buildUsersQuery = (includeReportsTo) => `
+      SELECT
         u.uuid as id,
         COALESCE(s.first_name, a.first_name, i.first_name, '') as first_name,
         COALESCE(s.last_name, a.last_name, i.last_name, '') as last_name,
         u.email,
         u.role_id,
         CASE u.role_id
-          WHEN 1 THEN 'Student'
-          WHEN 2 THEN 'Admin'
-          WHEN 3 THEN 'Instructor'
+          WHEN 1 THEN 'Learner'
+          WHEN 2 THEN 'Instructor'
+          WHEN 3 THEN 'Admin'
           WHEN 4 THEN 'Super Admin'
           ELSE 'Unknown'
         END as role_name,
         u.status,
         u.created_at,
-        uo.assigned_at
+        uo.assigned_at${includeReportsTo ? `,
+        u.reports_to_uuid as reportsToId,
+        NULLIF(TRIM(CONCAT_WS(' ',
+          COALESCE(rs.first_name, ra.first_name, ri.first_name),
+          COALESCE(rs.last_name,  ra.last_name,  ri.last_name)
+        )), '') AS reportsToName` : ''}
       FROM user_organizations uo
       INNER JOIN users u ON uo.user_id = u.uuid
       LEFT JOIN students s ON u.uuid = s.user_id AND u.role_id = 1
       LEFT JOIN admins a ON u.uuid = a.user_id AND u.role_id = 2
-      LEFT JOIN instructors i ON u.uuid = i.user_id AND u.role_id = 3
+      LEFT JOIN instructors i ON u.uuid = i.user_id AND u.role_id = 3${includeReportsTo ? `
+      LEFT JOIN students rs    ON u.reports_to_uuid = rs.user_id
+      LEFT JOIN admins ra      ON u.reports_to_uuid = ra.user_id
+      LEFT JOIN instructors ri ON u.reports_to_uuid = ri.user_id` : ''}
       WHERE ${whereClause}
       ORDER BY u.created_at DESC
-      LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
-    );
+      LIMIT ? OFFSET ?`;
+
+    let users;
+    try {
+      [users] = await pool.query(buildUsersQuery(true), [...params, limit, offset]);
+    } catch (err) {
+      if (err && err.code === 'ER_BAD_FIELD_ERROR') {
+        // users.reports_to_uuid is missing on this DB — re-issue the query
+        // without the reports-to columns so the page still loads.
+        console.warn('getOrganizationUsers: users.reports_to_uuid missing, returning rows without reports-to fields.');
+        [users] = await pool.query(buildUsersQuery(false), [...params, limit, offset]);
+      } else {
+        throw err;
+      }
+    }
 
     return {
       users: users || [],
