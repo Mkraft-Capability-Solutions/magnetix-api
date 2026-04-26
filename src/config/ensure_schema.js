@@ -187,10 +187,12 @@ async function ensureSchema() {
   // Column-level self-heal for evolutions on existing tables.
   let columnsAdded = 0;
   let columnsAlreadyOk = 0;
+  const columnsStillMissing = [];
   for (const { table, column, addSql } of EXPECTED_COLUMNS) {
     const tblOk = await tableExists(table);
     if (!tblOk) {
       // Parent table missing — skip; nothing we can ALTER here.
+      columnsStillMissing.push(`${table}.${column} (parent table missing)`);
       continue;
     }
     const colOk = await columnExists(table, column);
@@ -207,11 +209,20 @@ async function ensureSchema() {
       // Don't throw — a missing column is a feature degradation, not a fatal
       // boot failure. Log and continue so the rest of the app comes up.
       console.error(`  ❌ Failed to add \`${table}.${column}\`:`, err.message);
+      const verifiedAfter = await columnExists(table, column).catch(() => false);
+      if (!verifiedAfter) columnsStillMissing.push(`${table}.${column}`);
     }
   }
   if (EXPECTED_COLUMNS.length > 0) {
     console.log(
       `🔍 ensureSchema: ${columnsAlreadyOk} column(s) already present, ${columnsAdded} column(s) just added`
+    );
+  }
+  if (columnsStillMissing.length > 0) {
+    console.warn(
+      `⚠ Schema gap: the following columns are still missing after ensureSchema — ` +
+        `dependent features will degrade gracefully but should be remediated:\n   - ` +
+        columnsStillMissing.join('\n   - ')
     );
   }
 }

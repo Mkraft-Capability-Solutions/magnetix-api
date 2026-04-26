@@ -24,12 +24,28 @@ async function getDescendantUserUuids(rootUuid) {
 
   while (frontier.length > 0 && depth < MAX_HIERARCHY_DEPTH) {
     const placeholders = frontier.map(() => '?').join(',');
-    const [rows] = await promisePool.query(
-      `SELECT uuid FROM users
-        WHERE reports_to_uuid IN (${placeholders})
-          AND is_deleted = 0`,
-      frontier
-    );
+    let rows;
+    try {
+      [rows] = await promisePool.query(
+        `SELECT uuid FROM users
+          WHERE reports_to_uuid IN (${placeholders})
+            AND is_deleted = 0`,
+        frontier
+      );
+    } catch (err) {
+      // The reports_to_uuid column is added by ensureSchema on boot. If for any
+      // reason the column isn't present yet (server not restarted after a fresh
+      // pull, ALTER TABLE failed silently, etc.), don't blow up the whole login
+      // path — degrade to "no descendants" so the user still sees the teams
+      // they directly manage.
+      if (err && err.code === 'ER_BAD_FIELD_ERROR') {
+        console.warn(
+          'manager_hierarchy: users.reports_to_uuid missing — descendant traversal disabled. Restart the API to let ensureSchema add it.'
+        );
+        return all;
+      }
+      throw err;
+    }
     const next = [];
     for (const r of rows) {
       if (!visited.has(r.uuid)) {
@@ -81,10 +97,20 @@ async function getAncestorUserUuids(userUuid) {
   let depth = 0;
 
   while (cursor && depth < MAX_HIERARCHY_DEPTH) {
-    const [rows] = await promisePool.query(
-      'SELECT reports_to_uuid FROM users WHERE uuid = ? AND is_deleted = 0 LIMIT 1',
-      [cursor]
-    );
+    let rows;
+    try {
+      [rows] = await promisePool.query(
+        'SELECT reports_to_uuid FROM users WHERE uuid = ? AND is_deleted = 0 LIMIT 1',
+        [cursor]
+      );
+    } catch (err) {
+      if (err && err.code === 'ER_BAD_FIELD_ERROR') {
+        // Same defensive degrade as getDescendantUserUuids — if the column is
+        // missing, just stop walking and return what we have.
+        return ancestors;
+      }
+      throw err;
+    }
     const next = rows[0] && rows[0].reports_to_uuid ? rows[0].reports_to_uuid : null;
     if (!next || visited.has(next)) break;
     visited.add(next);
