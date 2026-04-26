@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Submission received: {{assignmentTitle}}</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333; max-width: 640px; margin: 0 auto; padding: 20px; background: #f6f8fa; }
+    .card { background: #ffffff; padding: 28px 32px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .header { color: #27ae60; border-bottom: 1px solid #eee; padding-bottom: 12px; margin-bottom: 18px; }
+    .header h2 { margin: 0; }
+    .meta { background: #eafaf1; padding: 16px 18px; border-left: 4px solid #27ae60; border-radius: 4px; margin: 18px 0; font-size: 14px; }
+    .meta div { margin: 4px 0; }
+    .meta strong { color: #111; }
+    .button { background: #3498db; color: #ffffff !important; padding: 12px 22px; text-decoration: none; border-radius: 4px; display: inline-block; margin: 18px 0; font-weight: 600; }
+    .footer { margin-top: 24px; font-size: 12px; color: #777; border-top: 1px solid #eee; padding-top: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h2>Submission received</h2>
+    </div>
+
+    <p>Hi {{firstName}},</p>
+    <p>Thanks — we've received your submission for <strong>{{assignmentTitle}}</strong>.</p>
+
+    <div class="meta">
+      <div><strong>Submitted at:</strong> {{submittedAt}}</div>
+      {{#if fileName}}<div><strong>File:</strong> {{fileName}}</div>{{/if}}
+      {{#if assessmentScore}}<div><strong>Score:</strong> {{assessmentScore}}</div>{{/if}}
+      <div><strong>Status:</strong> Submitted</div>
+    </div>
+
+    {{#if allowResubmission}}
+    <p>You can update your submission until the deadline of {{endDate}}.</p>
+    {{else}}
+    <p>Your submission is final and cannot be changed.</p>
+    {{/if}}
+
+    <p style="text-align:center;">
+      <a href="{{assignmentUrl}}" class="button">View Submission</a>
+    </p>
+
+    <div class="footer">
+      <p>&copy; {{year}} {{appName}}. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>

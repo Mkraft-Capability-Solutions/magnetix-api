@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { ROLE_LABELS, sendInvitationSafely } = require('../../utils/invitation_helper');
+const { ROLE_SUPER_ADMIN } = require('../../utils/org_scoping');
 
 /**
  * Admin User Management Service
@@ -38,9 +39,11 @@ const logAdminAction = async (logData) => {
 };
 
 /**
- * Get all users with pagination and filtering
+ * Get all users with pagination and filtering. Org-scoped: org admins see
+ * only users who share at least one organization with them. Super-admins
+ * see everything.
  */
-const getAllUsers = async (filters = {}) => {
+const getAllUsers = async (filters = {}, callerUuid = null, roleId = ROLE_SUPER_ADMIN) => {
   try {
     const { search, status, department, role, page = 1, limit = 10 } = filters;
     const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -48,6 +51,18 @@ const getAllUsers = async (filters = {}) => {
     // Build WHERE clauses
     let whereConditions = ['u.is_deleted = 0'];
     let queryParams = [];
+
+    // Org-scoping for non-super-admins. Filter to users in the caller's orgs.
+    if (roleId !== ROLE_SUPER_ADMIN && callerUuid) {
+      whereConditions.push(`u.uuid IN (
+        SELECT uo.user_id
+          FROM user_organizations uo
+         WHERE uo.organization_id IN (
+           SELECT organization_id FROM user_organizations WHERE user_id = ?
+         )
+      )`);
+      queryParams.push(callerUuid);
+    }
 
     // Search filter
     if (search && search !== '') {
@@ -178,21 +193,46 @@ const getAllUsers = async (filters = {}) => {
 };
 
 /**
- * Get user statistics
+ * Get user statistics. Org-scoped: org admins see counts for users in
+ * their own orgs only. Super-admins see system-wide counts.
  */
-const getUserStats = async () => {
+const getUserStats = async (callerUuid = null, roleId = ROLE_SUPER_ADMIN) => {
   try {
-    const statsQuery = `
-      SELECT
-        (SELECT COUNT(*) FROM users WHERE is_deleted = 0) as totalUsers,
-        (SELECT COUNT(*) FROM users WHERE is_deleted = 0 AND status = 'active') as activeUsers,
-        (SELECT COUNT(*) FROM users WHERE is_deleted = 0 AND status != 'active') as inactiveUsers,
-        (SELECT COUNT(*) FROM users WHERE is_deleted = 0 AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as newThisMonth
+    if (roleId === ROLE_SUPER_ADMIN || !callerUuid) {
+      const [rows] = await pool.query(
+        `SELECT
+            (SELECT COUNT(*) FROM users WHERE is_deleted = 0) AS totalUsers,
+            (SELECT COUNT(*) FROM users WHERE is_deleted = 0 AND status = 'active') AS activeUsers,
+            (SELECT COUNT(*) FROM users WHERE is_deleted = 0 AND status != 'active') AS inactiveUsers,
+            (SELECT COUNT(*) FROM users WHERE is_deleted = 0 AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) AS newThisMonth`
+      );
+      const stats = rows[0] || {};
+      return {
+        totalUsers: stats.totalUsers || 0,
+        activeUsers: stats.activeUsers || 0,
+        inactiveUsers: stats.inactiveUsers || 0,
+        newThisMonth: stats.newThisMonth || 0
+      };
+    }
+
+    // Org-scoped — restrict to users sharing at least one org with the caller.
+    const orgFilterSql = `
+      AND u.uuid IN (
+        SELECT uo.user_id FROM user_organizations uo
+         WHERE uo.organization_id IN (
+           SELECT organization_id FROM user_organizations WHERE user_id = ?
+         )
+      )
     `;
-
-    const [rows] = await pool.query(statsQuery);
+    const [rows] = await pool.query(
+      `SELECT
+          (SELECT COUNT(*) FROM users u WHERE u.is_deleted = 0 ${orgFilterSql}) AS totalUsers,
+          (SELECT COUNT(*) FROM users u WHERE u.is_deleted = 0 AND u.status = 'active' ${orgFilterSql}) AS activeUsers,
+          (SELECT COUNT(*) FROM users u WHERE u.is_deleted = 0 AND u.status != 'active' ${orgFilterSql}) AS inactiveUsers,
+          (SELECT COUNT(*) FROM users u WHERE u.is_deleted = 0 AND u.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) ${orgFilterSql}) AS newThisMonth`,
+      [callerUuid, callerUuid, callerUuid, callerUuid]
+    );
     const stats = rows[0] || {};
-
     return {
       totalUsers: stats.totalUsers || 0,
       activeUsers: stats.activeUsers || 0,

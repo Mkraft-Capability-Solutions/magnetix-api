@@ -7,14 +7,18 @@ const getAllUsers = async (req, res) => {
   try {
     const { search, status, department, role, page = 1, limit = 10 } = req.query;
 
-    const result = await userManagementService.getAllUsers({
-      search,
-      status,
-      department,
-      role,
-      page: parseInt(page),
-      limit: parseInt(limit)
-    });
+    const result = await userManagementService.getAllUsers(
+      {
+        search,
+        status,
+        department,
+        role,
+        page: parseInt(page),
+        limit: parseInt(limit)
+      },
+      req.user.uuid,
+      req.user.role_id
+    );
 
     res.json({
       success: true,
@@ -23,9 +27,9 @@ const getAllUsers = async (req, res) => {
     });
   } catch (error) {
     console.error('UserManagementController - getAllUsers error:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to fetch users',
+      message: error.message || 'Failed to fetch users',
       error: error.message
     });
   }
@@ -36,7 +40,7 @@ const getAllUsers = async (req, res) => {
  */
 const getUserStats = async (req, res) => {
   try {
-    const stats = await userManagementService.getUserStats();
+    const stats = await userManagementService.getUserStats(req.user.uuid, req.user.role_id);
 
     res.json({
       success: true,
@@ -44,9 +48,9 @@ const getUserStats = async (req, res) => {
     });
   } catch (error) {
     console.error('UserManagementController - getUserStats error:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to fetch user statistics',
+      message: error.message || 'Failed to fetch user statistics',
       error: error.message
     });
   }

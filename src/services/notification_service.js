@@ -516,7 +516,8 @@ class NotificationService {
       'announcement': 'bell',
       'instructor': 'users',
       'event': 'calendar',
-      'course': 'book'
+      'course': 'book',
+      'assignment': 'clipboard'
     };
     return iconMap[type] || 'bell';
   }

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Missed submissions: {{assignmentTitle}}</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333; max-width: 720px; margin: 0 auto; padding: 20px; background: #f6f8fa; }
+    .card { background: #ffffff; padding: 28px 32px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .header { color: #c0392b; border-bottom: 1px solid #eee; padding-bottom: 12px; margin-bottom: 18px; }
+    .header h2 { margin: 0; }
+    .meta { background: #fdecea; padding: 16px 18px; border-left: 4px solid #c0392b; border-radius: 4px; margin: 18px 0; font-size: 14px; }
+    .meta div { margin: 4px 0; }
+    .meta strong { color: #111; }
+    table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 14px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; }
+    th { background: #f1f5f9; color: #111; font-weight: 600; }
+    .button { background: #3498db; color: #ffffff !important; padding: 12px 22px; text-decoration: none; border-radius: 4px; display: inline-block; margin: 18px 0; font-weight: 600; }
+    .footer { margin-top: 24px; font-size: 12px; color: #777; border-top: 1px solid #eee; padding-top: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h2>Escalation: missed submissions</h2>
+    </div>
+
+    <p>Hi {{recipientName}},</p>
+    <p>The following learner(s) did not submit assignment <strong>{{assignmentTitle}}</strong> by the deadline.</p>
+
+    <div class="meta">
+      <div><strong>Assignment:</strong> {{assignmentTitle}}</div>
+      <div><strong>Due by:</strong> {{endDate}}</div>
+      <div><strong>Missed count:</strong> {{missedCount}}</div>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Email</th></tr>
+      </thead>
+      <tbody>
+        {{#each missedUsers}}
+        <tr><td>{{this.name}}</td><td>{{this.email}}</td></tr>
+        {{/each}}
+      </tbody>
+    </table>
+
+    <p style="text-align:center;">
+      <a href="{{assignmentUrl}}" class="button">Review in Dashboard</a>
+    </p>
+
+    <div class="footer">
+      <p>&copy; {{year}} {{appName}}. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>

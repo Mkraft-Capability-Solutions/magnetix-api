@@ -257,6 +257,30 @@ exports.getTaskById = async (req, res) => {
  * Get organizations that the admin belongs to
  * GET /api/admin/dashboard/organizations
  */
+/**
+ * GET /api/admin/dashboard/org-overview
+ * Comprehensive org-centered metrics. Auto-scopes to caller's orgs unless
+ * a `?organizationId=` is provided (and only if the caller is a member).
+ */
+exports.getOrgOverview = async (req, res) => {
+  try {
+    const callerUuid = req.user?.uuid;
+    const roleId = req.user?.role_id;
+    if (!callerUuid) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+    const focusOrgId = req.query.organizationId ? parseInt(req.query.organizationId, 10) : null;
+    const data = await dashboardService.getOrgOverview(callerUuid, roleId, focusOrgId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Dashboard Controller - getOrgOverview error:', error);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to load org overview'
+    });
+  }
+};
+
 exports.getAdminOrganizations = async (req, res) => {
   try {
     // Auth middleware stores user ID as 'uuid', not 'userId'

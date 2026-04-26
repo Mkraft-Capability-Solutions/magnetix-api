@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>You're now managing {{teamName}}</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333; max-width: 640px; margin: 0 auto; padding: 20px; background: #f6f8fa; }
+    .card { background: #ffffff; padding: 28px 32px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .header { color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 12px; margin-bottom: 18px; }
+    .header h2 { margin: 0; }
+    .meta { background: #f1f5f9; padding: 16px 18px; border-left: 4px solid #3498db; border-radius: 4px; margin: 18px 0; font-size: 14px; }
+    .meta div { margin: 4px 0; }
+    .meta strong { color: #111; }
+    .steps { padding-left: 22px; }
+    .steps li { margin-bottom: 8px; }
+    .button { background: #3498db; color: #ffffff !important; padding: 12px 22px; text-decoration: none; border-radius: 4px; display: inline-block; margin: 18px 0; font-weight: 600; }
+    .footer { margin-top: 24px; font-size: 12px; color: #777; border-top: 1px solid #eee; padding-top: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h2>You're now managing {{teamName}}</h2>
+    </div>
+
+    <p>Hi {{managerName}},</p>
+    <p>You have been assigned as the manager of <strong>{{teamName}}</strong> on {{appName}}. As a manager, you can view your team's data, create assignments for them, and review their submissions.</p>
+
+    <div class="meta">
+      <div><strong>Team:</strong> {{teamName}}</div>
+      {{#if memberCount}}<div><strong>Members:</strong> {{memberCount}}</div>{{/if}}
+      {{#if organizationName}}<div><strong>Organization:</strong> {{organizationName}}</div>{{/if}}
+    </div>
+
+    <p><strong>What you can do:</strong></p>
+    <ol class="steps">
+      <li>View team members and their progress.</li>
+      <li>Create assignments for your team (document or assessment-based).</li>
+      <li>Review and provide feedback on submissions.</li>
+      <li>Receive escalation alerts when team members miss deadlines.</li>
+    </ol>
+
+    <p style="text-align:center;">
+      <a href="{{managerUrl}}" class="button">Open Manager Dashboard</a>
+    </p>
+
+    <p>If you have any questions, contact us at <a href="mailto:{{supportEmail}}">{{supportEmail}}</a>.</p>
+
+    <div class="footer">
+      <p>&copy; {{year}} {{appName}}. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>

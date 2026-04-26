@@ -69,6 +69,15 @@ router.get('/learning-progress', dashboardController.getLearningProgress);
 router.get('/organizations', dashboardController.getAdminOrganizations);
 
 /**
+ * GET /api/admin/dashboard/org-overview
+ * Comprehensive org-centered metrics for the admin dashboard.
+ * Org-scoped automatically via req.user. Optional ?organizationId= query
+ * lets a multi-org admin pick which org to focus on (defaults to all of
+ * the admin's orgs).
+ */
+router.get('/org-overview', dashboardController.getOrgOverview);
+
+/**
  * GET /api/admin/dashboard/organization/:organizationId/stats
  * Get organization-specific dashboard statistics
  */

@@ -11,16 +11,16 @@ const teamService = require('../../services/admin/team_service');
  */
 exports.getAllTeams = async (req, res) => {
   try {
-    const data = await teamService.getAllTeams();
+    const data = await teamService.getAllTeams(req.user.uuid, req.user.role_id);
     res.json({
       success: true,
       data
     });
   } catch (error) {
     console.error('Team Controller - getAllTeams error:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to fetch teams',
+      message: error.message || 'Failed to fetch teams',
       error: error.message
     });
   }
@@ -33,7 +33,7 @@ exports.getAllTeams = async (req, res) => {
 exports.getTeamById = async (req, res) => {
   try {
     const { id } = req.params;
-    const data = await teamService.getTeamById(id);
+    const data = await teamService.getTeamById(id, req.user.uuid, req.user.role_id);
 
     if (!data.team) {
       return res.status(404).json({
@@ -48,9 +48,9 @@ exports.getTeamById = async (req, res) => {
     });
   } catch (error) {
     console.error('Team Controller - getTeamById error:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to fetch team',
+      message: error.message || 'Failed to fetch team',
       error: error.message
     });
   }
@@ -62,8 +62,9 @@ exports.getTeamById = async (req, res) => {
  */
 exports.createTeam = async (req, res) => {
   try {
-    const { name, description } = req.body;
+    const { name, description, organizationId, managerId } = req.body;
     const createdBy = req.user.uuid;
+    const roleId = req.user.role_id;
 
     if (!name) {
       return res.status(400).json({
@@ -72,7 +73,14 @@ exports.createTeam = async (req, res) => {
       });
     }
 
-    const result = await teamService.createTeam(name, description, createdBy);
+    const result = await teamService.createTeam(
+      name,
+      description,
+      createdBy,
+      organizationId || null,
+      managerId || null,
+      roleId
+    );
 
     res.status(201).json({
       success: true,
@@ -81,9 +89,9 @@ exports.createTeam = async (req, res) => {
     });
   } catch (error) {
     console.error('Team Controller - createTeam error:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to create team',
+      message: error.message || 'Failed to create team',
       error: error.message
     });
   }
@@ -96,7 +104,7 @@ exports.createTeam = async (req, res) => {
 exports.updateTeam = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description } = req.body;
+    const { name, description, organizationId, managerId } = req.body;
 
     if (!name) {
       return res.status(400).json({
@@ -105,7 +113,15 @@ exports.updateTeam = async (req, res) => {
       });
     }
 
-    const result = await teamService.updateTeam(id, name, description);
+    const result = await teamService.updateTeam(
+      id,
+      name,
+      description,
+      organizationId === undefined ? null : organizationId,
+      managerId === undefined ? null : managerId,
+      req.user.uuid,
+      req.user.role_id
+    );
 
     if (result.affectedRows === 0) {
       return res.status(404).json({
@@ -120,9 +136,53 @@ exports.updateTeam = async (req, res) => {
     });
   } catch (error) {
     console.error('Team Controller - updateTeam error:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to update team',
+      message: error.message || 'Failed to update team',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Set or change a team's manager
+ * PATCH /api/admin/teams/:id/manager
+ */
+exports.setTeamManager = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { managerId } = req.body;
+
+    if (managerId !== null && (typeof managerId !== 'string' || managerId.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        message: 'managerId must be a user UUID or null to clear'
+      });
+    }
+
+    const result = await teamService.setTeamManager(
+      id,
+      managerId || null,
+      req.user.uuid,
+      req.user.role_id
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: result.message || 'Team not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: managerId ? 'Team manager assigned' : 'Team manager cleared'
+    });
+  } catch (error) {
+    console.error('Team Controller - setTeamManager error:', error);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to set team manager',
       error: error.message
     });
   }
@@ -135,7 +195,7 @@ exports.updateTeam = async (req, res) => {
 exports.deleteTeam = async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await teamService.deleteTeam(id);
+    const result = await teamService.deleteTeam(id, req.user.uuid, req.user.role_id);
 
     if (result.affectedRows === 0) {
       return res.status(404).json({
@@ -150,9 +210,9 @@ exports.deleteTeam = async (req, res) => {
     });
   } catch (error) {
     console.error('Team Controller - deleteTeam error:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to delete team',
+      message: error.message || 'Failed to delete team',
       error: error.message
     });
   }
@@ -164,16 +224,16 @@ exports.deleteTeam = async (req, res) => {
  */
 exports.getTeamStats = async (req, res) => {
   try {
-    const data = await teamService.getTeamStats();
+    const data = await teamService.getTeamStats(req.user.uuid, req.user.role_id);
     res.json({
       success: true,
       data
     });
   } catch (error) {
     console.error('Team Controller - getTeamStats error:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to fetch team stats',
+      message: error.message || 'Failed to fetch team stats',
       error: error.message
     });
   }
@@ -186,16 +246,20 @@ exports.getTeamStats = async (req, res) => {
 exports.getTeamMembers = async (req, res) => {
   try {
     const { teamId } = req.query;
-    const data = await teamService.getTeamMembers(teamId || null);
+    const data = await teamService.getTeamMembers(
+      teamId || null,
+      req.user.uuid,
+      req.user.role_id
+    );
     res.json({
       success: true,
       data
     });
   } catch (error) {
     console.error('Team Controller - getTeamMembers error:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to fetch team members',
+      message: error.message || 'Failed to fetch team members',
       error: error.message
     });
   }
@@ -211,7 +275,9 @@ exports.getLearningHistory = async (req, res) => {
     const data = await teamService.getLearningHistory(
       teamId || null,
       userId || null,
-      status || null
+      status || null,
+      req.user.uuid,
+      req.user.role_id
     );
     res.json({
       success: true,
@@ -219,9 +285,9 @@ exports.getLearningHistory = async (req, res) => {
     });
   } catch (error) {
     console.error('Team Controller - getLearningHistory error:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to fetch learning history',
+      message: error.message || 'Failed to fetch learning history',
       error: error.message
     });
   }
@@ -233,16 +299,16 @@ exports.getLearningHistory = async (req, res) => {
  */
 exports.getAvailableUsers = async (req, res) => {
   try {
-    const data = await teamService.getAvailableUsers();
+    const data = await teamService.getAvailableUsers(req.user.uuid, req.user.role_id);
     res.json({
       success: true,
       data
     });
   } catch (error) {
     console.error('Team Controller - getAvailableUsers error:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to fetch available users',
+      message: error.message || 'Failed to fetch available users',
       error: error.message
     });
   }

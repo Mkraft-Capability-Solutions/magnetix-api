@@ -7,7 +7,11 @@
       "Bash(grep -r migrations /Volumes/Project/Mkraft/magnetix-api/src/config/*.js)",
       "Bash(ls -la /Volumes/Project/Mkraft/magnetix-api/src/sql/*.sql)",
       "Bash(find:*)",
-      "Bash(grep -n \"createStudent\\\\|createInstructor\\\\|student_controller\\\\|instructor_controller\" src/routes/admin/*.js src/app.js)"
+      "Bash(grep -n \"createStudent\\\\|createInstructor\\\\|student_controller\\\\|instructor_controller\" src/routes/admin/*.js src/app.js)",
+      "Bash(xargs grep *)",
+      "Bash(xargs wc *)",
+      "Bash(grep -l \"CREATE TABLE.*users\\\\b\\\\|CREATE TABLE.*\\\\`users\\\\`\" migrations/)",
+      "Bash(grep -rln \"CREATE TABLE.*\\\\`users\\\\`\\\\|CREATE TABLE users\\\\|CREATE TABLE IF NOT EXISTS users\\\\|CREATE TABLE IF NOT EXISTS \\\\`users\\\\`\" --include=\"*.sql\" --include=\"*.js\")"
     ]
   }
 }
