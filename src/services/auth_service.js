@@ -168,13 +168,13 @@ class AuthService {
     }
 
     // Look up teams this user manages so the frontend can show the Manager UI.
+    // We include teams managed directly AND teams managed by anyone in their
+    // downline (via users.reports_to_uuid) — so a senior manager sees their
+    // junior managers' teams too.
     let managedTeamIds = [];
     try {
-      const [mgrRows] = await promisePool.query(
-        'SELECT id FROM teams WHERE manager_id = ? AND is_deleted = 0',
-        [user.uuid]
-      );
-      managedTeamIds = mgrRows.map(r => r.id);
+      const { getManagedTeamIdsForUser } = require('../utils/manager_hierarchy');
+      managedTeamIds = await getManagedTeamIdsForUser(user.uuid);
     } catch (mgrErr) {
       console.error('Failed to load managedTeamIds:', mgrErr);
     }

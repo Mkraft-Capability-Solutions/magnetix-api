@@ -111,6 +111,24 @@ const EXPECTED_TABLES = [
   }
 ];
 
+/**
+ * Columns we add via ALTER TABLE on existing tables. Each entry is idempotent —
+ * the runner checks information_schema first and only ALTERs when missing.
+ *
+ * Why: many tables in this DB predate the app and live in MySQL with assorted
+ * legacy charsets/engines. A full CREATE TABLE re-run isn't safe. But we can
+ * still safely ADD COLUMN IF MISSING for new feature columns.
+ */
+const EXPECTED_COLUMNS = [
+  {
+    table: 'users',
+    column: 'reports_to_uuid',
+    addSql: `ALTER TABLE \`users\`
+              ADD COLUMN \`reports_to_uuid\` VARCHAR(36) NULL,
+              ADD INDEX \`idx_users_reports_to\` (\`reports_to_uuid\`)`
+  }
+];
+
 async function tableExists(name) {
   const [rows] = await promisePool.query(
     `SELECT COUNT(*) AS n
@@ -118,6 +136,18 @@ async function tableExists(name) {
       WHERE table_schema = DATABASE()
         AND table_name = ?`,
     [name]
+  );
+  return rows[0].n > 0;
+}
+
+async function columnExists(table, column) {
+  const [rows] = await promisePool.query(
+    `SELECT COUNT(*) AS n
+       FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = ?
+        AND column_name = ?`,
+    [table, column]
   );
   return rows[0].n > 0;
 }
@@ -153,6 +183,37 @@ async function ensureSchema() {
   console.log(
     `🔍 ensureSchema: ${alreadyOkCount} table(s) already present, ${createdCount} table(s) just created`
   );
+
+  // Column-level self-heal for evolutions on existing tables.
+  let columnsAdded = 0;
+  let columnsAlreadyOk = 0;
+  for (const { table, column, addSql } of EXPECTED_COLUMNS) {
+    const tblOk = await tableExists(table);
+    if (!tblOk) {
+      // Parent table missing — skip; nothing we can ALTER here.
+      continue;
+    }
+    const colOk = await columnExists(table, column);
+    if (colOk) {
+      columnsAlreadyOk++;
+      continue;
+    }
+    console.log(`  ⚠ Missing column \`${table}.${column}\` — adding now...`);
+    try {
+      await promisePool.query(addSql);
+      columnsAdded++;
+      console.log(`  ✅ Added \`${table}.${column}\``);
+    } catch (err) {
+      // Don't throw — a missing column is a feature degradation, not a fatal
+      // boot failure. Log and continue so the rest of the app comes up.
+      console.error(`  ❌ Failed to add \`${table}.${column}\`:`, err.message);
+    }
+  }
+  if (EXPECTED_COLUMNS.length > 0) {
+    console.log(
+      `🔍 ensureSchema: ${columnsAlreadyOk} column(s) already present, ${columnsAdded} column(s) just added`
+    );
+  }
 }
 
-module.exports = { ensureSchema, EXPECTED_TABLES };
+module.exports = { ensureSchema, EXPECTED_TABLES, EXPECTED_COLUMNS };

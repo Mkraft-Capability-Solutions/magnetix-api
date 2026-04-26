@@ -134,7 +134,9 @@ const getAllUsers = async (filters = {}, callerUuid = null, roleId = ROLE_SUPER_
         profile.dp as avatar,
         profile.contact as phone,
         profile.city as location,
-        sci.manager_name as manager
+        sci.manager_name as manager,
+        u.reports_to_uuid as reportsToId,
+        rprofile.full_name as reportsToName
       FROM users u
       LEFT JOIN (
         SELECT user_id, first_name, last_name, dp, contact, city FROM students
@@ -170,6 +172,13 @@ const getAllUsers = async (filters = {}, callerUuid = null, roleId = ROLE_SUPER_
         ) progress ON e.id = progress.enroll_id
         GROUP BY e.user_id
       ) completed_courses ON u.uuid = completed_courses.user_id
+      LEFT JOIN (
+        SELECT user_id, CONCAT(first_name, ' ', last_name) AS full_name FROM students
+        UNION ALL
+        SELECT user_id, CONCAT(first_name, ' ', last_name) AS full_name FROM instructors
+        UNION ALL
+        SELECT user_id, CONCAT(first_name, ' ', last_name) AS full_name FROM admins
+      ) rprofile ON u.reports_to_uuid = rprofile.user_id
       WHERE ${whereClause}
       ORDER BY u.created_at DESC
       LIMIT ? OFFSET ?
@@ -404,7 +413,11 @@ const createUser = async (userData) => {
               [orgId]
             );
 
-            if (orgCheck.length > 0 && orgCheck[0].is_active === 1) {
+            if (orgCheck.length > 0) {
+              // Allow assignment regardless of is_active — admins occasionally
+              // add users to a not-yet-activated org. The previous strict
+              // `is_active === 1` check could also fail when the driver returns
+              // the column as a non-strict-1 type, silently dropping the assignment.
               // Check if already assigned (to avoid duplicate key errors)
               const [existing] = await pool.query(
                 'SELECT id FROM user_organizations WHERE user_id = ? AND organization_id = ?',
@@ -420,7 +433,7 @@ const createUser = async (userData) => {
               }
               assignedOrgNames.push(orgCheck[0].name);
             } else {
-              console.warn(`Organization ${orgId} not found or inactive`);
+              console.warn(`Organization ${orgId} not found`);
             }
           }
         }
@@ -1191,6 +1204,75 @@ const getAdminLogs = async (userId, page = 1, limit = 10) => {
   }
 };
 
+/**
+ * Set or clear the reports-to (direct manager) for a user.
+ * Cycle prevention: the new manager cannot be the user themselves, nor can
+ * they be anywhere downstream of the user (which would create a loop).
+ * Org-scoping: org-admins can only do this for users in their own orgs and
+ * the new manager must share at least one org with the user.
+ */
+const setReportsTo = async (userId, reportsToUuid, callerUuid, roleId) => {
+  if (!userId) throw new Error('userId is required');
+
+  // Self-loop check
+  if (reportsToUuid && reportsToUuid === userId) {
+    const e = new Error('A user cannot report to themselves');
+    e.statusCode = 400;
+    throw e;
+  }
+
+  // Org-scope: org-admin must share an org with both user and new manager
+  if (roleId !== ROLE_SUPER_ADMIN && callerUuid) {
+    const [shareUserRows] = await pool.query(
+      `SELECT 1 FROM user_organizations
+        WHERE user_id = ?
+          AND organization_id IN (
+            SELECT organization_id FROM user_organizations WHERE user_id = ?
+          )
+        LIMIT 1`,
+      [userId, callerUuid]
+    );
+    if (shareUserRows.length === 0) {
+      const e = new Error('User is not in any of your organizations');
+      e.statusCode = 403;
+      throw e;
+    }
+    if (reportsToUuid) {
+      const [shareMgrRows] = await pool.query(
+        `SELECT 1 FROM user_organizations
+          WHERE user_id = ?
+            AND organization_id IN (
+              SELECT organization_id FROM user_organizations WHERE user_id = ?
+            )
+          LIMIT 1`,
+        [reportsToUuid, callerUuid]
+      );
+      if (shareMgrRows.length === 0) {
+        const e = new Error('New manager is not in any of your organizations');
+        e.statusCode = 403;
+        throw e;
+      }
+    }
+  }
+
+  // Cycle check: the proposed manager must not already be a descendant of `userId`.
+  if (reportsToUuid) {
+    const { getDescendantUserUuids } = require('../../utils/manager_hierarchy');
+    const descendants = await getDescendantUserUuids(userId);
+    if (descendants.includes(reportsToUuid)) {
+      const e = new Error('Cannot set reports-to: the chosen user reports to this user (would create a cycle)');
+      e.statusCode = 400;
+      throw e;
+    }
+  }
+
+  await pool.query(
+    'UPDATE users SET reports_to_uuid = ? WHERE uuid = ? AND is_deleted = 0',
+    [reportsToUuid || null, userId]
+  );
+  return { affectedRows: 1 };
+};
+
 module.exports = {
   getAllUsers,
   getUserStats,
@@ -1209,5 +1291,6 @@ module.exports = {
   getDeactivationLog,
   getDepartments,
   bulkImportUsers,
-  getAdminLogs
+  getAdminLogs,
+  setReportsTo
 };

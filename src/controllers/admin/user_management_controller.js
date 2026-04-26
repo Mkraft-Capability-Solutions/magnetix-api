@@ -602,6 +602,30 @@ const bulkImportUsers = async (req, res) => {
   }
 };
 
+/**
+ * Set or clear the reports-to (direct manager) for a user.
+ * Body: { reportsToId: string|null }
+ */
+const changeReportsTo = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reportsToId } = req.body || {};
+    const result = await userManagementService.setReportsTo(
+      id,
+      reportsToId || null,
+      req.user.uuid,
+      req.user.role_id
+    );
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('UserManagementController - changeReportsTo error:', error);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to update reports-to'
+    });
+  }
+};
+
 module.exports = {
   getAllUsers,
   getUserStats,
@@ -620,5 +644,6 @@ module.exports = {
   getDeactivationLog,
   getDepartments,
   getAdminLogs,
-  bulkImportUsers
+  bulkImportUsers,
+  changeReportsTo
 };

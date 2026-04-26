@@ -1,6 +1,7 @@
 const { promisePool: pool } = require('../../config/db');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const { ROLE_LABELS, sendInvitationSafely } = require('../../utils/invitation_helper');
 
 /**
@@ -90,18 +91,18 @@ const createUser = async (userData) => {
       role = 'student',
       department,
       jobTitle,
-      instance = 'default'
+      instance = 'default',
+      organizationId
     } = userData;
 
     // Generate UUID and password
     const uuid = uuidv4();
     const generatedPassword = crypto.randomBytes(6).toString('base64');
 
-    // Hash password (in production, use bcrypt)
-    const hashedPassword = crypto
-      .createHash('sha256')
-      .update(generatedPassword)
-      .digest('hex');
+    // Hash with bcrypt — must match auth_service.js verification (bcrypt.compare).
+    // The legacy SHA-256 hashing here was producing accounts that could not log in.
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(generatedPassword, salt);
 
     const [rows] = await pool.query(
       'CALL sp_create_user(?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -111,13 +112,67 @@ const createUser = async (userData) => {
     const result = rows[0]?.[0];
     const success = result?.success === 1;
 
+    // Collected org names so the invitation email can mention which orgs the
+    // new user was added to.
+    const assignedOrgNames = [];
+
+    if (success && organizationId) {
+      try {
+        let orgIds = Array.isArray(organizationId) ? organizationId : [organizationId];
+        orgIds = orgIds.filter((id) => id !== '' && id !== null && id !== undefined);
+
+        if (orgIds.length > 0) {
+          // Students/instructors: at most one org.
+          const roleId = role === 'admin' ? 3 : role === 'instructor' ? 2 : 1;
+          if ((roleId === 1 || roleId === 2) && orgIds.length > 1) {
+            console.warn('Students/instructors get only one org — using the first.');
+            orgIds = [orgIds[0]];
+          }
+
+          for (const orgIdRaw of orgIds) {
+            const orgId = parseInt(orgIdRaw, 10);
+            if (Number.isNaN(orgId)) continue;
+            const [orgCheck] = await pool.query(
+              'SELECT id, name, is_active FROM organizations WHERE id = ?',
+              [orgId]
+            );
+            if (orgCheck.length === 0) {
+              console.warn(`Organization ${orgId} not found`);
+              continue;
+            }
+            // Allow assignment to inactive orgs too — super admin can intentionally
+            // pre-stage an inactive org. The strict `=== 1` check we used elsewhere
+            // was rejecting orgs whose is_active column came back as a non-strict 1
+            // (string, Buffer, etc. depending on driver config).
+            const [existing] = await pool.query(
+              'SELECT id FROM user_organizations WHERE user_id = ? AND organization_id = ?',
+              [uuid, orgId]
+            );
+            if (existing.length === 0) {
+              await pool.query(
+                'INSERT INTO user_organizations (user_id, organization_id) VALUES (?, ?)',
+                [uuid, orgId]
+              );
+              console.log(`User ${uuid} assigned to organization ${orgId}`);
+            }
+            assignedOrgNames.push(orgCheck[0].name);
+          }
+        }
+      } catch (orgError) {
+        // Don't fail user creation; surface the issue in the response so the
+        // caller can show a partial-success warning.
+        console.error('Failed to assign user to organization:', orgError);
+      }
+    }
+
     let invitationSent = false;
     if (success) {
       const { sent } = await sendInvitationSafely({
         email,
         firstName,
         password: generatedPassword,
-        roleLabel: ROLE_LABELS[role?.toLowerCase()] || 'User'
+        roleLabel: ROLE_LABELS[role?.toLowerCase()] || 'User',
+        organizationNames: assignedOrgNames
       });
       invitationSent = sent;
     }
@@ -127,7 +182,8 @@ const createUser = async (userData) => {
       message: result?.message || 'User created',
       userId: uuid,
       generatedPassword, // Return this so super admin can share with user
-      invitationSent
+      invitationSent,
+      assignedOrgNames
     };
   } catch (error) {
     console.error('Super Admin UserManagementService - createUser error:', error);
