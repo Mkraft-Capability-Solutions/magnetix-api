@@ -67,6 +67,21 @@ const _assertCallerCanAccessTeam = async (callerUuid, roleId, teamId) => {
 
   if (roleId === ROLE_SUPER_ADMIN) return team;
 
+  // Team managers — including transitively via the reports_to hierarchy —
+  // can access their own team's data even if they aren't admins of the org.
+  // (A learner-as-manager won't be in user_organizations of the org's admin
+  // membership, but they still need to read their team's members/history.)
+  if (callerUuid) {
+    if (team.manager_id === callerUuid) return team;
+    try {
+      const { canUserViewTeamViaHierarchy } = require('../../utils/manager_hierarchy');
+      const ok = await canUserViewTeamViaHierarchy(callerUuid, team.id);
+      if (ok) return team;
+    } catch (_) {
+      // fall through to the org check
+    }
+  }
+
   if (team.organization_id == null) {
     if (team.created_by !== callerUuid) {
       throw _httpError(403, 'This team is not assigned to any organization. Only its creator or a super-admin can modify it.');
@@ -394,11 +409,19 @@ const _orgScopeFragment = (callerUuid, roleId, tableAlias = 't') => {
   if (roleId === ROLE_SUPER_ADMIN) {
     return { sql: '', params: [] };
   }
+  // Two ways a non-super-admin caller can see a team:
+  //   1. They share an org with it via user_organizations, OR
+  //   2. They are the team's manager directly (team.manager_id = caller's uuid).
+  // The second branch is critical for a learner-as-manager who isn't in
+  // user_organizations of the team's org (e.g. cross-org assignment).
   return {
-    sql: ` AND ${tableAlias}.organization_id IN (
-             SELECT organization_id FROM user_organizations WHERE user_id = ?
+    sql: ` AND (
+             ${tableAlias}.organization_id IN (
+               SELECT organization_id FROM user_organizations WHERE user_id = ?
+             )
+             OR ${tableAlias}.manager_id = ?
            )`,
-    params: [callerUuid]
+    params: [callerUuid, callerUuid]
   };
 };
 
