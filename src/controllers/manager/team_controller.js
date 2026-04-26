@@ -23,8 +23,11 @@ exports.getTeamMembers = async (req, res) => {
     if (Number.isNaN(teamId)) {
       return res.status(400).json({ success: false, message: 'Invalid teamId' });
     }
-    // Reuse the existing team-members procedure (manager middleware already validated ownership)
-    const members = await adminTeamService.getTeamMembers(teamId);
+    // requireManagerOfTeam middleware already authorized this caller, but the
+    // admin service re-runs its own access check. Pass caller identity through
+    // so the assert can recognize them as the team's manager (not just as an
+    // org member).
+    const members = await adminTeamService.getTeamMembers(teamId, req.user.uuid, req.user.role_id);
     res.json({ success: true, data: members });
   } catch (error) {
     sendError(res, error);
@@ -38,7 +41,13 @@ exports.getTeamLearningHistory = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid teamId' });
     }
     const { userId, status } = req.query;
-    const data = await adminTeamService.getLearningHistory(teamId, userId || null, status || null);
+    const data = await adminTeamService.getLearningHistory(
+      teamId,
+      userId || null,
+      status || null,
+      req.user.uuid,
+      req.user.role_id
+    );
     res.json({ success: true, data });
   } catch (error) {
     sendError(res, error);
