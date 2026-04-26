@@ -1,4 +1,5 @@
 const { promisePool } = require('../config/db');
+const { getManagedTeamIdsForUser, canUserViewTeamViaHierarchy } = require('../utils/manager_hierarchy');
 
 const ADMIN_ROLES = new Set([3, 4]);
 
@@ -10,11 +11,8 @@ exports.requireAnyManagerRole = async (req, res, next) => {
     if (ADMIN_ROLES.has(req.user.role_id)) {
       return next();
     }
-    const [rows] = await promisePool.query(
-      'SELECT 1 FROM teams WHERE manager_id = ? AND is_deleted = 0 LIMIT 1',
-      [req.user.uuid]
-    );
-    if (rows.length === 0) {
+    const teamIds = await getManagedTeamIdsForUser(req.user.uuid);
+    if (teamIds.length === 0) {
       return res.status(403).json({ message: 'Manager privileges required' });
     }
     next();
@@ -36,11 +34,8 @@ exports.requireManagerOfTeam = async (req, res, next) => {
     if (ADMIN_ROLES.has(req.user.role_id)) {
       return next();
     }
-    const [rows] = await promisePool.query(
-      'SELECT 1 FROM teams WHERE id = ? AND manager_id = ? AND is_deleted = 0 LIMIT 1',
-      [teamId, req.user.uuid]
-    );
-    if (rows.length === 0) {
+    const ok = await canUserViewTeamViaHierarchy(req.user.uuid, teamId);
+    if (!ok) {
       return res.status(403).json({ message: 'Not the manager of this team' });
     }
     next();
@@ -114,13 +109,11 @@ exports.requireAssignmentVisibility = async (req, res, next) => {
       }
     }
 
-    // Manager of the team this assignment targets
+    // Manager of the team this assignment targets — directly or via the
+    // reports_to hierarchy.
     if (assignment.team_id) {
-      const [mgrRows] = await promisePool.query(
-        'SELECT 1 FROM teams WHERE id = ? AND manager_id = ? AND is_deleted = 0 LIMIT 1',
-        [assignment.team_id, req.user.uuid]
-      );
-      if (mgrRows.length > 0) {
+      const ok = await canUserViewTeamViaHierarchy(req.user.uuid, assignment.team_id);
+      if (ok) {
         req.assignment = assignment;
         return next();
       }

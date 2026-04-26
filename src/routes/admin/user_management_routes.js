@@ -27,6 +27,7 @@ router.delete('/:id/enroll/:courseId', userManagementController.unenrollUserFrom
 router.put('/:id', userManagementController.updateUser);
 router.patch('/:id/status', userManagementController.changeUserStatus);
 router.patch('/:id/role', userManagementController.changeUserRole);
+router.patch('/:id/reports-to', userManagementController.changeReportsTo);
 router.post('/:id/reset-password', userManagementController.resetUserPassword);
 router.post('/:id/deactivate', userManagementController.deactivateUser);
 router.post('/:id/reactivate', userManagementController.reactivateUser);

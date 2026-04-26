@@ -1,17 +1,15 @@
 const { promisePool } = require('../../config/db');
 const adminAssignmentService = require('../admin/assignment_service');
+const { getManagedTeamIdsForUser } = require('../../utils/manager_hierarchy');
 
 /**
  * Manager-scoped wrappers around the admin assignment service.
- * Every list/query is restricted to teams the user manages.
+ * Every list/query is restricted to teams the user manages — directly or
+ * transitively via the reports_to chain.
  */
 
 async function getManagedTeamIds(userId) {
-  const [rows] = await promisePool.query(
-    'SELECT id FROM teams WHERE manager_id = ? AND is_deleted = 0',
-    [userId]
-  );
-  return rows.map(r => r.id);
+  return getManagedTeamIdsForUser(userId);
 }
 
 async function getManagedTeamMemberIds(userId, teamId = null) {
@@ -26,15 +24,19 @@ async function getManagedTeamMemberIds(userId, teamId = null) {
 }
 
 async function listManagedTeams(userId) {
+  const teamIds = await getManagedTeamIds(userId);
+  if (teamIds.length === 0) return [];
+  const placeholders = teamIds.map(() => '?').join(',');
   const [rows] = await promisePool.query(
     `SELECT t.id, t.name, t.description, t.organization_id, o.name AS organization_name,
+            t.manager_id,
             (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.id) AS member_count,
             (SELECT COUNT(*) FROM assignments a WHERE a.team_id = t.id AND a.is_deleted = 0) AS assignment_count
        FROM teams t
        LEFT JOIN organizations o ON o.id = t.organization_id
-       WHERE t.manager_id = ? AND t.is_deleted = 0
+       WHERE t.id IN (${placeholders}) AND t.is_deleted = 0
        ORDER BY t.name`,
-    [userId]
+    teamIds
   );
   return rows;
 }

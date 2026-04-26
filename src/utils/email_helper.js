@@ -123,13 +123,20 @@ Both options will expire in 1 hour.`;
     });
   }
 
-  async sendInvitationEmail(email, firstName, { password, roleLabel }) {
+  async sendInvitationEmail(email, firstName, { password, roleLabel, organizationNames = [] }) {
+    const orgs = Array.isArray(organizationNames) ? organizationNames.filter(Boolean) : [];
+    const orgList = orgs.join(', ');
+    const orgClause = orgs.length > 0 ? ` for ${orgList}` : '';
+
     const templateData = {
       appName: process.env.APP_NAME || 'Learning Management System',
       firstName: firstName || 'there',
       email,
       password,
       roleLabel: roleLabel || 'User',
+      organizationNames: orgs,
+      organizationList: orgList,
+      hasOrganizations: orgs.length > 0,
       loginUrl: `${process.env.FRONTEND_URL}/login`,
       supportEmail: process.env.SUPPORT_EMAIL || 'support@multiplierskraft.com',
       year: new Date().getFullYear()
@@ -138,17 +145,17 @@ Both options will expire in 1 hour.`;
     const html = this.templates['invitation']
       ? this.templates['invitation'](templateData)
       : `<p>Welcome to ${templateData.appName}, ${templateData.firstName}!</p>
-         <p>You've been added as a ${templateData.roleLabel}.</p>
+         <p>You've been added as a ${templateData.roleLabel}${orgClause}.</p>
          <p>Email: ${email}<br/>Temporary password: ${password}</p>
          <p>Log in at: ${templateData.loginUrl}</p>`;
 
     const text = `Welcome to ${templateData.appName}, ${templateData.firstName}!
 
-You've been added as a ${templateData.roleLabel}. Use the credentials below to sign in.
+You've been added as a ${templateData.roleLabel}${orgClause}. Use the credentials below to sign in.
 
 Email: ${email}
 Temporary password: ${password}
-
+${orgs.length > 0 ? `Organization${orgs.length > 1 ? 's' : ''}: ${orgList}\n` : ''}
 How to log in:
 1. Open ${templateData.loginUrl} in your browser.
 2. Enter the email and temporary password above.
@@ -161,7 +168,9 @@ Need help? Contact ${templateData.supportEmail}.`;
 
     return this.sendEmail({
       to: email,
-      subject: `You've been invited to ${templateData.appName}`,
+      subject: orgs.length > 0
+        ? `Welcome to ${orgList} on ${templateData.appName}`
+        : `You've been invited to ${templateData.appName}`,
       html,
       text,
       priority: 'high'
