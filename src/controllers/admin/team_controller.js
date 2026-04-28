@@ -294,12 +294,22 @@ exports.getLearningHistory = async (req, res) => {
 };
 
 /**
- * Get available users (not in any team)
- * GET /api/admin/teams/available-users
+ * Get available users for adding to a team.
+ * GET /api/admin/teams/available-users?excludeTeamId=:id
+ *
+ * When excludeTeamId is supplied, returns users NOT already on that specific
+ * team (so the same learner can be added to multiple teams). With no param,
+ * keeps the legacy "not on any team" behaviour for back-compat.
  */
 exports.getAvailableUsers = async (req, res) => {
   try {
-    const data = await teamService.getAvailableUsers(req.user.uuid, req.user.role_id);
+    const excludeTeamIdRaw = req.query.excludeTeamId;
+    const excludeTeamId = excludeTeamIdRaw ? parseInt(excludeTeamIdRaw, 10) : null;
+    const data = await teamService.getAvailableUsers(
+      req.user.uuid,
+      req.user.role_id,
+      Number.isFinite(excludeTeamId) ? excludeTeamId : null
+    );
     res.json({
       success: true,
       data

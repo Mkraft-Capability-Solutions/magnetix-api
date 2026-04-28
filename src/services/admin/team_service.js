@@ -639,22 +639,50 @@ const getLearningHistory = async (teamId, userId, status, callerUuid, roleId) =>
  * Get students who can be added to a team. Org-scoped: only shows students
  * who belong to one of the caller's organizations.
  */
-const getAvailableUsers = async (callerUuid, roleId) => {
+const getAvailableUsers = async (callerUuid, roleId, excludeTeamId = null) => {
   try {
+    // Build the "name" expression with an email-local-part fallback so users
+    // who were invited but haven't filled out a profile (first_name/last_name
+    // both empty) still surface under a sensible label and are searchable —
+    // previously they came through as a single space and never matched any
+    // name search.
+    const NAME_EXPR = `
+      TRIM(
+        CASE
+          WHEN COALESCE(s.first_name, '') = '' AND COALESCE(s.last_name, '') = ''
+            THEN SUBSTRING_INDEX(u.email, '@', 1)
+          ELSE CONCAT(COALESCE(s.first_name, ''), ' ', COALESCE(s.last_name, ''))
+        END
+      )
+    `;
+
+    // When excludeTeamId is provided, only filter out users already on THAT
+    // team — letting an admin add an existing learner to a second team
+    // (the schema permits multi-team membership; the previous query wrongly
+    // hid anyone already on any team). With no excludeTeamId, fall back to
+    // the legacy "not on any team" behaviour for callers that don't pass it.
+    const teamMemberJoin = excludeTeamId
+      ? `LEFT JOIN team_members tm ON u.uuid = tm.user_id AND tm.team_id = ?`
+      : `LEFT JOIN team_members tm ON u.uuid = tm.user_id`;
+    const teamMemberParams = excludeTeamId ? [Number(excludeTeamId)] : [];
+
     if (roleId === ROLE_SUPER_ADMIN) {
       const [rows] = await pool.query(
         `SELECT
             u.uuid AS id,
-            CONCAT(COALESCE(s.first_name, ''), ' ', COALESCE(s.last_name, '')) AS name,
+            ${NAME_EXPR} AS name,
+            COALESCE(s.first_name, '') AS firstName,
+            COALESCE(s.last_name, '') AS lastName,
             u.email,
             COALESCE(sci.department, 'Unassigned') AS department,
             COALESCE(sci.designation, 'Not assigned') AS jobTitle
           FROM users u
           INNER JOIN students s ON u.uuid = s.user_id
           LEFT JOIN student_corporate_info sci ON u.uuid = sci.user_id
-          LEFT JOIN team_members tm ON u.uuid = tm.user_id
+          ${teamMemberJoin}
           WHERE u.is_deleted = 0 AND u.role_id = 1 AND tm.id IS NULL
-          ORDER BY s.first_name, s.last_name`
+          ORDER BY name`,
+        teamMemberParams
       );
       return rows;
     }
@@ -662,7 +690,9 @@ const getAvailableUsers = async (callerUuid, roleId) => {
     const [rows] = await pool.query(
       `SELECT
           u.uuid AS id,
-          CONCAT(COALESCE(s.first_name, ''), ' ', COALESCE(s.last_name, '')) AS name,
+          ${NAME_EXPR} AS name,
+          COALESCE(s.first_name, '') AS firstName,
+          COALESCE(s.last_name, '') AS lastName,
           u.email,
           COALESCE(sci.department, 'Unassigned') AS department,
           COALESCE(sci.designation, 'Not assigned') AS jobTitle
@@ -670,7 +700,7 @@ const getAvailableUsers = async (callerUuid, roleId) => {
         INNER JOIN students s ON u.uuid = s.user_id
         INNER JOIN user_organizations uo ON u.uuid = uo.user_id
         LEFT JOIN student_corporate_info sci ON u.uuid = sci.user_id
-        LEFT JOIN team_members tm ON u.uuid = tm.user_id
+        ${teamMemberJoin}
         WHERE u.is_deleted = 0
           AND u.role_id = 1
           AND tm.id IS NULL
@@ -678,8 +708,8 @@ const getAvailableUsers = async (callerUuid, roleId) => {
             SELECT organization_id FROM user_organizations WHERE user_id = ?
           )
         GROUP BY u.uuid
-        ORDER BY s.first_name, s.last_name`,
-      [callerUuid]
+        ORDER BY name`,
+      [...teamMemberParams, callerUuid]
     );
     return rows;
   } catch (error) {

@@ -49,11 +49,12 @@ exports.refreshToken = async (req, res, next) => {
       });
     }
 
-    const accessToken = await authService.refreshAccessToken(refreshToken);
+    const { accessToken, accessTokenExpiry } = await authService.refreshAccessToken(refreshToken);
 
     res.json({
       success: true,
       accessToken,
+      accessTokenExpiry,
     });
   } catch (error) {
     // Clear the invalid refresh token cookie

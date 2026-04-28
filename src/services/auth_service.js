@@ -67,20 +67,20 @@ class AuthService {
     const decodedAccess = jwt.decode(accessToken) || {};
     const decodedRefresh = jwt.decode(refreshToken) || {};
 
-    // absolute expiry timestamps (UNIX seconds)
-    const accessTokenExpiry = decodedAccess.exp || now;
-    const refreshTokenExpiry = decodedRefresh.exp || now;
+    // expiry timestamps as UNIX SECONDS (per JWT spec) used for relative-time math
+    const accessTokenExpirySeconds = decodedAccess.exp || now;
+    const refreshTokenExpirySeconds = decodedRefresh.exp || now;
 
     // time until expiry (seconds from now)
-    const accessTokenExpiresIn = Math.max(0, accessTokenExpiry - now);
-    const refreshTokenExpiresIn = Math.max(0, refreshTokenExpiry - now);
+    const accessTokenExpiresIn = Math.max(0, accessTokenExpirySeconds - now);
+    const refreshTokenExpiresIn = Math.max(0, refreshTokenExpirySeconds - now);
 
     return {
       accessToken,
       refreshToken,
-      // absolute expiry (UNIX seconds)
-      accessTokenExpiry,
-      refreshTokenExpiry,
+      // absolute expiry as UNIX MILLISECONDS — frontend compares against Date.now()
+      accessTokenExpiry: accessTokenExpirySeconds * 1000,
+      refreshTokenExpiry: refreshTokenExpirySeconds * 1000,
       // convenience: seconds until expiry
       accessTokenExpiresIn,
       refreshTokenExpiresIn,
@@ -101,7 +101,11 @@ class AuthService {
       }
 
       const user = rows[0];
-      return this.generateTokens(user, user.session_id).accessToken;
+      // Return both the new token and its absolute expiry (ms) so the frontend
+      // can schedule the next proactive refresh against the real TTL instead of
+      // assuming a hardcoded 1-hour window.
+      const { accessToken, accessTokenExpiry } = this.generateTokens(user, user.session_id);
+      return { accessToken, accessTokenExpiry };
     } catch (error) {
       console.log(error);
       throw new Error("Invalid refresh token: " + error.message);
