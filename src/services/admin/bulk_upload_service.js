@@ -124,8 +124,9 @@ exports.uploadUsers = async (fileBuffer) => {
     const invitationsToSend = [];
 
     try {
-      // Role mapping (STRICT: only student, admin, instructor allowed)
+      // Role mapping — canonical 'learner', plus 'student' alias for back-compat.
       const roleMap = {
+        'learner': 1,
         'student': 1,
         'admin': 2,
         'instructor': 3

@@ -1,6 +1,7 @@
 const emailHelper = require('./email_helper');
 
 const ROLE_LABELS = {
+  learner: 'Learner',
   student: 'Learner',
   admin: 'Administrator',
   instructor: 'Instructor',
