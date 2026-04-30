@@ -461,7 +461,7 @@ BULK OPERATIONS:
 KNOWLEDGE BASE:
 - Articles organized by category with search functionality.
 - FAQs with expandable answers.
-- Changelog with version history and release notes.
+- Change log with version history and release notes.
 
 ═══════════════════════════
 DYNAMIC CONTEXT (FROM DATABASE)

@@ -9,14 +9,14 @@ exports.getAllChangelog = async (req, res) => {
     res.json({ success: true, data: result.data, pagination: { total: result.total, page: result.page, limit: result.limit, totalPages: result.totalPages } });
   } catch (error) {
     console.error("KnowledgeBase Controller - getAllChangelog error:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch changelog", error: error.message });
+    res.status(500).json({ success: false, message: "Failed to fetch change log", error: error.message });
   }
 };
 
 exports.getChangelogEntryByUuid = async (req, res) => {
   try {
     const entry = await kbService.getChangelogEntryByUuid(req.params.uuid);
-    if (!entry) return res.status(404).json({ success: false, message: "Changelog entry not found" });
+    if (!entry) return res.status(404).json({ success: false, message: "Change log entry not found" });
     res.json({ success: true, data: entry });
   } catch (error) {
     res.status(error.status || 500).json({ success: false, message: error.message });
@@ -34,17 +34,17 @@ exports.createChangelogEntry = async (req, res) => {
       { version, title, description, release_date: date, status, items: items || [] },
       req.user.uuid
     );
-    res.status(201).json({ success: true, message: "Changelog entry created", data: entry });
+    res.status(201).json({ success: true, message: "Change log entry created", data: entry });
   } catch (error) {
     console.error("KnowledgeBase Controller - createChangelogEntry error:", error);
-    res.status(500).json({ success: false, message: "Failed to create changelog entry", error: error.message });
+    res.status(500).json({ success: false, message: "Failed to create change log entry", error: error.message });
   }
 };
 
 exports.updateChangelogEntry = async (req, res) => {
   try {
     const entry = await kbService.updateChangelogEntry(req.params.uuid, req.body);
-    res.json({ success: true, message: "Changelog entry updated", data: entry });
+    res.json({ success: true, message: "Change log entry updated", data: entry });
   } catch (error) {
     res.status(error.status || 500).json({ success: false, message: error.message });
   }
@@ -181,7 +181,7 @@ exports.getPublishedChangelog = async (req, res) => {
     }
     res.json({ success: true, data: entries });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to fetch changelog" });
+    res.status(500).json({ success: false, message: "Failed to fetch change log" });
   }
 };
 

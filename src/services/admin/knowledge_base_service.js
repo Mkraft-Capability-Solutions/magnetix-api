@@ -88,7 +88,7 @@ const updateChangelogEntry = async (uuid, data) => {
     "SELECT id FROM kb_entries WHERE uuid = ? AND is_deleted = 0",
     [uuid]
   );
-  if (rows.length === 0) throw Object.assign(new Error("Changelog entry not found"), { status: 404 });
+  if (rows.length === 0) throw Object.assign(new Error("Change log entry not found"), { status: 404 });
 
   const entryId = rows[0].id;
   const { version, title, description, published_date, release_date, status, items } = data;
@@ -126,8 +126,8 @@ const publishChangelogEntry = async (uuid) => {
     "UPDATE kb_entries SET status = 'published' WHERE uuid = ? AND is_deleted = 0",
     [uuid]
   );
-  if (result.affectedRows === 0) throw Object.assign(new Error("Changelog entry not found"), { status: 404 });
-  return { message: "Changelog entry published successfully" };
+  if (result.affectedRows === 0) throw Object.assign(new Error("Change log entry not found"), { status: 404 });
+  return { message: "Change log entry published successfully" };
 };
 
 const unpublishChangelogEntry = async (uuid) => {
@@ -135,8 +135,8 @@ const unpublishChangelogEntry = async (uuid) => {
     "UPDATE kb_entries SET status = 'draft' WHERE uuid = ? AND is_deleted = 0",
     [uuid]
   );
-  if (result.affectedRows === 0) throw Object.assign(new Error("Changelog entry not found"), { status: 404 });
-  return { message: "Changelog entry unpublished" };
+  if (result.affectedRows === 0) throw Object.assign(new Error("Change log entry not found"), { status: 404 });
+  return { message: "Change log entry unpublished" };
 };
 
 const deleteChangelogEntry = async (uuid) => {
@@ -144,8 +144,8 @@ const deleteChangelogEntry = async (uuid) => {
     "UPDATE kb_entries SET is_deleted = 1 WHERE uuid = ? AND is_deleted = 0",
     [uuid]
   );
-  if (result.affectedRows === 0) throw Object.assign(new Error("Changelog entry not found"), { status: 404 });
-  return { message: "Changelog entry deleted successfully" };
+  if (result.affectedRows === 0) throw Object.assign(new Error("Change log entry not found"), { status: 404 });
+  return { message: "Change log entry deleted successfully" };
 };
 
 // ========== FAQS ==========
