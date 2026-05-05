@@ -9,6 +9,7 @@ const {
   validateUserRow,
   validateContentRow,
   validateAssignmentRow,
+  validateManagerLinks,
   isEmpty
 } = require('../../utils/csv_validators');
 
@@ -118,18 +119,53 @@ exports.uploadUsers = async (fileBuffer) => {
 
     const existingEmails = new Set(existingUsers.map(u => u.email.toLowerCase()));
 
+    // Manager-existence guard: reject any row whose manager_email isn't an
+    // existing platform user OR a user defined earlier in this same CSV.
+    const [allPlatformUsers] = await connection.query(
+      'SELECT email FROM users WHERE is_deleted = 0'
+    );
+    const allPlatformEmailSet = new Set(
+      allPlatformUsers.map(u => u.email.toLowerCase())
+    );
+    const managerLinkResult = validateManagerLinks(csvData, allPlatformEmailSet);
+    if (managerLinkResult.errors.length > 0) {
+      errors.push(...managerLinkResult.errors);
+      skipped += managerLinkResult.errors.length;
+      return {
+        success: false,
+        message: `Manager-link validation failed for ${managerLinkResult.errors.length} row(s)`,
+        data: {
+          totalRows: csvData.length,
+          validRows: csvData.length - skipped,
+          errorRows: skipped,
+          warnings,
+          errors,
+          inserted: 0,
+          skipped
+        }
+      };
+    }
+
     // Start transaction
     await connection.beginTransaction();
 
     const invitationsToSend = [];
+    // email → uuid map of users created in *this* CSV. Used to wire the
+    // manager link (`reports_to_uuid`) for rows whose manager appears
+    // earlier in the same CSV.
+    const newlyCreatedByEmail = new Map();
 
     try {
-      // Role mapping — canonical 'learner', plus 'student' alias for back-compat.
+      // Role mapping — must mirror the `roles` table:
+      //   1 = student/learner, 2 = instructor, 3 = admin, 4 = super_admin.
+      // (Fixes a long-standing swap where 'admin' resolved to role_id 2 and
+      // 'instructor' to role_id 3, which left users sitting at the wrong
+      // role_id while their profile row went to the right table.)
       const roleMap = {
         'learner': 1,
         'student': 1,
-        'admin': 2,
-        'instructor': 3
+        'instructor': 2,
+        'admin': 3
       };
 
       for (let i = 0; i < csvData.length; i++) {
@@ -197,20 +233,43 @@ exports.uploadUsers = async (fileBuffer) => {
             );
           }
         } else if (roleId === 2) {
-          // Admin
-          await connection.query(
-            `INSERT INTO admins (user_id, first_name, last_name, contact)
-             VALUES (?, ?, ?, ?)`,
-            [userId, row.first_name, row.last_name, row.phone || null]
-          );
-        } else if (roleId === 3) {
-          // Instructor
+          // Instructor (matches DB roles table: 2 = instructor)
           await connection.query(
             `INSERT INTO instructors (user_id, first_name, last_name, contact)
              VALUES (?, ?, ?, ?)`,
             [userId, row.first_name, row.last_name, row.phone || null]
           );
+        } else if (roleId === 3) {
+          // Admin (matches DB roles table: 3 = admin)
+          await connection.query(
+            `INSERT INTO admins (user_id, first_name, last_name, contact)
+             VALUES (?, ?, ?, ?)`,
+            [userId, row.first_name, row.last_name, row.phone || null]
+          );
         }
+
+        // Resolve manager link if a manager email was provided. The validator
+        // above guarantees the manager exists either in the DB or earlier in
+        // this CSV.
+        if (!isEmpty(row.manager_email)) {
+          const managerEmail = String(row.manager_email).toLowerCase().trim();
+          let managerUuid = newlyCreatedByEmail.get(managerEmail) || null;
+          if (!managerUuid) {
+            const [mgrRows] = await connection.query(
+              'SELECT uuid FROM users WHERE email = ? AND is_deleted = 0 LIMIT 1',
+              [managerEmail]
+            );
+            managerUuid = mgrRows[0]?.uuid || null;
+          }
+          if (managerUuid) {
+            await connection.query(
+              'UPDATE users SET reports_to_uuid = ? WHERE uuid = ?',
+              [managerUuid, userId]
+            );
+          }
+        }
+
+        newlyCreatedByEmail.set(email, userId);
 
         // Increment counter after successful user creation
         inserted++;

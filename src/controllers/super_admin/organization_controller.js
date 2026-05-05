@@ -309,6 +309,33 @@ const uploadOrganizations = async (req, res, next) => {
   }
 };
 
+/**
+ * Create a single user and assign them to an organization in one shot.
+ * Used by the SuperAdmin "Add Users to Organization → Create New User" tab.
+ * POST /super-admin/organizations/:organizationId/users/create
+ */
+const createUserInOrganization = async (req, res, next) => {
+  try {
+    const { organizationId } = req.params;
+    const orgIdNum = parseInt(organizationId, 10);
+    if (Number.isNaN(orgIdNum)) {
+      return res.status(400).json({ success: false, message: 'Invalid organization id' });
+    }
+    const result = await organizationService.createUserInOrganization(orgIdNum, req.body || {});
+
+    if (!result.success) {
+      return res.status(result.status || 400).json({
+        success: false,
+        message: result.message,
+        errors: result.errors || []
+      });
+    }
+    res.status(201).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getAllOrganizations,
   getOrganizationById,
@@ -322,5 +349,6 @@ module.exports = {
   bulkAssignUsersToOrganization,
   removeUserFromOrganization,
   getUserOrganizations,
+  createUserInOrganization,
   uploadOrganizations
 };
