@@ -358,6 +358,56 @@ const validateOrganizationRow = (row, rowIndex) => {
   };
 };
 
+/**
+ * Validate that every row's manager_email (if provided) resolves to either an
+ * existing platform user OR a user defined earlier in the same CSV (by row
+ * order). Used by the bulk-user uploader as the "manager guard" — when a
+ * manager email is given, the manager must already exist or be created
+ * earlier in this same upload, otherwise the row is rejected.
+ *
+ * @param {Array<Object>} rows - parsed CSV rows in original order
+ * @param {Set<string>} existingEmails - lowercase set of emails already in `users`
+ * @returns {{ errors: Array }} new errors to merge into the row-level errors
+ */
+const validateManagerLinks = (rows, existingEmails) => {
+  const errors = [];
+
+  // Build a lowercase set of emails seen earlier in this CSV. We populate it
+  // row-by-row so a manager can be a prior row but not a later one — same
+  // ordering rule a real org chart would have if uploaded top-down.
+  const seenInCsvSoFar = new Set();
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const rowIndex = i + 2; // +2 for header row + 0-index
+
+    if (!isEmpty(row.manager_email)) {
+      const managerEmail = String(row.manager_email).toLowerCase().trim();
+      const selfEmail = !isEmpty(row.email) ? String(row.email).toLowerCase().trim() : null;
+
+      if (selfEmail && managerEmail === selfEmail) {
+        errors.push({
+          row: rowIndex,
+          field: 'manager_email',
+          message: 'A user cannot be their own manager'
+        });
+      } else if (!existingEmails.has(managerEmail) && !seenInCsvSoFar.has(managerEmail)) {
+        errors.push({
+          row: rowIndex,
+          field: 'manager_email',
+          message: `Manager not found: ${row.manager_email}. The manager must already exist in the platform or be defined in an earlier row of this CSV.`
+        });
+      }
+    }
+
+    if (!isEmpty(row.email)) {
+      seenInCsvSoFar.add(String(row.email).toLowerCase().trim());
+    }
+  }
+
+  return { errors };
+};
+
 module.exports = {
   isValidEmail,
   isValidDate,
@@ -369,5 +419,6 @@ module.exports = {
   validateUserRow,
   validateContentRow,
   validateAssignmentRow,
-  validateOrganizationRow
+  validateOrganizationRow,
+  validateManagerLinks
 };

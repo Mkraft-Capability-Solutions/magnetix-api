@@ -1,5 +1,8 @@
 const bulkUploadService = require('../../services/admin/bulk_upload_service');
 const { generateCSVTemplate, generateSampleCSV } = require('../../utils/csv_parser');
+const { generateUsersXLSXTemplate } = require('../../utils/excel_templates');
+
+const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 // ==============================================
 // UPLOAD USERS CONTROLLER
@@ -160,6 +163,16 @@ exports.downloadTemplate = async (req, res) => {
         success: false,
         message: `Invalid template type. Allowed: ${validTypes.join(', ')}`
       });
+    }
+
+    // The users template ships as XLSX so the `role` column gets a real
+    // dropdown — eliminates ambiguous free-text input that the validator
+    // would otherwise silently skip. Other types remain CSV unchanged.
+    if (type === 'users') {
+      const buffer = await generateUsersXLSXTemplate();
+      res.setHeader('Content-Type', XLSX_CONTENT_TYPE);
+      res.setHeader('Content-Disposition', 'attachment; filename="users_template.xlsx"');
+      return res.send(Buffer.from(buffer));
     }
 
     // Generate template

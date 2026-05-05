@@ -220,38 +220,92 @@ const toggleSchedule = async (id, isActive) => {
   }
 };
 
+// Map Intl weekday short names to JS getDay() values (0=Sun, 6=Sat)
+const WEEKDAY_INDEX = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+/**
+ * Compute current wall-clock parts in a given IANA timezone using built-in Intl.
+ * Why: previously we used new Date().getHours()/getDate() which read the OS timezone
+ * of the host (UTC on most cloud servers), so an "10:00 IST" schedule never matched.
+ */
+const getNowInTimezone = (timezone) => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    weekday: 'short',
+    hour12: false
+  }).formatToParts(new Date());
+
+  const m = {};
+  for (const p of parts) m[p.type] = p.value;
+  // Some locales render midnight as '24' — normalize to '00'
+  const hour = m.hour === '24' ? '00' : m.hour;
+
+  return {
+    timeStr: `${hour}:${m.minute}`,
+    dayOfWeek: WEEKDAY_INDEX[m.weekday],
+    dayOfMonth: parseInt(m.day, 10),
+    todayStr: `${m.year}-${m.month}-${m.day}`
+  };
+};
+
+// DATE column may come back as a JS Date or string depending on driver config.
+// Format it as 'YYYY-MM-DD' in the schedule's own timezone for safe comparison.
+const formatDateInTz = (val, tz) => {
+  if (!val) return null;
+  if (typeof val === 'string') return val.slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(val);
+};
+
 /**
  * Get schedules that are due to run right now.
  * Supports all frequency types: once, daily, weekdays, weekly, biweekly, monthly, custom.
+ * Each schedule is matched against the current time in its own stored `timezone`,
+ * not the host server's local timezone.
  */
 const getDueSchedules = async () => {
   try {
-    const now = new Date();
-    const currentHour = String(now.getHours()).padStart(2, '0');
-    const currentMinute = String(now.getMinutes()).padStart(2, '0');
-    const currentTimeStr = `${currentHour}:${currentMinute}`;
-    const currentDayOfWeek = now.getDay(); // 0=Sun, 6=Sat
-    const currentDayOfMonth = now.getDate();
-    const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
-    const isWeekday = currentDayOfWeek >= 1 && currentDayOfWeek <= 5;
-
-    // Get week number for biweekly calculation (weeks since epoch)
-    const epochStart = new Date(2024, 0, 1); // Fixed reference point
-    const weeksSinceEpoch = Math.floor((now - epochStart) / (7 * 24 * 60 * 60 * 1000));
-    const isEvenWeek = weeksSinceEpoch % 2 === 0;
-
-    // Fetch all active schedules that match the current time and haven't been sent recently
+    // Pull active candidates that haven't been sent recently. Time-of-day and
+    // calendar matching are done per-row in JS so we can honor each schedule's tz.
     const [rows] = await pool.query(`
       SELECT * FROM report_schedules
       WHERE is_active = 1
-        AND TIME_FORMAT(time_of_day, '%H:%i') = ?
         AND (last_sent_at IS NULL OR last_sent_at < DATE_SUB(NOW(), INTERVAL 50 MINUTE))
-        AND (repeat_end_date IS NULL OR repeat_end_date >= CURDATE())
-    `, [currentTimeStr]);
+    `);
 
-    // Filter in JS for complex matching (JSON columns, biweekly logic, etc.)
+    const epochStartMs = Date.UTC(2024, 0, 1);
+    const nowMs = Date.now();
+    const weeksSinceEpoch = Math.floor((nowMs - epochStartMs) / (7 * 24 * 60 * 60 * 1000));
+    const isEvenWeek = weeksSinceEpoch % 2 === 0;
+
     const dueSchedules = rows.filter(row => {
       const schedule = normalizeRow(row);
+      const tz = schedule.timezone || 'Asia/Kolkata';
+
+      let nowParts;
+      try {
+        nowParts = getNowInTimezone(tz);
+      } catch {
+        nowParts = getNowInTimezone('Asia/Kolkata');
+      }
+
+      // time_of_day is a TIME column → mysql2 returns 'HH:MM:SS'
+      const timeOfDayStr = String(schedule.time_of_day || '').slice(0, 5);
+      if (timeOfDayStr !== nowParts.timeStr) return false;
+
+      const endStr = formatDateInTz(schedule.repeat_end_date, tz);
+      if (endStr && endStr < nowParts.todayStr) return false;
+
+      const isWeekday = nowParts.dayOfWeek >= 1 && nowParts.dayOfWeek <= 5;
 
       switch (schedule.frequency) {
         case 'daily':
@@ -262,23 +316,23 @@ const getDueSchedules = async () => {
 
         case 'weekly': {
           const days = schedule.days_of_week || (schedule.day_of_week != null ? [schedule.day_of_week] : []);
-          return days.includes(currentDayOfWeek);
+          return days.includes(nowParts.dayOfWeek);
         }
 
         case 'biweekly': {
           const days = schedule.days_of_week || (schedule.day_of_week != null ? [schedule.day_of_week] : []);
-          return isEvenWeek && days.includes(currentDayOfWeek);
+          return isEvenWeek && days.includes(nowParts.dayOfWeek);
         }
 
         case 'monthly': {
           const days = schedule.days_of_month || (schedule.day_of_month != null ? [schedule.day_of_month] : []);
-          return days.includes(currentDayOfMonth);
+          return days.includes(nowParts.dayOfMonth);
         }
 
         case 'once':
         case 'custom': {
           const dates = schedule.specific_dates || [];
-          return dates.includes(todayStr);
+          return dates.includes(nowParts.todayStr);
         }
 
         default:
@@ -286,7 +340,7 @@ const getDueSchedules = async () => {
       }
     });
 
-    return dueSchedules.map(normalizeRow);
+    return dueSchedules;
   } catch (error) {
     console.error('ReportSchedulerService - getDueSchedules error:', error);
     throw error;

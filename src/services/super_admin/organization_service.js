@@ -1,6 +1,20 @@
 const { promisePool: pool } = require('../../config/db');
+const bcrypt = require('bcrypt');
+const { v4: uuidv4 } = require('uuid');
 const { parseCSV } = require('../../utils/csv_parser');
-const { validateOrganizationRow, isEmpty } = require('../../utils/csv_validators');
+const { validateOrganizationRow, isEmpty, isValidEmail, isValidPhone } = require('../../utils/csv_validators');
+const { generateTemporaryPassword } = require('../../utils/password_generator');
+const { sendInvitationSafely, ROLE_LABELS } = require('../../utils/invitation_helper');
+
+// Role-name → role_id mapping. Mirrors the `roles` table in the DB. Bulk
+// uploads + the org-scoped create-user form share this so the role field
+// behaves the same way on both surfaces.
+const ORG_USER_ROLE_MAP = {
+  learner: 1,
+  student: 1,
+  instructor: 2,
+  admin: 3
+};
 
 /**
  * Organization Service
@@ -814,6 +828,209 @@ const bulkUploadOrganizations = async (fileBuffer) => {
   }
 };
 
+/**
+ * Create a single new user and immediately assign them to an organization.
+ *
+ * Used by the SuperAdmin "Add Users to Organization → Create New User" tab.
+ * Validates input, enforces the manager-existence guard (manager must already
+ * exist in the platform), generates a temp password, writes the role-specific
+ * profile row, links to the org via `user_organizations`, sets the manager
+ * link via `users.reports_to_uuid` if applicable, and sends an invitation
+ * email with the temp password (best-effort — failures don't roll back).
+ *
+ * The whole thing runs inside a single transaction so a failure anywhere
+ * leaves the DB unchanged.
+ */
+const createUserInOrganization = async (organizationId, payload) => {
+  const {
+    firstName,
+    lastName,
+    email,
+    role,
+    managerEmail,
+    department,
+    jobTitle,
+    location,
+    phone
+  } = payload || {};
+
+  // Field-level validation. We return structured failures instead of throwing
+  // so the controller can render them as 400s without leaking stack traces.
+  const failures = [];
+  if (isEmpty(firstName)) failures.push({ field: 'firstName', message: 'First name is required' });
+  if (isEmpty(lastName)) failures.push({ field: 'lastName', message: 'Last name is required' });
+  if (isEmpty(email)) failures.push({ field: 'email', message: 'Email is required' });
+  else if (!isValidEmail(email)) failures.push({ field: 'email', message: 'Invalid email format' });
+  if (isEmpty(role)) failures.push({ field: 'role', message: 'Role is required' });
+  else if (!ORG_USER_ROLE_MAP[String(role).toLowerCase().trim()]) {
+    failures.push({ field: 'role', message: 'Role must be one of: learner, instructor, admin' });
+  }
+  if (!isEmpty(managerEmail) && !isValidEmail(managerEmail)) {
+    failures.push({ field: 'managerEmail', message: 'Invalid manager email format' });
+  }
+  if (!isEmpty(phone) && !isValidPhone(phone)) {
+    failures.push({ field: 'phone', message: 'Invalid phone number format' });
+  }
+  if (failures.length > 0) {
+    return { success: false, status: 400, message: 'Validation failed', errors: failures };
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    // Verify the org exists and is active before mutating anything.
+    const [orgRows] = await connection.query(
+      'SELECT id, name FROM organizations WHERE id = ? AND is_active = 1',
+      [organizationId]
+    );
+    if (orgRows.length === 0) {
+      return { success: false, status: 404, message: 'Organization not found or inactive' };
+    }
+    const orgName = orgRows[0].name;
+
+    const normalizedEmail = String(email).toLowerCase().trim();
+    const [emailDup] = await connection.query(
+      'SELECT uuid FROM users WHERE email = ? AND is_deleted = 0 LIMIT 1',
+      [normalizedEmail]
+    );
+    if (emailDup.length > 0) {
+      return {
+        success: false,
+        status: 409,
+        message: 'A user with this email already exists',
+        errors: [{ field: 'email', message: 'Email already in use' }]
+      };
+    }
+
+    // Manager guard: if a manager email is provided, the manager must already
+    // exist in the platform. Self-reference also rejected.
+    let managerUuid = null;
+    if (!isEmpty(managerEmail)) {
+      const normalizedManagerEmail = String(managerEmail).toLowerCase().trim();
+      if (normalizedManagerEmail === normalizedEmail) {
+        return {
+          success: false,
+          status: 400,
+          message: 'A user cannot be their own manager',
+          errors: [{ field: 'managerEmail', message: 'Cannot match the user email' }]
+        };
+      }
+      const [mgrRows] = await connection.query(
+        'SELECT uuid FROM users WHERE email = ? AND is_deleted = 0 LIMIT 1',
+        [normalizedManagerEmail]
+      );
+      if (mgrRows.length === 0) {
+        return {
+          success: false,
+          status: 400,
+          message: 'Manager not found in the platform',
+          errors: [{
+            field: 'managerEmail',
+            message: 'The manager must already exist in the platform before being assigned'
+          }]
+        };
+      }
+      managerUuid = mgrRows[0].uuid;
+    }
+
+    const roleKey = String(role).toLowerCase().trim();
+    const roleId = ORG_USER_ROLE_MAP[roleKey];
+    const userId = uuidv4();
+    const tempPassword = generateTemporaryPassword();
+    const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
+    await connection.beginTransaction();
+    try {
+      // users row
+      await connection.query(
+        `INSERT INTO users (uuid, email, password, role_id, instance, status, reports_to_uuid, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [userId, normalizedEmail, hashedPassword, roleId, 'default', 'active', managerUuid]
+      );
+
+      // role-specific profile row
+      if (roleId === 1) {
+        await connection.query(
+          `INSERT INTO students (user_id, first_name, last_name, contact)
+           VALUES (?, ?, ?, ?)`,
+          [userId, firstName, lastName, phone || null]
+        );
+        // student_corporate_info — written when any of the optional corporate
+        // fields are supplied so the manager link / department / job title
+        // surface in the org-member-activity view later.
+        if (!isEmpty(jobTitle) || !isEmpty(department) || !isEmpty(location) || !isEmpty(managerEmail)) {
+          await connection.query(
+            `INSERT INTO student_corporate_info
+             (user_id, designation, department, location, manager_email)
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+              userId,
+              jobTitle || null,
+              department || null,
+              location || null,
+              managerEmail || null
+            ]
+          );
+        }
+      } else if (roleId === 2) {
+        await connection.query(
+          `INSERT INTO instructors (user_id, first_name, last_name, contact)
+           VALUES (?, ?, ?, ?)`,
+          [userId, firstName, lastName, phone || null]
+        );
+      } else if (roleId === 3) {
+        await connection.query(
+          `INSERT INTO admins (user_id, first_name, last_name, contact)
+           VALUES (?, ?, ?, ?)`,
+          [userId, firstName, lastName, phone || null]
+        );
+      }
+
+      // Org assignment
+      await connection.query(
+        `INSERT INTO user_organizations (user_id, organization_id, assigned_at)
+         VALUES (?, ?, NOW())`,
+        [userId, organizationId]
+      );
+
+      await connection.commit();
+    } catch (txErr) {
+      await connection.rollback();
+      throw txErr;
+    }
+
+    // Best-effort invitation email — same pattern as the bulk uploader: a
+    // failure here doesn't roll the user back, just surfaces a warning.
+    const inviteResult = await sendInvitationSafely({
+      email: normalizedEmail,
+      firstName,
+      password: tempPassword,
+      roleLabel: ROLE_LABELS[roleKey] || 'User',
+      organizationNames: [orgName]
+    });
+
+    return {
+      success: true,
+      message: `User created and added to ${orgName}`,
+      data: {
+        userId,
+        email: normalizedEmail,
+        role: roleKey,
+        roleId,
+        organizationId,
+        organizationName: orgName,
+        managerLinked: managerUuid !== null,
+        invitationSent: inviteResult.sent,
+        invitationError: inviteResult.sent ? null : 'Invitation email could not be delivered'
+      }
+    };
+  } catch (error) {
+    console.error('OrganizationService - createUserInOrganization error:', error);
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
 module.exports = {
   getAllOrganizations,
   getOrganizationById,
@@ -827,5 +1044,6 @@ module.exports = {
   bulkAssignUsersToOrganization,
   removeUserFromOrganization,
   getUserOrganizations,
-  bulkUploadOrganizations
+  bulkUploadOrganizations,
+  createUserInOrganization
 };

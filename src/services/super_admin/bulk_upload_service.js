@@ -9,8 +9,25 @@ const {
   validateContentRow,
   validateAssignmentRow,
   validateOrganizationRow,
+  validateManagerLinks,
   isEmpty
 } = require('../../utils/csv_validators');
+
+// Canonical role-name → role_id mapping. Mirrors the `roles` table in the DB
+// (1=student/learner, 2=instructor, 3=admin, 4=super_admin). super_admin is
+// intentionally omitted — bulk uploads cannot mint super-admins.
+const USER_ROLE_MAP = {
+  learner: 1,
+  student: 1, // back-compat alias
+  instructor: 2,
+  admin: 3
+};
+
+const ROLE_LABEL_FOR_INVITE = {
+  1: 'Learner',
+  2: 'Instructor',
+  3: 'Admin'
+};
 
 // ==============================================
 // UPLOAD USERS SERVICE
@@ -140,10 +157,44 @@ exports.uploadUsers = async (fileBuffer, organizationId) => {
 
     const existingEmails = new Set(existingUsers.map(u => u.email.toLowerCase()));
 
+    // Manager-existence guard: reject any row whose manager_email isn't an
+    // existing platform user OR a user defined earlier in this same CSV.
+    // Pulling all platform emails (not just the ones in this CSV) so an
+    // existing platform user can be referenced as a manager.
+    const [allPlatformUsers] = await connection.query(
+      'SELECT email FROM users WHERE is_deleted = 0'
+    );
+    const allPlatformEmailSet = new Set(
+      allPlatformUsers.map(u => u.email.toLowerCase())
+    );
+    const managerLinkResult = validateManagerLinks(csvData, allPlatformEmailSet);
+    if (managerLinkResult.errors.length > 0) {
+      errors.push(...managerLinkResult.errors);
+      // Each manager-link error invalidates that row.
+      skipped += managerLinkResult.errors.length;
+      return {
+        success: false,
+        message: `Manager-link validation failed for ${managerLinkResult.errors.length} row(s)`,
+        data: {
+          totalRows: csvData.length,
+          validRows: csvData.length - skipped,
+          errorRows: skipped,
+          warnings,
+          errors,
+          inserted: 0,
+          skipped
+        }
+      };
+    }
+
     // Start transaction
     await connection.beginTransaction();
 
     const invitationsToSend = [];
+    // email → uuid map of users created in *this* CSV, used to wire the
+    // manager link (`reports_to_uuid`) for rows whose manager appears
+    // earlier in the same CSV.
+    const newlyCreatedByEmail = new Map();
 
     try {
       for (let i = 0; i < csvData.length; i++) {
@@ -163,6 +214,16 @@ exports.uploadUsers = async (fileBuffer, organizationId) => {
           continue;
         }
 
+        // Resolve role from CSV. Default to learner when role is missing for
+        // back-compat with older templates that didn't include the column.
+        const roleKey = isEmpty(row.role) ? 'learner' : String(row.role).toLowerCase().trim();
+        const roleId = USER_ROLE_MAP[roleKey];
+        if (!roleId) {
+          warnings.push(`Row ${i + 2}: Invalid role: ${row.role}`);
+          skipped++;
+          continue;
+        }
+
         // Generate a unique temporary password per user
         const tempPassword = generateTemporaryPassword();
         const hashedPassword = await bcrypt.hash(tempPassword, 10);
@@ -170,33 +231,48 @@ exports.uploadUsers = async (fileBuffer, organizationId) => {
         // Create user
         const userId = uuidv4();
 
-        // Insert into users table
+        // Insert into users table with the resolved role
         await connection.query(
           `INSERT INTO users (uuid, email, password, role_id, instance, status, created_at, updated_at)
-           VALUES (?, ?, ?, 1, ?, ?, NOW(), NOW())`,
-          [userId, email, hashedPassword, 'default', 'active']
+           VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+          [userId, email, hashedPassword, roleId, 'default', 'active']
         );
 
-        // Insert into students table
-        await connection.query(
-          `INSERT INTO students (user_id, first_name, last_name, contact)
-           VALUES (?, ?, ?, ?)`,
-          [userId, row.first_name, row.last_name, row.phone || null]
-        );
+        // Insert role-specific profile row
+        if (roleId === 1) {
+          await connection.query(
+            `INSERT INTO students (user_id, first_name, last_name, contact)
+             VALUES (?, ?, ?, ?)`,
+            [userId, row.first_name, row.last_name, row.phone || null]
+          );
 
-        // Insert into student_corporate_info table
-        await connection.query(
-          `INSERT INTO student_corporate_info
-           (user_id, designation, department, location, manager_email)
-           VALUES (?, ?, ?, ?, ?)`,
-          [
-            userId,
-            row.job_title,
-            row.department,
-            row.location || null,
-            row.manager_email || null
-          ]
-        );
+          // Optional corporate metadata. Always written for learners since the
+          // org-scoped flow expects it; harmless when fields are null.
+          await connection.query(
+            `INSERT INTO student_corporate_info
+             (user_id, designation, department, location, manager_email)
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+              userId,
+              row.job_title || null,
+              row.department || null,
+              row.location || null,
+              row.manager_email || null
+            ]
+          );
+        } else if (roleId === 2) {
+          await connection.query(
+            `INSERT INTO instructors (user_id, first_name, last_name, contact)
+             VALUES (?, ?, ?, ?)`,
+            [userId, row.first_name, row.last_name, row.phone || null]
+          );
+        } else if (roleId === 3) {
+          await connection.query(
+            `INSERT INTO admins (user_id, first_name, last_name, contact)
+             VALUES (?, ?, ?, ?)`,
+            [userId, row.first_name, row.last_name, row.phone || null]
+          );
+        }
 
         // Assign user to organization
         await connection.query(
@@ -205,11 +281,35 @@ exports.uploadUsers = async (fileBuffer, organizationId) => {
           [userId, organizationId]
         );
 
+        // Wire the manager link if a manager email was provided. The validator
+        // above guarantees the manager exists either in the DB or earlier in
+        // this CSV, so this lookup either resolves immediately or finds the
+        // manager in the in-flight map.
+        if (!isEmpty(row.manager_email)) {
+          const managerEmail = String(row.manager_email).toLowerCase().trim();
+          let managerUuid = newlyCreatedByEmail.get(managerEmail) || null;
+          if (!managerUuid) {
+            const [mgrRows] = await connection.query(
+              'SELECT uuid FROM users WHERE email = ? AND is_deleted = 0 LIMIT 1',
+              [managerEmail]
+            );
+            managerUuid = mgrRows[0]?.uuid || null;
+          }
+          if (managerUuid) {
+            await connection.query(
+              'UPDATE users SET reports_to_uuid = ? WHERE uuid = ?',
+              [managerUuid, userId]
+            );
+          }
+        }
+
+        newlyCreatedByEmail.set(email, userId);
+
         invitationsToSend.push({
           email,
           firstName: row.first_name,
           password: tempPassword,
-          roleLabel: 'Learner'
+          roleLabel: ROLE_LABEL_FOR_INVITE[roleId] || 'User'
         });
 
         inserted++;

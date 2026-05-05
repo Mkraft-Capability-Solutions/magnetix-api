@@ -43,4 +43,8 @@ router.get('/:id/users', organizationController.getOrganizationUsers);
 // Bulk assign users to organization
 router.post('/:organizationId/users/bulk-assign', organizationController.bulkAssignUsersToOrganization);
 
+// Create a single new user directly under an organization (used by the
+// "Add Users to Organization → Create New User" tab on the UI).
+router.post('/:organizationId/users/create', organizationController.createUserInOrganization);
+
 module.exports = router;
