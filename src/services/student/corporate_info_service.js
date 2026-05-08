@@ -40,13 +40,14 @@ class CorporateInfoService {
 
     try {
       const [rows] = await connection.query(
-        'CALL upsert_student_corporate_info(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'CALL upsert_student_corporate_info(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           userId,
           data.job_profile || null,
           data.designation || null,
           data.department || null,
           data.employee_id || null,
+          data.doj || null,
           data.organization_name || null,
           data.location || null,
           data.manager_name || null,
