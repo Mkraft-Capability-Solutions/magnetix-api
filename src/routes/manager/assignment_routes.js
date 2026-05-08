@@ -16,5 +16,6 @@ router.get('/:id', requireAssignmentVisibility, controller.getAssignment);
 router.patch('/:id', requireAssignmentVisibility, controller.patchAssignment);
 router.get('/:id/submissions', requireAssignmentVisibility, controller.listSubmissions);
 router.get('/:id/submissions/:userId/detail', requireAssignmentVisibility, controller.getSubmissionDetail);
+router.get('/:id/submissions/:userId/file', requireAssignmentVisibility, controller.downloadSubmissionFile);
 
 module.exports = router;
