@@ -1,5 +1,10 @@
 const { promisePool } = require('../config/db');
-const { getManagedTeamIdsForUser, canUserViewTeamViaHierarchy } = require('../utils/manager_hierarchy');
+const {
+  getManagedTeamIdsForUser,
+  canUserViewTeamViaHierarchy,
+  userHasOrganizationMembership,
+  userHasReportees
+} = require('../utils/manager_hierarchy');
 
 const ADMIN_ROLES = new Set([3, 4]);
 
@@ -12,10 +17,22 @@ exports.requireAnyManagerRole = async (req, res, next) => {
       return next();
     }
     const teamIds = await getManagedTeamIdsForUser(req.user.uuid);
-    if (teamIds.length === 0) {
-      return res.status(403).json({ message: 'Manager privileges required' });
+    if (teamIds.length > 0) {
+      return next();
     }
-    next();
+    // Reportee-based fallback: a user with no team-manager seat is still a
+    // manager for the purposes of viewing reportee submissions IF they have at
+    // least one direct/transitive reportee via reports_to_uuid AND they are
+    // mapped to an organization. This widens visibility — it does not remove
+    // any prior check.
+    const [hasReportees, hasOrg] = await Promise.all([
+      userHasReportees(req.user.uuid),
+      userHasOrganizationMembership(req.user.uuid)
+    ]);
+    if (hasReportees && hasOrg) {
+      return next();
+    }
+    return res.status(403).json({ message: 'Manager privileges required' });
   } catch (error) {
     console.error('requireAnyManagerRole error:', error);
     res.status(500).json({ message: 'Authorization check failed' });
@@ -116,6 +133,33 @@ exports.requireAssignmentVisibility = async (req, res, next) => {
       if (ok) {
         req.assignment = assignment;
         return next();
+      }
+    }
+
+    // Non-team manager fallback: caller is a reports_to manager (no team seat
+    // on this assignment's team) but at least one of their direct/transitive
+    // reportees has submitted to this assignment. The caller must also be in
+    // an organization. This lets a user who manages people purely via the
+    // reports_to chain see what their reportees have submitted.
+    {
+      const { getDescendantUserUuids } = require('../utils/manager_hierarchy');
+      const descendants = await getDescendantUserUuids(req.user.uuid);
+      if (descendants.length > 0) {
+        const hasOrg = await userHasOrganizationMembership(req.user.uuid);
+        if (hasOrg) {
+          const placeholders = descendants.map(() => '?').join(',');
+          const [subRows] = await promisePool.query(
+            `SELECT 1 FROM assignment_submissions
+              WHERE assignment_id = ?
+                AND user_id IN (${placeholders})
+              LIMIT 1`,
+            [assignment.id, ...descendants]
+          );
+          if (subRows.length > 0) {
+            req.assignment = assignment;
+            return next();
+          }
+        }
       }
     }
 

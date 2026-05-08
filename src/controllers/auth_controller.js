@@ -134,6 +134,10 @@ exports.login = async (req, res, next) => {
         last_name: user.last_name,
         dp: user.dp || null,
         instance: user.instance,
+        managedTeamIds: user.managedTeamIds || [],
+        hasReportees: !!user.hasReportees,
+        organizations: user.organizations || [],
+        primaryOrganization: user.primaryOrganization || null,
       },
     };
 
@@ -180,6 +184,10 @@ exports.verify = async (req, res, next) => {
         last_name: user.last_name,
         dp: user.dp || null,
         instance: user.instance,
+        managedTeamIds: user.managedTeamIds || [],
+        hasReportees: !!user.hasReportees,
+        organizations: user.organizations || [],
+        primaryOrganization: user.primaryOrganization || null,
       },
     };
 
