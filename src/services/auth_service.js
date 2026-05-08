@@ -176,11 +176,20 @@ class AuthService {
     // downline (via users.reports_to_uuid) — so a senior manager sees their
     // junior managers' teams too.
     let managedTeamIds = [];
+    let hasReportees = false;
     try {
-      const { getManagedTeamIdsForUser } = require('../utils/manager_hierarchy');
-      managedTeamIds = await getManagedTeamIdsForUser(user.uuid);
+      const {
+        getManagedTeamIdsForUser,
+        userHasReportees
+      } = require('../utils/manager_hierarchy');
+      const [mIds, rep] = await Promise.all([
+        getManagedTeamIdsForUser(user.uuid),
+        userHasReportees(user.uuid)
+      ]);
+      managedTeamIds = mIds;
+      hasReportees = rep;
     } catch (mgrErr) {
-      console.error('Failed to load managedTeamIds:', mgrErr);
+      console.error('Failed to load manager hierarchy info:', mgrErr);
     }
 
     // Look up the user's organization(s) so the frontend can show "Org: X"
@@ -220,6 +229,7 @@ class AuthService {
         status: user.status,
         instance: user.instance,
         managedTeamIds,
+        hasReportees,
         organizations,
         primaryOrganization,
       },

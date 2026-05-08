@@ -135,10 +135,60 @@ async function canUserViewTeamViaHierarchy(userUuid, teamId) {
   return teamIds.includes(Number(teamId));
 }
 
+/**
+ * Does the user belong to at least one (active, non-deleted) organization?
+ * This is the org-membership half of the "manager via reports_to" gate: a user
+ * can only be treated as a non-team manager if they themselves are tied to an
+ * organization.
+ *
+ * @param {string} userUuid
+ * @returns {Promise<boolean>}
+ */
+async function userHasOrganizationMembership(userUuid) {
+  if (!userUuid) return false;
+  const [rows] = await promisePool.query(
+    `SELECT 1
+       FROM user_organizations uo
+       INNER JOIN organizations o ON o.id = uo.organization_id
+      WHERE uo.user_id = ? AND o.is_active = 1
+      LIMIT 1`,
+    [userUuid]
+  );
+  return rows.length > 0;
+}
+
+/**
+ * Does any other user (direct or transitive) report to `userUuid` via the
+ * users.reports_to_uuid chain? Cheap shortcut used by auth gates so we don't
+ * keep recomputing the full descendant list when we just need a yes/no.
+ *
+ * @param {string} userUuid
+ * @returns {Promise<boolean>}
+ */
+async function userHasReportees(userUuid) {
+  if (!userUuid) return false;
+  try {
+    const [rows] = await promisePool.query(
+      'SELECT 1 FROM users WHERE reports_to_uuid = ? AND is_deleted = 0 LIMIT 1',
+      [userUuid]
+    );
+    return rows.length > 0;
+  } catch (err) {
+    if (err && err.code === 'ER_BAD_FIELD_ERROR') {
+      // Same defensive degrade as getDescendantUserUuids — treat as "no
+      // reportees" if the column has not been added yet.
+      return false;
+    }
+    throw err;
+  }
+}
+
 module.exports = {
   MAX_HIERARCHY_DEPTH,
   getDescendantUserUuids,
   getManagedTeamIdsForUser,
   getAncestorUserUuids,
-  canUserViewTeamViaHierarchy
+  canUserViewTeamViaHierarchy,
+  userHasOrganizationMembership,
+  userHasReportees
 };

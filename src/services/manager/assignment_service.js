@@ -1,11 +1,14 @@
 const { promisePool } = require('../../config/db');
 const adminAssignmentService = require('../admin/assignment_service');
-const { getManagedTeamIdsForUser } = require('../../utils/manager_hierarchy');
+const {
+  getManagedTeamIdsForUser,
+  getDescendantUserUuids
+} = require('../../utils/manager_hierarchy');
 
 /**
  * Manager-scoped wrappers around the admin assignment service.
- * Every list/query is restricted to teams the user manages — directly or
- * transitively via the reports_to chain.
+ * Every list/query is restricted to learners the user manages — directly via
+ * teams, OR transitively via the reports_to chain.
  */
 
 async function getManagedTeamIds(userId) {
@@ -21,6 +24,36 @@ async function getManagedTeamMemberIds(userId, teamId = null) {
     teamIds
   );
   return rows.map(r => r.user_id);
+}
+
+/**
+ * Direct/transitive reportees of `userId` via users.reports_to_uuid. A thin
+ * wrapper around the manager_hierarchy util — defined here so the service has
+ * a single import surface.
+ */
+async function getReporteeUserIds(userId) {
+  return getDescendantUserUuids(userId);
+}
+
+/**
+ * The full set of learner UUIDs whose submissions this manager is allowed to
+ * see. Union of:
+ *   1. members of teams the manager directly/transitively manages, AND
+ *   2. direct/transitive reportees via the reports_to chain.
+ *
+ * When `teamId` is provided we narrow to that specific team's members AND
+ * still include reportees (so a non-team manager opening one of their
+ * reportees' team views still sees them).
+ */
+async function getVisibleLearnerUuids(userId, teamId = null) {
+  const [teamMemberIds, reporteeIds] = await Promise.all([
+    getManagedTeamMemberIds(userId, teamId),
+    getReporteeUserIds(userId)
+  ]);
+  const merged = new Set();
+  for (const id of teamMemberIds) merged.add(id);
+  for (const id of reporteeIds) merged.add(id);
+  return Array.from(merged);
 }
 
 async function listManagedTeams(userId) {
@@ -41,9 +74,54 @@ async function listManagedTeams(userId) {
   return rows;
 }
 
+/**
+ * Find assignment IDs that any direct/transitive reportee of `userId` has
+ * submitted to. Used to widen `listManagedAssignments` for non-team managers
+ * (and to enrich existing managers' views with reportee-only assignments that
+ * fall outside the team-id restriction).
+ */
+async function getReporteeSubmittedAssignmentIds(userId) {
+  const reporteeIds = await getReporteeUserIds(userId);
+  if (reporteeIds.length === 0) return [];
+  const placeholders = reporteeIds.map(() => '?').join(',');
+  const [rows] = await promisePool.query(
+    `SELECT DISTINCT s.assignment_id
+       FROM assignment_submissions s
+       INNER JOIN assignments a ON a.id = s.assignment_id AND a.is_deleted = 0
+      WHERE s.user_id IN (${placeholders})`,
+    reporteeIds
+  );
+  return rows.map((r) => r.assignment_id);
+}
+
 async function listManagedAssignments(userId, filters = {}) {
-  const teamIds = await getManagedTeamIds(userId);
-  return adminAssignmentService.listAssignments(filters, { restrictTeamIds: teamIds });
+  const [teamIds, reporteeAssignmentIds] = await Promise.all([
+    getManagedTeamIds(userId),
+    getReporteeSubmittedAssignmentIds(userId)
+  ]);
+  if (teamIds.length === 0 && reporteeAssignmentIds.length === 0) {
+    return { rows: [], total: 0 };
+  }
+
+  // Only pass each restriction when its set is non-empty. Passing
+  // `restrictTeamIds: []` to the admin service triggers an early-return
+  // (back-compat with team-only callers), which would wrongly hide
+  // reportee-only assignments for non-team managers. Build an opts shape
+  // that includes ONLY the populated restrictions:
+  //   - both populated → UNION  (`team_id IN (...) OR id IN (...)`)
+  //   - team only      → team-id AND
+  //   - reportees only → assignment-id AND
+  const opts = {};
+  if (teamIds.length > 0 && reporteeAssignmentIds.length > 0) {
+    opts.restrictTeamIds = teamIds;
+    opts.restrictAssignmentIds = reporteeAssignmentIds;
+    opts.unionRestricts = true;
+  } else if (teamIds.length > 0) {
+    opts.restrictTeamIds = teamIds;
+  } else {
+    opts.restrictAssignmentIds = reporteeAssignmentIds;
+  }
+  return adminAssignmentService.listAssignments(filters, opts);
 }
 
 /**
@@ -61,13 +139,15 @@ async function listManagedAssignmentsForTeam(userId, teamId, filters = {}) {
 }
 
 async function listManagedSubmissions(userId, assignmentId, filters = {}) {
-  const memberIds = await getManagedTeamMemberIds(userId);
-  return adminAssignmentService.listSubmissions(assignmentId, filters, { restrictUserIds: memberIds });
+  const learnerIds = await getVisibleLearnerUuids(userId);
+  return adminAssignmentService.listSubmissions(assignmentId, filters, { restrictUserIds: learnerIds });
 }
 
 module.exports = {
   getManagedTeamIds,
   getManagedTeamMemberIds,
+  getReporteeUserIds,
+  getVisibleLearnerUuids,
   listManagedTeams,
   listManagedAssignments,
   listManagedAssignmentsForTeam,

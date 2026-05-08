@@ -1,4 +1,8 @@
 const { promisePool: pool } = require('../../config/db');
+// moment-timezone ships its own IANA tz database, so it works correctly even
+// on Node builds without full-ICU (e.g. small-ICU Alpine images), where
+// Intl.DateTimeFormat silently falls back to UTC for non-default zones.
+const moment = require('moment-timezone');
 
 /**
  * Report Scheduler Service
@@ -220,36 +224,22 @@ const toggleSchedule = async (id, isActive) => {
   }
 };
 
-// Map Intl weekday short names to JS getDay() values (0=Sun, 6=Sat)
-const WEEKDAY_INDEX = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+// Resolve a stored timezone string to one moment-timezone recognizes,
+// falling back to IST if the value is missing or unknown.
+const resolveTz = (tz) => (tz && moment.tz.zone(tz) ? tz : 'Asia/Kolkata');
 
 /**
- * Compute current wall-clock parts in a given IANA timezone using built-in Intl.
- * Why: previously we used new Date().getHours()/getDate() which read the OS timezone
- * of the host (UTC on most cloud servers), so an "10:00 IST" schedule never matched.
+ * Compute current wall-clock parts in a given IANA timezone.
+ * Uses moment-timezone (which carries its own IANA database) so the result is
+ * correct regardless of the host Node's ICU build.
  */
 const getNowInTimezone = (timezone) => {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    weekday: 'short',
-    hour12: false
-  }).formatToParts(new Date());
-
-  const m = {};
-  for (const p of parts) m[p.type] = p.value;
-  // Some locales render midnight as '24' — normalize to '00'
-  const hour = m.hour === '24' ? '00' : m.hour;
-
+  const m = moment.tz(resolveTz(timezone));
   return {
-    timeStr: `${hour}:${m.minute}`,
-    dayOfWeek: WEEKDAY_INDEX[m.weekday],
-    dayOfMonth: parseInt(m.day, 10),
-    todayStr: `${m.year}-${m.month}-${m.day}`
+    timeStr: m.format('HH:mm'),
+    dayOfWeek: m.day(),
+    dayOfMonth: m.date(),
+    todayStr: m.format('YYYY-MM-DD')
   };
 };
 
@@ -258,12 +248,8 @@ const getNowInTimezone = (timezone) => {
 const formatDateInTz = (val, tz) => {
   if (!val) return null;
   if (typeof val === 'string') return val.slice(0, 10);
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(val);
+  const m = moment.tz(val, resolveTz(tz));
+  return m.isValid() ? m.format('YYYY-MM-DD') : null;
 };
 
 /**

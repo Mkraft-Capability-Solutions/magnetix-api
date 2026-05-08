@@ -15,5 +15,6 @@ router.patch('/submissions/:submissionId/review', controller.reviewSubmission);
 router.get('/:id', requireAssignmentVisibility, controller.getAssignment);
 router.patch('/:id', requireAssignmentVisibility, controller.patchAssignment);
 router.get('/:id/submissions', requireAssignmentVisibility, controller.listSubmissions);
+router.get('/:id/submissions/:userId/detail', requireAssignmentVisibility, controller.getSubmissionDetail);
 
 module.exports = router;

@@ -82,12 +82,48 @@ async function listAssignments(filters = {}, opts = {}) {
     where.push('a.created_by = ?');
     params.push(filters.created_by);
   }
-  if (opts.restrictTeamIds && Array.isArray(opts.restrictTeamIds)) {
-    if (opts.restrictTeamIds.length === 0) {
+  // Restriction handling.
+  // - Default behavior (back-compat): if `restrictTeamIds` is supplied, AND
+  //   together with the rest of the filters; same for `restrictAssignmentIds`.
+  // - New `unionRestricts` flag: when both team-id and assignment-id
+  //   restrictions are present AND the caller wants the UNION of them (e.g.
+  //   "assignments in my managed teams OR assignments my reportees have
+  //   submitted to"), we wrap them in `(team_id IN (...) OR id IN (...))`.
+  const hasTeamRestrict = Array.isArray(opts.restrictTeamIds);
+  const hasAsnRestrict = Array.isArray(opts.restrictAssignmentIds);
+  const wantUnion = !!opts.unionRestricts && hasTeamRestrict && hasAsnRestrict;
+
+  if (wantUnion) {
+    const teamIds = opts.restrictTeamIds;
+    const asnIds = opts.restrictAssignmentIds;
+    if (teamIds.length === 0 && asnIds.length === 0) {
       return { rows: [], total: 0 };
     }
-    where.push(`a.team_id IN (${opts.restrictTeamIds.map(() => '?').join(',')})`);
-    params.push(...opts.restrictTeamIds);
+    const orParts = [];
+    if (teamIds.length > 0) {
+      orParts.push(`a.team_id IN (${teamIds.map(() => '?').join(',')})`);
+      params.push(...teamIds);
+    }
+    if (asnIds.length > 0) {
+      orParts.push(`a.id IN (${asnIds.map(() => '?').join(',')})`);
+      params.push(...asnIds);
+    }
+    where.push(`(${orParts.join(' OR ')})`);
+  } else {
+    if (hasTeamRestrict) {
+      if (opts.restrictTeamIds.length === 0) {
+        return { rows: [], total: 0 };
+      }
+      where.push(`a.team_id IN (${opts.restrictTeamIds.map(() => '?').join(',')})`);
+      params.push(...opts.restrictTeamIds);
+    }
+    if (hasAsnRestrict) {
+      if (opts.restrictAssignmentIds.length === 0) {
+        return { rows: [], total: 0 };
+      }
+      where.push(`a.id IN (${opts.restrictAssignmentIds.map(() => '?').join(',')})`);
+      params.push(...opts.restrictAssignmentIds);
+    }
   }
 
   const whereSql = `WHERE ${where.join(' AND ')}`;
@@ -177,6 +213,91 @@ async function listSubmissions(assignmentId, filters = {}, opts = {}) {
     `SELECT COUNT(*) AS total FROM assignment_submissions s ${whereSql}`,
     params
   );
+  return { rows, total: countRows[0].total };
+}
+
+/**
+ * Cross-assignment variant of listSubmissions: list submissions made by a
+ * specific set of users (typically a manager's reportees) across ALL of the
+ * users' assignments. Mirrors the row shape of listSubmissions so the
+ * frontend can render the same columns / details.
+ *
+ * @param {string[]} userIds — learner UUIDs to include (caller must already
+ *                              have authorized that the caller may see them)
+ * @param {object} filters    — { status, type, q (assignment title search),
+ *                                 submitted_after, submitted_before, user_id,
+ *                                 limit, offset }
+ */
+async function listSubmissionsForUsers(userIds, filters = {}) {
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    return { rows: [], total: 0 };
+  }
+
+  const where = [
+    'a.is_deleted = 0',
+    `s.user_id IN (${userIds.map(() => '?').join(',')})`
+  ];
+  const params = [...userIds];
+
+  if (filters.status) {
+    where.push('s.status = ?'); params.push(filters.status);
+  }
+  if (filters.type) {
+    where.push('s.submission_type = ?'); params.push(filters.type);
+  }
+  if (filters.user_id) {
+    // Narrowing to a single reportee. Caller must have already verified
+    // user_id is in their descendant set; we just AND it with the IN(...).
+    where.push('s.user_id = ?'); params.push(filters.user_id);
+  }
+  if (filters.q) {
+    where.push('a.title LIKE ?'); params.push(`%${filters.q}%`);
+  }
+  if (filters.submitted_after) {
+    where.push('s.submitted_at >= ?'); params.push(new Date(filters.submitted_after));
+  }
+  if (filters.submitted_before) {
+    where.push('s.submitted_at <= ?'); params.push(new Date(filters.submitted_before));
+  }
+
+  const whereSql = `WHERE ${where.join(' AND ')}`;
+  const limit = Math.min(parseInt(filters.limit, 10) || 50, 500);
+  const offset = parseInt(filters.offset, 10) || 0;
+
+  const [rows] = await promisePool.query(
+    `SELECT s.id, s.uuid, s.assignment_id, s.user_id,
+            s.submission_type, s.file_url, s.file_name, s.file_size_bytes,
+            s.assessment_response_id, s.notes, s.status,
+            s.reviewed_by, s.reviewed_at, s.feedback,
+            s.submitted_at, s.updated_at,
+            a.uuid AS assignment_uuid, a.title AS assignment_title,
+            a.type AS assignment_type, a.end_date AS assignment_end_date,
+            u.email AS user_email,
+            COALESCE(st.first_name, ad.first_name, ins.first_name, sa.first_name) AS first_name,
+            COALESCE(st.last_name,  ad.last_name,  ins.last_name,  sa.last_name)  AS last_name,
+            fr.score, fr.max_score, fr.percentage
+       FROM assignment_submissions s
+       INNER JOIN assignments a       ON a.id = s.assignment_id
+       INNER JOIN users u             ON u.uuid = s.user_id
+       LEFT JOIN students st          ON st.user_id = u.uuid
+       LEFT JOIN admins ad            ON ad.user_id = u.uuid
+       LEFT JOIN instructors ins      ON ins.user_id = u.uuid
+       LEFT JOIN super_admins sa      ON sa.user_id = u.uuid
+       LEFT JOIN feedback_responses fr ON fr.id = s.assessment_response_id
+       ${whereSql}
+       ORDER BY s.submitted_at DESC
+       LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
+  );
+
+  const [countRows] = await promisePool.query(
+    `SELECT COUNT(*) AS total
+       FROM assignment_submissions s
+       INNER JOIN assignments a ON a.id = s.assignment_id
+       ${whereSql}`,
+    params
+  );
+
   return { rows, total: countRows[0].total };
 }
 
@@ -369,6 +490,7 @@ module.exports = {
   listAssignments,
   getAssignmentDetail,
   listSubmissions,
+  listSubmissionsForUsers,
   reviewSubmission,
   getSubmissionById,
   getSubmissionDetail,
