@@ -102,6 +102,14 @@ router.post('/certificate',
   uploadController.uploadCertificate
 );
 
+// Certification template upload (Admin / Super Admin)
+router.post('/certification/template',
+  authenticate,
+  authorize(3, 4), // Admin, Super Admin
+  upload.single('template'),
+  uploadController.uploadCertificationTemplate
+);
+
 // Error handling middleware for multer errors
 router.use((error, req, res, next) => {
   console.error('Upload route error:', error);

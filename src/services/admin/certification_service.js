@@ -483,10 +483,16 @@ class CertificationService {
         params.push(status);
       }
 
-      // Search by student name
+      // Search by student name or email. Matches against first_name,
+      // last_name, the displayed CONCAT'd full name (so typing "Jane Doe"
+      // works), and the email — previously typing the full name returned
+      // nothing because neither column individually contained both words.
       if (search && search.trim()) {
-        whereConditions.push('(s.first_name LIKE ? OR s.last_name LIKE ? OR u.email LIKE ?)');
-        params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+        whereConditions.push(
+          '(s.first_name LIKE ? OR s.last_name LIKE ? OR CONCAT(s.first_name, " ", s.last_name) LIKE ? OR u.email LIKE ?)'
+        );
+        const like = `%${search}%`;
+        params.push(like, like, like, like);
       }
 
       const whereClause = whereConditions.length > 0

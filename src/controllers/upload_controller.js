@@ -1,5 +1,21 @@
 const uploadService = require('../services/upload_service');
 
+exports.uploadCertificationTemplate = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+    const filename = await uploadService.uploadCertificationTemplate(req.file);
+    res.json({
+      success: true,
+      message: 'Certification template uploaded successfully',
+      filename,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.uploadCourseThumbnail = async (req, res, next) => {
   try {
     if (!req.file) {
