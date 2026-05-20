@@ -186,6 +186,7 @@ app.use("/api/chatbot", require("./routes/chatbot_routes"));
 app.use("/api/admin/marketing", require("./routes/admin/marketing_routes"));
 app.use("/api/notifications", require("./routes/notification_routes"));
 app.use("/api/admin/feedback", require("./routes/admin/feedback_routes"));
+app.use("/api/admin/question-bank", require("./routes/admin/question_bank_routes"));
 app.use("/api/admin/api-keys", require("./routes/admin/api_key_routes"));
 app.use("/api/admin/knowledge-base", require("./routes/admin/knowledge_base_routes"));
 app.use("/api/knowledge-base", require("./routes/knowledge_base_public_routes"));

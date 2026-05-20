@@ -28,6 +28,10 @@ class UploadService {
       ),
       lessonMp4: path.join(__dirname, "../../uploads/courses/lessons/mp4"),
       certificates: path.join(__dirname, "../../uploads/certificates"),
+      certificationTemplates: path.join(
+        __dirname,
+        "../../uploads/certifications/templates"
+      ),
     };
   }
 
@@ -561,6 +565,25 @@ class UploadService {
   }
 
   // Certificate Upload
+  async uploadCertificationTemplate(file) {
+    await this.ensureDirectoryExists(this.uploadPaths.certificationTemplates);
+
+    const ext = path.extname(file.originalname).toLowerCase();
+    const allowedExtensions = [".pdf", ".png", ".jpg", ".jpeg"];
+
+    if (!allowedExtensions.includes(ext)) {
+      throw new Error(
+        `Invalid file type. Allowed types: ${allowedExtensions.join(", ")}`
+      );
+    }
+
+    const filename = `template_${Date.now()}${ext}`;
+    const filePath = path.join(this.uploadPaths.certificationTemplates, filename);
+    await fs.promises.writeFile(filePath, file.buffer);
+
+    return `certifications/templates/${filename}`;
+  }
+
   async uploadCertificate(file, userId) {
     // Create user-specific certificate directory
     const userCertificateDir = path.join(this.uploadPaths.certificates, userId);

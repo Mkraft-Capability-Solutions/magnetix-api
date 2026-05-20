@@ -10,17 +10,42 @@ const generateSlug = () => {
   return crypto.randomBytes(8).toString('hex');
 };
 
+// Settings columns the Create Assessment UI populates. Tracked separately
+// so we can detect whether the assessment-settings migration has been run
+// and adapt SELECT/INSERT/UPDATE accordingly (older deployments simply
+// don't surface these values until the migration is applied).
+const ASSESSMENT_SETTING_COLUMNS = [
+  'time_limit_minutes',
+  'passing_score',
+  'max_attempts',
+  'randomize_questions',
+];
+
+const getExistingFeedbackFormColumns = async (conn = promisePool) => {
+  const [rows] = await conn.query(`
+    SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = 'lms_db' AND TABLE_NAME = 'feedback_forms'
+  `);
+  return new Set(rows.map(r => r.COLUMN_NAME));
+};
+
 /**
  * Get all feedback forms for admin
  */
 const getAllForms = async (filters = {}) => {
   const { status, type, search } = filters;
 
+  const existingCols = await getExistingFeedbackFormColumns();
+  const settingCols = ASSESSMENT_SETTING_COLUMNS.filter(c => existingCols.has(c));
+  const extraSelect = settingCols.length
+    ? ', ' + settingCols.map(c => `ff.${c}`).join(', ')
+    : '';
+
   let query = `
     SELECT
       ff.id, ff.uuid, ff.slug, ff.name, ff.description, ff.type, ff.status,
       ff.expiry_date, ff.max_responses, ff.one_per_browser,
-      ff.collect_name, ff.collect_email, ff.created_at,
+      ff.collect_name, ff.collect_email, ff.created_at${extraSelect},
       COALESCE(u.email, ff.created_by) as created_by_name,
       (SELECT COUNT(*) FROM feedback_responses WHERE form_id = ff.id) as response_count,
       (SELECT COUNT(*) FROM feedback_questions WHERE form_id = ff.id) as question_count
@@ -176,13 +201,9 @@ const createForm = async (formData, userUuid) => {
     const uuid = uuidv4();
 
     // Check which optional columns exist
-    const [columns] = await connection.query(`
-      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = 'lms_db' AND TABLE_NAME = 'feedback_forms' AND COLUMN_NAME IN ('assessment_type', 'show_report')
-    `);
-    const existingCols = new Set(columns.map(c => c.COLUMN_NAME));
-    const hasAssessmentType = existingCols.has('assessment_type');
-    const hasShowReport = existingCols.has('show_report');
+    let allCols = await getExistingFeedbackFormColumns(connection);
+    const hasAssessmentType = allCols.has('assessment_type');
+    const hasShowReport = allCols.has('show_report');
 
     // If show_report column doesn't exist, add it
     if (!hasShowReport) {
@@ -190,6 +211,25 @@ const createForm = async (formData, userUuid) => {
         await connection.query('ALTER TABLE feedback_forms ADD COLUMN show_report TINYINT(1) DEFAULT 1 AFTER show_correct_answers');
       } catch (e) { /* column may already exist from concurrent request */ }
     }
+
+    // Lazily add the assessment settings columns when they're missing so
+    // deployments that haven't run the migration still round-trip these
+    // settings (matches the show_report bootstrap above).
+    const SETTING_COL_DDL = {
+      time_limit_minutes: 'ALTER TABLE feedback_forms ADD COLUMN time_limit_minutes INT NULL',
+      passing_score: 'ALTER TABLE feedback_forms ADD COLUMN passing_score INT NULL',
+      max_attempts: 'ALTER TABLE feedback_forms ADD COLUMN max_attempts INT NULL',
+      randomize_questions: 'ALTER TABLE feedback_forms ADD COLUMN randomize_questions TINYINT(1) NOT NULL DEFAULT 0',
+    };
+    for (const col of ASSESSMENT_SETTING_COLUMNS) {
+      if (!allCols.has(col)) {
+        try {
+          await connection.query(SETTING_COL_DDL[col]);
+        } catch (e) { /* column may already exist */ }
+      }
+    }
+    allCols = await getExistingFeedbackFormColumns(connection);
+    const settingCols = ASSESSMENT_SETTING_COLUMNS.filter(c => allCols.has(c));
 
     // Ensure assessment_type column supports 'both' value
     if (hasAssessmentType && formData.assessmentType === 'both') {
@@ -210,6 +250,19 @@ const createForm = async (formData, userUuid) => {
       formData.showReport !== undefined ? (formData.showReport ? 1 : 0) : 1,
       userUuid
     );
+
+    // Assessment settings columns — only persisted once the migration has
+    // added the matching feedback_forms columns. UI-side keys come in as
+    // timeLimit/passingScore/maxAttempts/randomize.
+    for (const col of settingCols) {
+      let value;
+      if (col === 'time_limit_minutes') value = formData.timeLimit != null ? Number(formData.timeLimit) : null;
+      else if (col === 'passing_score') value = formData.passingScore != null ? Number(formData.passingScore) : null;
+      else if (col === 'max_attempts') value = formData.maxAttempts != null ? Number(formData.maxAttempts) : null;
+      else if (col === 'randomize_questions') value = formData.randomize ? 1 : 0;
+      cols.push(col);
+      vals.push(value);
+    }
 
     const queryColumns = `(${cols.join(', ')})`;
     const queryValues = `(${cols.map(() => '?').join(', ')})`;
@@ -303,13 +356,33 @@ const updateForm = async (formId, formData) => {
       await validateQuestions(formData.type || 'feedback', formData.questions, formData.assessmentType);
     }
 
-    // Update form with all fields including show_report
-    const updateQuery = `UPDATE feedback_forms SET
-        name = ?, description = ?, type = ?, assessment_type = ?, status = ?,
-        expiry_date = ?, max_responses = ?, one_per_browser = ?,
-        collect_name = ?, collect_email = ?, show_correct_answers = ?, show_report = ?
-      WHERE id = ? AND is_deleted = 0`;
+    let allCols = await getExistingFeedbackFormColumns(connection);
 
+    // Lazily add the assessment settings columns when missing (same as
+    // createForm bootstrap) so updates can persist them.
+    const UPDATE_COL_DDL = {
+      time_limit_minutes: 'ALTER TABLE feedback_forms ADD COLUMN time_limit_minutes INT NULL',
+      passing_score: 'ALTER TABLE feedback_forms ADD COLUMN passing_score INT NULL',
+      max_attempts: 'ALTER TABLE feedback_forms ADD COLUMN max_attempts INT NULL',
+      randomize_questions: 'ALTER TABLE feedback_forms ADD COLUMN randomize_questions TINYINT(1) NOT NULL DEFAULT 0',
+    };
+    for (const col of ASSESSMENT_SETTING_COLUMNS) {
+      if (!allCols.has(col)) {
+        try {
+          await connection.query(UPDATE_COL_DDL[col]);
+        } catch (e) { /* column may already exist */ }
+      }
+    }
+    allCols = await getExistingFeedbackFormColumns(connection);
+    const settingCols = ASSESSMENT_SETTING_COLUMNS.filter(c => allCols.has(c));
+
+    // Build dynamic SET clauses so newly-added settings columns are written
+    // when present without breaking older deployments that haven't migrated.
+    const setClauses = [
+      'name = ?', 'description = ?', 'type = ?', 'assessment_type = ?', 'status = ?',
+      'expiry_date = ?', 'max_responses = ?', 'one_per_browser = ?',
+      'collect_name = ?', 'collect_email = ?', 'show_correct_answers = ?', 'show_report = ?',
+    ];
     const updateParams = [
       formData.name, formData.description || null, formData.type || 'feedback',
       formData.assessmentType || null, formData.status || 'draft',
@@ -318,11 +391,22 @@ const updateForm = async (formId, formData) => {
       formData.collectEmail ? 1 : 0,
       formData.showCorrectAnswers !== undefined ? (formData.showCorrectAnswers ? 1 : 0) : 1,
       formData.showReport !== undefined ? (formData.showReport ? 1 : 0) : 1,
-      formId
     ];
 
-    // Update form
-    await connection.query(updateQuery, updateParams);
+    for (const col of settingCols) {
+      setClauses.push(`${col} = ?`);
+      if (col === 'time_limit_minutes') updateParams.push(formData.timeLimit != null ? Number(formData.timeLimit) : null);
+      else if (col === 'passing_score') updateParams.push(formData.passingScore != null ? Number(formData.passingScore) : null);
+      else if (col === 'max_attempts') updateParams.push(formData.maxAttempts != null ? Number(formData.maxAttempts) : null);
+      else if (col === 'randomize_questions') updateParams.push(formData.randomize ? 1 : 0);
+    }
+
+    updateParams.push(formId);
+
+    await connection.query(
+      `UPDATE feedback_forms SET ${setClauses.join(', ')} WHERE id = ? AND is_deleted = 0`,
+      updateParams
+    );
 
     // Delete existing questions and re-insert
     await connection.query('DELETE FROM feedback_questions WHERE form_id = ?', [formId]);
