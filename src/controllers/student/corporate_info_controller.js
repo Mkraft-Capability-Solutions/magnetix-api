@@ -7,6 +7,7 @@ const corporateInfoSchema = Joi.object({
   designation: Joi.string().optional().allow('', null),
   department: Joi.string().optional().allow('', null),
   employee_id: Joi.string().optional().allow('', null),
+  doj: Joi.date().optional().allow('', null),
   organization_name: Joi.string().optional().allow('', null),
   location: Joi.string().optional().allow('', null),
   manager_name: Joi.string().optional().allow('', null),
@@ -46,6 +47,7 @@ exports.getCorporateInfo = async (req, res, next) => {
 exports.updateCorporateInfo = async (req, res, next) => {
   try {
     // Validate request body and strip unknown fields (id, user_id, timestamps)
+    console.log(req.body)
     const { error, value: validatedData } = corporateInfoSchema.validate(req.body);
     if (error) {
       return res.status(400).json({
