@@ -82,7 +82,10 @@ exports.createLocation = async (locationData) => {
       capacity = 0,
       timezone = null,
       manager = null,
-      facilities = []
+      facilities = [],
+      countryId = null,
+      stateId = null,
+      districtId = null
     } = locationData;
 
     const facilitiesJson = JSON.stringify(facilities);
@@ -91,6 +94,19 @@ exports.createLocation = async (locationData) => {
       'CALL sp_create_location(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [name, city, state, country, address, zipCode, email, phone, capacity, timezone, manager, facilitiesJson]
     );
+
+    const locationId = results[0][0].id;
+
+    // country_id/state_id/district_id aren't part of sp_create_location —
+    // persist them separately when provided.
+    if (countryId || stateId || districtId) {
+      await pool.query(
+        `UPDATE training_locations
+         SET country_id = ?, state_id = ?, district_id = ?
+         WHERE id = ?`,
+        [countryId, stateId, districtId, locationId]
+      );
+    }
 
     return results[0][0];
   } catch (error) {
@@ -114,7 +130,10 @@ exports.updateLocation = async (id, locationData) => {
       timezone = null,
       manager = null,
       facilities = [],
-      status = 'Active'
+      status = 'Active',
+      countryId = null,
+      stateId = null,
+      districtId = null
     } = locationData;
 
     const facilitiesJson = JSON.stringify(facilities);
@@ -122,6 +141,17 @@ exports.updateLocation = async (id, locationData) => {
     const [results] = await pool.query(
       'CALL sp_update_location(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [id, name, city, state, country, address, zipCode, email, phone, capacity, timezone, manager, facilitiesJson, status]
+    );
+
+    // Use COALESCE so an update that omits these IDs preserves existing
+    // values instead of wiping them — they aren't part of sp_update_location.
+    await pool.query(
+      `UPDATE training_locations
+       SET country_id = COALESCE(?, country_id),
+           state_id = COALESCE(?, state_id),
+           district_id = COALESCE(?, district_id)
+       WHERE id = ?`,
+      [countryId, stateId, districtId, id]
     );
 
     return results[0][0];
@@ -346,6 +376,9 @@ exports.createTrainer = async (trainerData) => {
 exports.updateTrainer = async (id, trainerData) => {
   try {
     const {
+      firstName,
+      lastName,
+      phone,
       bio = null,
       expertise = [],
       certifications = [],
@@ -366,6 +399,33 @@ exports.updateTrainer = async (id, trainerData) => {
       'CALL sp_update_trainer(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [id, bio, expertiseJson, certificationsJson, experience, rate, availability, languagesJson, status, initials, color]
     );
+
+    // firstName/lastName/phone are not trainer columns — they live on the
+    // students table that the trainer read path joins on (s.first_name,
+    // s.last_name, s.contact). Persist them there so they survive the update.
+    if (firstName !== undefined || lastName !== undefined || phone !== undefined) {
+      const [[trainerRow]] = await pool.query(
+        'SELECT user_id FROM trainers WHERE id = ? AND is_deleted = 0',
+        [id]
+      );
+
+      if (trainerRow && trainerRow.user_id) {
+        await pool.query(
+          `INSERT INTO students (user_id, first_name, last_name, contact)
+           VALUES (?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             first_name = COALESCE(VALUES(first_name), first_name),
+             last_name  = COALESCE(VALUES(last_name), last_name),
+             contact    = COALESCE(VALUES(contact), contact)`,
+          [
+            trainerRow.user_id,
+            firstName !== undefined ? firstName : null,
+            lastName !== undefined ? lastName : null,
+            phone !== undefined ? phone : null
+          ]
+        );
+      }
+    }
 
     return results[0][0];
   } catch (error) {
