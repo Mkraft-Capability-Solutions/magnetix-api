@@ -80,6 +80,24 @@ class UploadService {
     return filename;
   }
 
+  // Marketing notification image (embedded in the email body)
+  async uploadMarketingImage(file) {
+    return this.uploadSingleFile(
+      file,
+      path.join(__dirname, "../../uploads/marketing/images"),
+      [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"]
+    );
+  }
+
+  // Marketing notification attachment (linked in the email body)
+  async uploadMarketingAttachment(file) {
+    return this.uploadSingleFile(
+      file,
+      path.join(__dirname, "../../uploads/marketing/attachments"),
+      [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".csv", ".txt", ".zip"]
+    );
+  }
+
   async uploadAndExtractZip(file, dirPath, allowedExtensions = [".zip"]) {
     console.log("Upload service - Starting SCORM extraction:", {
       filename: file.originalname,

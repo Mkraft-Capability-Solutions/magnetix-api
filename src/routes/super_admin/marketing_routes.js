@@ -13,6 +13,12 @@ router.use(authorize(4));
  * Marketing Campaign Routes
  */
 
+// GET /api/super-admin/marketing/users-by-role - Individual users for audience picker
+router.get('/users-by-role', MarketingController.getUsersByRole);
+
+// POST /api/super-admin/marketing/validate-emails - Validate CSV-imported emails
+router.post('/validate-emails', MarketingController.validateEmails);
+
 // POST /api/super-admin/marketing/campaigns - Create new campaign
 router.post('/campaigns', MarketingController.createCampaign);
 

@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS marketing_campaigns (
   subject VARCHAR(255) NOT NULL,
   message TEXT NOT NULL,
   target_audience JSON NOT NULL,
-  delivery_method ENUM('email', 'notification', 'both') DEFAULT 'notification',
+  delivery_method ENUM('email', 'notification', 'in-app', 'both') DEFAULT 'notification',
   status ENUM('draft', 'scheduled', 'sending', 'sent', 'failed') DEFAULT 'draft',
   recipient_count INT DEFAULT 0,
   total_sent INT DEFAULT 0,

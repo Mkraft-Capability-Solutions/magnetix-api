@@ -218,6 +218,54 @@ async function _notifyOnSubmission(assignment, submission, learner) {
   } catch (err) {
     console.error('creator/manager submission notify error:', err && err.message);
   }
+
+  // Notify the learner's manager per the "Reports To" mapping
+  // (users.reports_to_uuid — the authoritative manager set in user management,
+  // NOT the legacy free-text student_corporate_info.manager_email).
+  try {
+    const [mgrRows] = await promisePool.query(
+      `SELECT m.uuid AS manager_uuid, m.email AS manager_email,
+              TRIM(CONCAT(
+                COALESCE(ms.first_name, ma.first_name, mi.first_name, msa.first_name, ''), ' ',
+                COALESCE(ms.last_name,  ma.last_name,  mi.last_name,  msa.last_name,  '')
+              )) AS manager_name
+         FROM users l
+         JOIN users m ON l.reports_to_uuid = m.uuid AND m.is_deleted = 0
+         LEFT JOIN students ms      ON m.uuid = ms.user_id
+         LEFT JOIN admins ma        ON m.uuid = ma.user_id
+         LEFT JOIN instructors mi   ON m.uuid = mi.user_id
+         LEFT JOIN super_admins msa ON m.uuid = msa.user_id
+        WHERE l.uuid = ? AND l.is_deleted = 0
+        LIMIT 1`,
+      [learner.uuid]
+    );
+    const mgr = mgrRows[0];
+    if (mgr && mgr.manager_email) {
+      const mgrName = (mgr.manager_name || '').trim() || mgr.manager_email;
+      // Manager is a real user → in-app notification too.
+      try {
+        await notificationService.createSystemNotification(
+          mgr.manager_uuid,
+          `New submission: ${assignment.title}`,
+          `${learnerName} submitted "${assignment.title}".`,
+          'assignment',
+          `${process.env.FRONTEND_URL || ''}/manager/assignments/${assignment.uuid}/submissions`,
+          { submissionId: submission.id, learnerId: learner.uuid }
+        );
+      } catch (err) { console.error('reports-to manager in-app notify failed:', err && err.message); }
+
+      await emailHelper.sendSubmissionReceivedEmail(
+        mgr.manager_email,
+        mgrName,
+        learnerName,
+        learner.email,
+        assignment,
+        { ...submission, recipientRole: 'manager' }
+      );
+    }
+  } catch (err) {
+    console.error('learner manager (reports-to) submission email failed:', err && err.message);
+  }
 }
 
 async function _resolveLearner(userId) {

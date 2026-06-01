@@ -23,6 +23,21 @@ const upload = multer({
   }
 });
 
+// Marketing notification uploads (Admin, Super Admin)
+router.post('/marketing/image',
+  authenticate,
+  authorize(3, 4),
+  upload.single('image'),
+  uploadController.uploadMarketingImage
+);
+
+router.post('/marketing/attachment',
+  authenticate,
+  authorize(3, 4),
+  upload.single('attachment'),
+  uploadController.uploadMarketingAttachment
+);
+
 // Course uploads
 router.post('/course/thumbnail',
   authenticate,

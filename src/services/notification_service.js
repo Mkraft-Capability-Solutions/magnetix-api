@@ -1,4 +1,36 @@
 const { promisePool } = require('../config/db');
+const path = require('path');
+const fs = require('fs');
+
+/**
+ * Rewrite <img> tags that point at our own marketing uploads into inline CID
+ * attachments, so the images render in the email regardless of whether the
+ * server URL is publicly reachable. External image URLs are left untouched.
+ * @param {string} html
+ * @returns {{ html: string, attachments: Array }}
+ */
+function inlineMarketingImages(html) {
+  const attachments = [];
+  const byFilename = new Map();
+  const imagesRoot = path.join(__dirname, '../../uploads/marketing/images');
+
+  const out = String(html || '').replace(
+    /(<img[^>]+src=["'])([^"']*\/uploads\/marketing\/images\/([^"'?#\/]+)[^"']*)(["'])/gi,
+    (full, pre, _url, filename, post) => {
+      const filePath = path.join(imagesRoot, filename);
+      if (!fs.existsSync(filePath)) return full; // leave the URL as-is if missing
+      let cid = byFilename.get(filename);
+      if (!cid) {
+        cid = `mkimg${attachments.length}@magnetix`;
+        byFilename.set(filename, cid);
+        attachments.push({ filename, path: filePath, cid });
+      }
+      return `${pre}cid:${cid}${post}`;
+    }
+  );
+
+  return { html: out, attachments };
+}
 
 class NotificationService {
 
@@ -459,16 +491,31 @@ class NotificationService {
     const emailHelper = require('../utils/email_helper');
     const connection = await promisePool.getConnection();
     try {
-      await emailHelper.sendEmail(
-        recipientEmail,
-        notification.title,
-        'marketing-notification',
-        {
-          title: notification.title,
-          message: notification.message,
-          actionUrl: notification.action_url || null
-        }
-      );
+      // emailHelper.sendEmail expects a single options object ({ to, subject, html, text }).
+      // Render the marketing template if loaded, otherwise fall back to basic HTML.
+      const templateData = {
+        title: notification.title,
+        message: notification.message,
+        actionUrl: notification.action_url || null,
+        year: new Date().getFullYear()
+      };
+      const template = emailHelper.templates && emailHelper.templates['marketing-notification'];
+      const html = template
+        ? template(templateData)
+        : `<h2>${notification.title}</h2><p>${notification.message}</p>`;
+
+      // Inline any images uploaded for this notification as CID attachments so
+      // they display in the email without depending on a publicly reachable URL
+      // (email clients can't load localhost/internal/http image sources).
+      const { html: inlinedHtml, attachments } = inlineMarketingImages(html);
+
+      await emailHelper.sendEmail({
+        to: recipientEmail,
+        subject: notification.title,
+        html: inlinedHtml,
+        text: String(notification.message || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
+        ...(attachments.length ? { attachments } : {})
+      });
 
       // Log to email_logs table
       const logQuery = `
