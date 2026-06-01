@@ -76,9 +76,14 @@ class MarketingService {
           mc.scheduled_for as scheduledFor,
           mc.sent_at as sentAt,
           mc.created_at as createdAt,
-          CONCAT(u.first_name, ' ', u.last_name) as createdByName
+          TRIM(CONCAT(
+            COALESCE(s.first_name, i.first_name, a.first_name, ''), ' ',
+            COALESCE(s.last_name, i.last_name, a.last_name, '')
+          )) as createdByName
         FROM marketing_campaigns mc
-        LEFT JOIN users u ON mc.created_by = u.uuid
+        LEFT JOIN students s ON mc.created_by = s.user_id
+        LEFT JOIN instructors i ON mc.created_by = i.user_id
+        LEFT JOIN admins a ON mc.created_by = a.user_id
         WHERE mc.uuid = ? AND mc.is_deleted = 0
       `;
 
@@ -229,49 +234,34 @@ class MarketingService {
     }
   }
 
-  // Resolve audience filters to user list
+  // Resolve audience filters (roles, specific uuids, specific emails) to a user list.
   static async resolveAudience(targetAudience) {
     return new Promise((resolve, reject) => {
-      const { roles = [], departments = [], specificUsers = [] } = targetAudience;
+      const { roles = [], specificUsers = [], specificEmails = [] } = targetAudience || {};
 
-      let query = 'SELECT DISTINCT u.uuid, u.email, u.first_name, u.last_name FROM users u WHERE u.is_deleted = 0';
+      // Build an OR group across the provided selectors so a user matching ANY
+      // selector is included.
+      const orConditions = [];
       const params = [];
 
-      // Add role filters
       if (roles && roles.length > 0) {
-        const placeholders = roles.map(() => '?').join(',');
-        query += ` AND (u.role_id IN (${placeholders})`;
+        orConditions.push(`u.role_id IN (${roles.map(() => '?').join(',')})`);
         params.push(...roles);
       }
-
-      // Add department filters (if student_corporate_info exists)
-      if (departments && departments.length > 0) {
-        const placeholders = departments.map(() => '?').join(',');
-        if (roles && roles.length > 0) {
-          query += ` OR sci.department IN (${placeholders})`;
-        } else {
-          query += ` AND sci.department IN (${placeholders})`;
-        }
-        params.push(...departments);
-
-        // Add join for corporate info
-        query = query.replace('FROM users u', 'FROM users u LEFT JOIN student_corporate_info sci ON u.uuid = sci.student_uuid');
-      }
-
-      // Add specific users
       if (specificUsers && specificUsers.length > 0) {
-        const placeholders = specificUsers.map(() => '?').join(',');
-        if (roles && roles.length > 0) {
-          query += ` OR u.uuid IN (${placeholders})`;
-        } else {
-          query += ` AND u.uuid IN (${placeholders})`;
-        }
+        orConditions.push(`u.uuid IN (${specificUsers.map(() => '?').join(',')})`);
         params.push(...specificUsers);
       }
+      if (specificEmails && specificEmails.length > 0) {
+        orConditions.push(`LOWER(u.email) IN (${specificEmails.map(() => '?').join(',')})`);
+        params.push(...specificEmails.map(e => String(e).toLowerCase()));
+      }
 
-      // Close WHERE clause if needed
-      if ((roles && roles.length > 0) || (specificUsers && specificUsers.length > 0)) {
-        query += ')';
+      // Only uuid + email are needed downstream (notification recipient + email).
+      // first_name/last_name are NOT columns on `users` (they live in the role tables).
+      let query = 'SELECT DISTINCT u.uuid, u.email FROM users u WHERE u.is_deleted = 0';
+      if (orConditions.length > 0) {
+        query += ` AND (${orConditions.join(' OR ')})`;
       }
 
       db.query(query, params, (error, results) => {
@@ -323,6 +313,66 @@ class MarketingService {
         }
 
         resolve();
+      });
+    });
+  }
+
+  // List individual users (uuid, name, email, roleId) for the audience picker.
+  // Names live in the role-specific tables, so COALESCE across them.
+  static async getUsersByRole() {
+    return new Promise((resolve, reject) => {
+      const query = `
+        SELECT
+          u.uuid,
+          u.email,
+          u.role_id AS roleId,
+          TRIM(CONCAT(
+            COALESCE(s.first_name, i.first_name, a.first_name, ''), ' ',
+            COALESCE(s.last_name, i.last_name, a.last_name, '')
+          )) AS name
+        FROM users u
+        LEFT JOIN students s ON u.uuid = s.user_id
+        LEFT JOIN instructors i ON u.uuid = i.user_id
+        LEFT JOIN admins a ON u.uuid = a.user_id
+        WHERE u.is_deleted = 0 AND u.role_id IN (1, 2, 3)
+        ORDER BY name
+      `;
+      db.query(query, [], (error, results) => {
+        if (error) {
+          console.error('Get users by role error:', error);
+          return reject(error);
+        }
+        resolve(results || []);
+      });
+    });
+  }
+
+  // Validate a list of emails against existing (non-deleted) user accounts.
+  static async validateEmails(emails) {
+    return new Promise((resolve, reject) => {
+      if (!emails || !Array.isArray(emails) || emails.length === 0) {
+        return resolve({ validEmails: [], invalidEmails: [] });
+      }
+
+      const uniqueEmails = [...new Set(emails.map(email => email.trim().toLowerCase()))];
+      const placeholders = uniqueEmails.map(() => '?').join(',');
+      const query = `
+        SELECT LOWER(email) as email
+        FROM users
+        WHERE LOWER(email) IN (${placeholders})
+          AND is_deleted = 0
+      `;
+
+      db.query(query, uniqueEmails, (error, results) => {
+        if (error) {
+          console.error('Validate emails error:', error);
+          return reject(error);
+        }
+
+        const validEmailsSet = new Set(results.map(row => row.email));
+        const validEmails = uniqueEmails.filter(email => validEmailsSet.has(email));
+        const invalidEmails = uniqueEmails.filter(email => !validEmailsSet.has(email));
+        resolve({ validEmails, invalidEmails });
       });
     });
   }

@@ -185,6 +185,47 @@ class MarketingController {
       });
     }
   }
+
+  // List individual users per role for the audience picker.
+  static async getUsersByRole(req, res) {
+    try {
+      const users = await MarketingService.getUsersByRole();
+      res.json({ success: true, data: users });
+    } catch (error) {
+      console.error('Get users by role error:', error);
+      res.status(500).json({
+        success: false,
+        error: { message: error.message || 'Failed to fetch users' }
+      });
+    }
+  }
+
+  // Validate emails (from CSV import) against existing user accounts.
+  static async validateEmails(req, res) {
+    try {
+      const { emails } = req.body;
+
+      if (!emails || !Array.isArray(emails)) {
+        return res.status(400).json({
+          success: false,
+          error: { message: 'Invalid request: emails must be an array' }
+        });
+      }
+
+      if (emails.length === 0) {
+        return res.json({ success: true, data: { validEmails: [], invalidEmails: [] } });
+      }
+
+      const result = await MarketingService.validateEmails(emails);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      console.error('Validate emails error:', error);
+      res.status(500).json({
+        success: false,
+        error: { message: error.message || 'Failed to validate emails' }
+      });
+    }
+  }
 }
 
 module.exports = MarketingController;
