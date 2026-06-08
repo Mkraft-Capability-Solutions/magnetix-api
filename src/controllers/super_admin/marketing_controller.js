@@ -5,7 +5,7 @@ class MarketingController {
   // Create a new marketing campaign
   static async createCampaign(req, res) {
     try {
-      const { title, subject, message, targetAudience, deliveryMethod, scheduledFor } = req.body;
+      const { title, subject, message, targetAudience, deliveryMethod, scheduledFor, status } = req.body;
       const createdBy = req.user.uuid;
 
       // Validation
@@ -25,7 +25,10 @@ class MarketingController {
           message,
           targetAudience,
           deliveryMethod: deliveryMethod || 'both',
-          scheduledFor: scheduledFor || null
+          scheduledFor: scheduledFor || null,
+          // 'draft' keeps it a draft even with a schedule attached (so a draft
+          // can remember its planned date without auto-sending).
+          status: status === 'draft' ? 'draft' : undefined
         },
         createdBy
       );
