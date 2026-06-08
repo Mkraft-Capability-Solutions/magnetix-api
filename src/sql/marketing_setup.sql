@@ -83,8 +83,13 @@ BEGIN
     p_delivery_method,
     p_scheduled_for,
     p_created_by,
+    -- 'scheduled' whenever a schedule is provided. We intentionally do NOT
+    -- compare against NOW(): scheduled_for is stored as the IST wall-clock the
+    -- user picked, while NOW() is the DB server timezone, so the comparison
+    -- could mislabel a valid future time as 'draft'. The UI validates the time
+    -- is in the future, and the scheduler decides "due" using IST.
     CASE
-      WHEN p_scheduled_for IS NOT NULL AND p_scheduled_for > NOW() THEN 'scheduled'
+      WHEN p_scheduled_for IS NOT NULL THEN 'scheduled'
       ELSE 'draft'
     END
   );
@@ -107,6 +112,7 @@ BEGIN
     mc.scheduled_for as scheduledFor,
     mc.sent_at as sentAt,
     mc.created_at as createdAt,
+    mc.updated_at as updatedAt,
     CONCAT(
       COALESCE(s.first_name, a.first_name, i.first_name, 'Unknown'),
       ' ',
@@ -156,6 +162,7 @@ BEGIN
     mc.scheduled_for as scheduledFor,
     mc.sent_at as sentAt,
     mc.created_at as createdAt,
+    mc.updated_at as updatedAt,
     CONCAT(
       COALESCE(s.first_name, a.first_name, i.first_name, 'Unknown'),
       ' ',

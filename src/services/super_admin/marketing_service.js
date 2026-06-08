@@ -52,7 +52,26 @@ class MarketingService {
 
         // Results is an array of arrays - first array contains the result
         const campaign = results[0] ? results[0][0] : null;
-        resolve(campaign);
+
+        // The SP marks a campaign 'scheduled' whenever scheduled_for is set.
+        // "Save as Draft" must stay a draft even when it carries a planned
+        // schedule date, so override back to 'draft' when explicitly requested.
+        if (campaignData.status === 'draft') {
+          db.query(
+            `UPDATE marketing_campaigns SET status = 'draft' WHERE uuid = ?`,
+            [campaignData.uuid],
+            (uErr) => {
+              if (uErr) {
+                console.error('Override draft status error:', uErr);
+                return reject(uErr);
+              }
+              if (campaign) campaign.status = 'draft';
+              resolve(campaign);
+            }
+          );
+        } else {
+          resolve(campaign);
+        }
       });
     });
   }
@@ -143,6 +162,27 @@ class MarketingService {
           updates.push(`${dbKey} = ?`);
           params.push(key === 'targetAudience' ? JSON.stringify(value) : value);
         }
+      }
+
+      // Status handling for editable campaigns:
+      //  - an explicit 'draft'/'scheduled' from the editor wins (e.g. "Update
+      //    Draft" keeps it a draft even when it carries a planned schedule);
+      //  - otherwise, if the schedule changed, derive it (a newly-scheduled
+      //    draft becomes 'scheduled', clearing the schedule reverts to 'draft').
+      // Sent/sending/failed are never touched.
+      const explicitStatus = (updateData.status === 'draft' || updateData.status === 'scheduled')
+        ? updateData.status
+        : null;
+      if (explicitStatus) {
+        updates.push(`status = CASE WHEN status IN ('draft','scheduled') THEN ? ELSE status END`);
+        params.push(explicitStatus);
+      } else if (Object.prototype.hasOwnProperty.call(updateData, 'scheduledFor')) {
+        updates.push(
+          `status = CASE
+             WHEN status IN ('draft','scheduled')
+               THEN (CASE WHEN scheduled_for IS NOT NULL THEN 'scheduled' ELSE 'draft' END)
+             ELSE status END`
+        );
       }
 
       if (updates.length === 0) {
