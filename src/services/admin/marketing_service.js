@@ -2,6 +2,28 @@ const { pool: db } = require('../../config/db');
 const NotificationService = require('../notification_service');
 const { promisify } = require('util');
 
+/**
+ * Replace personalization tokens ({{firstName}}, {{lastName}}, {{fullName}},
+ * {{email}}) in a string with the recipient's values. Case-insensitive with
+ * optional surrounding spaces; unknown tokens are left untouched.
+ */
+function personalize(text, user) {
+  if (!text) return text;
+  const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
+  const vars = {
+    firstname: user.first_name || '',
+    lastname: user.last_name || '',
+    fullname: fullName,
+    name: fullName || user.first_name || '',
+    email: user.email || '',
+    coursename: ''
+  };
+  return String(text).replace(/\{\{\s*([a-zA-Z]+)\s*\}\}/g, (match, key) => {
+    const k = key.toLowerCase();
+    return Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : match;
+  });
+}
+
 class MarketingService {
   // Create a new marketing campaign
   static async createCampaign(campaignData, createdBy) {
@@ -178,11 +200,15 @@ class MarketingService {
           let notificationCreated = false;
           let emailSent = false;
 
+          // Substitute personalization tokens for this recipient.
+          const personalizedTitle = personalize(campaign.title, user);
+          const personalizedMessage = personalize(campaign.message, user);
+
           // Create in-app notification if deliveryMethod is 'in-app' or 'both'
           if (campaign.deliveryMethod === 'in-app' || campaign.deliveryMethod === 'both') {
             const notificationData = {
-              title: campaign.title,
-              message: campaign.message,
+              title: personalizedTitle,
+              message: personalizedMessage,
               notification_type: 'marketing',
               icon: 'megaphone',
               recipient_id: user.uuid,
@@ -201,8 +227,8 @@ class MarketingService {
               await NotificationService.sendEmailNotification(
                 {
                   uuid: user.uuid,
-                  title: campaign.title,
-                  message: campaign.message
+                  title: personalizedTitle,
+                  message: personalizedMessage
                 },
                 user.email,
                 campaign.id,

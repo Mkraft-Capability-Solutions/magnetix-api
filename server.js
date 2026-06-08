@@ -7,6 +7,7 @@ const { ensureSchema } = require('./src/config/ensure_schema');
 const eventReminderScheduler = require('./src/schedulers/event_reminder_scheduler');
 const reportScheduler = require('./src/schedulers/report_scheduler');
 const assignmentReminderScheduler = require('./src/schedulers/assignment_reminder_scheduler');
+const marketingCampaignScheduler = require('./src/schedulers/marketing_campaign_scheduler');
 const { initializeSocketIO } = require('./src/socket/socketServer');
 const PORT = process.env.PORT || 3000;
 
@@ -31,6 +32,7 @@ function setupShutdownHandlers() {
       // Stop event reminder scheduler
       eventReminderScheduler.stop();
       assignmentReminderScheduler.stop();
+      marketingCampaignScheduler.stop();
 
       // Close Socket.io connections
       io.close(() => {
@@ -127,6 +129,13 @@ server.listen(PORT, async () => {
     await assignmentReminderScheduler.start();
   } catch (error) {
     console.error('⚠️  Failed to start assignment reminder scheduler:', error);
+  }
+
+  // Start marketing campaign scheduler (auto-sends scheduled campaigns)
+  try {
+    await marketingCampaignScheduler.start();
+  } catch (error) {
+    console.error('⚠️  Failed to start marketing campaign scheduler:', error);
   }
 
   // Setup shutdown handlers

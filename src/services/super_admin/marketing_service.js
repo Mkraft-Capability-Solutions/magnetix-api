@@ -2,6 +2,29 @@ const { pool: db } = require('../../config/db');
 const NotificationService = require('../notification_service');
 const { promisify } = require('util');
 
+/**
+ * Replace personalization tokens ({{firstName}}, {{lastName}}, {{fullName}},
+ * {{email}}) in a string with the recipient's values. Tokens are matched
+ * case-insensitively with optional surrounding spaces; unknown tokens are left
+ * untouched so unrelated braces aren't mangled.
+ */
+function personalize(text, user) {
+  if (!text) return text;
+  const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
+  const vars = {
+    firstname: user.first_name || '',
+    lastname: user.last_name || '',
+    fullname: fullName,
+    name: fullName || user.first_name || '',
+    email: user.email || '',
+    coursename: '' // no course context in a marketing campaign
+  };
+  return String(text).replace(/\{\{\s*([a-zA-Z]+)\s*\}\}/g, (match, key) => {
+    const k = key.toLowerCase();
+    return Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : match;
+  });
+}
+
 class MarketingService {
   // Create a new marketing campaign
   static async createCampaign(campaignData, createdBy) {
@@ -172,10 +195,14 @@ class MarketingService {
 
       for (const user of targetUsers) {
         try {
+          // Substitute personalization tokens for this recipient.
+          const personalizedTitle = personalize(campaign.title, user);
+          const personalizedMessage = personalize(campaign.message, user);
+
           // Create notification in database
           const notificationData = {
-            title: campaign.title,
-            message: campaign.message,
+            title: personalizedTitle,
+            message: personalizedMessage,
             notification_type: 'marketing',
             icon: 'megaphone',
             recipient_id: user.uuid,
@@ -192,8 +219,8 @@ class MarketingService {
               await NotificationService.sendEmailNotification(
                 {
                   uuid: notificationResult.uuid,
-                  title: campaign.title,
-                  message: campaign.message
+                  title: personalizedTitle,
+                  message: personalizedMessage
                 },
                 user.email,
                 campaign.id,
@@ -257,9 +284,18 @@ class MarketingService {
         params.push(...specificEmails.map(e => String(e).toLowerCase()));
       }
 
-      // Only uuid + email are needed downstream (notification recipient + email).
-      // first_name/last_name are NOT columns on `users` (they live in the role tables).
-      let query = 'SELECT DISTINCT u.uuid, u.email FROM users u WHERE u.is_deleted = 0';
+      // uuid + email drive the notification/email; first_name/last_name power
+      // personalization tokens ({{firstName}} etc.). Names live in the
+      // role-specific tables (NOT on `users`), so COALESCE across them.
+      let query =
+        `SELECT DISTINCT u.uuid, u.email,
+                COALESCE(s.first_name, i.first_name, a.first_name) AS first_name,
+                COALESCE(s.last_name,  i.last_name,  a.last_name)  AS last_name
+           FROM users u
+           LEFT JOIN students s    ON u.uuid = s.user_id
+           LEFT JOIN instructors i ON u.uuid = i.user_id
+           LEFT JOIN admins a      ON u.uuid = a.user_id
+          WHERE u.is_deleted = 0`;
       if (orConditions.length > 0) {
         query += ` AND (${orConditions.join(' OR ')})`;
       }
