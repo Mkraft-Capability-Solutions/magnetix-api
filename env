@@ -1,0 +1,48 @@
+
+
+# Database Configuration
+
+DB_HOST=localhost
+
+#DB_USER=isms
+DB_USER=root
+#DB_PASSWORD=vaRunmKraft@07082025
+DB_PASSWORD=""
+
+DB_NAME=lms_db
+
+# JWT Configuration
+
+JWT_ACCESS_SECRET=3304e3e52a566725bf4b751839ee1702d98ae3d2c0e3b579508bb93c6eba13c0499c5f169b5cac6c020930d2fb5a3b81b88ab2b5ae06ba1b278c99f4335bf5ec
+
+JWT_ACCESS_EXPIRY=7d
+
+JWT_REFRESH_SECRET=94ff1440eace285408ed111eb7e2c513d95de3f91399509970e7126bd01bce385569a11b5659b8b19a2273ed396ef0c3517db0957a31eb1cae35fcd6fb1b125b
+
+JWT_REFRESH_EXPIRY=7d
+
+# Email Configuration
+
+EMAIL_SERVICE=Gmail
+
+EMAIL_USER=info@multiplierskraft.com
+
+EMAIL_PASS=nnsadjbayoxozgxv
+
+EMAIL_FROM=no-reply@multiplierskraft.com
+
+EMAIL_SENDER_NAME=Mkraft Assess
+
+SUPPORT_EMAIL=info@multiplierskraft.com
+
+APP_NAME=Mkraft Assess
+#FRONTEND_URL=https://isms.milekraft.com  # React's port
+FRONTEND_URL=http://localhost:3000  # React's port
+
+PORT=5001                           # Express port
+
+NODE_ENV=development
+
+# Gemini AI Configuration
+GEMINI_API_KEY=AIzaSyAH5FLpgWJ5uEzcCikZekmMZI7a2o__0_0
+GEMINI_MODEL=gemini-2.0-flash
