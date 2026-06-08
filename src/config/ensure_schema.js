@@ -108,6 +108,91 @@ const EXPECTED_TABLES = [
         INDEX \`idx_log_user\` (\`user_id\`, \`email_type\`, \`sent_at\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
     `
+  },
+  // --- Granular RBAC (see migrations-sequelize/20260610120000-rbac-tables.js).
+  // Self-heal table existence here; the seed rows (4 system roles + permission
+  // catalog) live in the migration, which runs first at boot.
+  {
+    name: 'roles',
+    createSql: `
+      CREATE TABLE IF NOT EXISTS \`roles\` (
+        \`id\`           INT PRIMARY KEY AUTO_INCREMENT,
+        \`name\`         VARCHAR(64)  NOT NULL,
+        \`label\`        VARCHAR(128) NOT NULL,
+        \`description\`  VARCHAR(255) NULL,
+        \`base_role_id\` INT NOT NULL DEFAULT 1,
+        \`is_system\`    TINYINT(1) NOT NULL DEFAULT 0,
+        \`is_active\`    TINYINT(1) NOT NULL DEFAULT 1,
+        \`created_at\`   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\`   TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY \`uq_roles_name\` (\`name\`),
+        INDEX \`idx_roles_base\` (\`base_role_id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `
+  },
+  {
+    name: 'permissions',
+    createSql: `
+      CREATE TABLE IF NOT EXISTS \`permissions\` (
+        \`id\`          INT PRIMARY KEY AUTO_INCREMENT,
+        \`perm_key\`    VARCHAR(96) NOT NULL,
+        \`module\`      VARCHAR(48) NOT NULL,
+        \`label\`       VARCHAR(128) NOT NULL,
+        \`description\` VARCHAR(255) NULL,
+        \`created_at\`  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY \`uq_perm_key\` (\`perm_key\`),
+        INDEX \`idx_perm_module\` (\`module\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `
+  },
+  {
+    name: 'role_permissions',
+    createSql: `
+      CREATE TABLE IF NOT EXISTS \`role_permissions\` (
+        \`role_id\`       INT NOT NULL,
+        \`permission_id\` INT NOT NULL,
+        \`granted_by\`    VARCHAR(36) NULL,
+        \`granted_at\`    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`role_id\`, \`permission_id\`),
+        INDEX \`idx_rp_role\` (\`role_id\`),
+        INDEX \`idx_rp_perm\` (\`permission_id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `
+  },
+  {
+    name: 'permission_audit_log',
+    createSql: `
+      CREATE TABLE IF NOT EXISTS \`permission_audit_log\` (
+        \`id\`          BIGINT PRIMARY KEY AUTO_INCREMENT,
+        \`actor_uuid\`  VARCHAR(36) NOT NULL,
+        \`action\`      VARCHAR(64) NOT NULL,
+        \`target_type\` VARCHAR(32) NOT NULL,
+        \`target_id\`   VARCHAR(64) NOT NULL,
+        \`detail_json\` JSON NULL,
+        \`created_at\`  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX \`idx_audit_actor\` (\`actor_uuid\`),
+        INDEX \`idx_audit_target\` (\`target_type\`, \`target_id\`),
+        INDEX \`idx_audit_action\` (\`action\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `
+  },
+  // --- Content governance lifecycle history
+  // (see migrations-sequelize/20260610120100-content-governance.js).
+  {
+    name: 'course_lifecycle_history',
+    createSql: `
+      CREATE TABLE IF NOT EXISTS \`course_lifecycle_history\` (
+        \`id\`          BIGINT PRIMARY KEY AUTO_INCREMENT,
+        \`course_id\`   INT NOT NULL,
+        \`from_status\` ENUM('draft','pending','published','archived') NULL,
+        \`to_status\`   ENUM('draft','pending','published','archived') NOT NULL,
+        \`actor_uuid\`  VARCHAR(36) NOT NULL,
+        \`note\`        VARCHAR(500) NULL,
+        \`created_at\`  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX \`idx_clh_course\` (\`course_id\`),
+        INDEX \`idx_clh_status\` (\`to_status\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `
   }
 ];
 
@@ -126,6 +211,18 @@ const EXPECTED_COLUMNS = [
     addSql: `ALTER TABLE \`users\`
               ADD COLUMN \`reports_to_uuid\` VARCHAR(36) NULL,
               ADD INDEX \`idx_users_reports_to\` (\`reports_to_uuid\`)`
+  },
+  // Content governance: who submitted a course for review / who approved it.
+  // (see migrations-sequelize/20260610120100-content-governance.js)
+  {
+    table: 'course',
+    column: 'submitted_by',
+    addSql: `ALTER TABLE \`course\` ADD COLUMN \`submitted_by\` VARCHAR(36) NULL`
+  },
+  {
+    table: 'course',
+    column: 'reviewed_by',
+    addSql: `ALTER TABLE \`course\` ADD COLUMN \`reviewed_by\` VARCHAR(36) NULL`
   }
 ];
 
