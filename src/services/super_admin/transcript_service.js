@@ -85,7 +85,7 @@ const getCoursesInline = async (userId) => {
   // course_progress vs course_lesson (the pattern the working student code uses).
   const [rows] = await pool.query(
     `SELECT c.id AS course_id, c.title, e.enrolled_date,
-            (SELECT COUNT(*) FROM course_lesson cl WHERE cl.course_id = c.id AND (cl.is_deleted = 0 OR cl.is_deleted IS NULL)) AS total_lessons,
+            (SELECT COUNT(*) FROM course_lesson cl WHERE cl.course_id = c.id) AS total_lessons,
             (SELECT COUNT(*) FROM course_progress cp WHERE cp.enroll_id = e.id AND cp.lesson_completed = 1) AS lessons_completed
        FROM enrol e
        JOIN course c ON c.id = e.course_id
