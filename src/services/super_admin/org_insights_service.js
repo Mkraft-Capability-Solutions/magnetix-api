@@ -43,7 +43,7 @@ const PROG_JOIN = `
        LEFT JOIN (SELECT enroll_id, SUM(lesson_completed) AS done_lessons
                     FROM course_progress GROUP BY enroll_id) prog ON prog.enroll_id = e.id
        LEFT JOIN (SELECT course_id, COUNT(*) AS total_lessons FROM course_lesson
-                   WHERE (is_deleted = 0 OR is_deleted IS NULL) GROUP BY course_id) lc
+                   GROUP BY course_id) lc
                    ON lc.course_id = e.course_id`;
 const COMPLETED = '(lc.total_lessons > 0 AND prog.done_lessons = lc.total_lessons)';
 
