@@ -33,6 +33,20 @@ function dateCond(col, startDate, endDate) {
 
 const safeRate = (num, den) => (den > 0 ? Math.round((num / den) * 1000) / 10 : 0);
 
+// This DB's `enrol` table has no status/progress/completed_at columns. Completion is
+// derived from course_progress vs course_lesson (the pattern working code uses): an
+// enrolment `e` is complete when all its course's lessons are completed. Add PROG_JOIN
+// after the `enrol e` JOIN; COMPLETED is the per-enrolment completed flag; the
+// completion timestamp is prog.prog_completed_at (MAX completed-lesson time).
+const PROG_JOIN = `
+       LEFT JOIN (SELECT enroll_id, SUM(lesson_completed) AS done_lessons,
+                         MAX(completed_at) AS prog_completed_at
+                    FROM course_progress GROUP BY enroll_id) prog ON prog.enroll_id = e.id
+       LEFT JOIN (SELECT course_id, COUNT(*) AS total_lessons FROM course_lesson
+                   WHERE (is_deleted = 0 OR is_deleted IS NULL) GROUP BY course_id) lc
+                   ON lc.course_id = e.course_id`;
+const COMPLETED = '(lc.total_lessons > 0 AND prog.done_lessons = lc.total_lessons)';
+
 /* ----------------------------------------------------------------- Overview */
 /** All-organizations comparison: one row per organization. */
 const getOverview = async (filters = {}) => {
@@ -58,10 +72,10 @@ const getOverview = async (filters = {}) => {
   const [enrol] = await pool.query(
     `SELECT uo.organization_id AS orgId,
             COUNT(e.id) AS enrollments,
-            COUNT(CASE WHEN e.completed_at IS NOT NULL THEN 1 END) AS completions
+            COUNT(CASE WHEN ${COMPLETED} THEN 1 END) AS completions
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
-       JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)
+       JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)${PROG_JOIN}
       WHERE 1=1${enrolDate.sql}
       GROUP BY uo.organization_id`,
     [...us.params, ...enrolDate.params]
@@ -138,7 +152,7 @@ const getSummary = async (orgId, filters = {}) => {
   const us = userScope(filters);
   const id = Number(orgId);
   const enrolDate = dateCond('e.enrolled_date', filters.startDate, filters.endDate);
-  const compDate = dateCond('e.completed_at', filters.startDate, filters.endDate);
+  const compDate = dateCond('prog.prog_completed_at', filters.startDate, filters.endDate);
   const hoursDate = dateCond('lhl.log_date', filters.startDate, filters.endDate);
   const loginDate = dateCond('ull.login_time', filters.startDate, filters.endDate);
   const subDate = dateCond('s.submitted_at', filters.startDate, filters.endDate);
@@ -167,8 +181,8 @@ const getSummary = async (orgId, filters = {}) => {
     `SELECT COUNT(e.id) AS completions
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
-       JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)
-      WHERE uo.organization_id = ? AND e.completed_at IS NOT NULL${compDate.sql}`,
+       JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)${PROG_JOIN}
+      WHERE uo.organization_id = ? AND ${COMPLETED}${compDate.sql}`,
     [...us.params, id, ...compDate.params]
   );
 
@@ -300,7 +314,7 @@ const getLearning = async (orgId, filters = {}) => {
   const us = userScope(filters);
   const id = Number(orgId);
   const enrolDate = dateCond('e.enrolled_date', filters.startDate, filters.endDate);
-  const compDate = dateCond('e.completed_at', filters.startDate, filters.endDate);
+  const compDate = dateCond('prog.prog_completed_at', filters.startDate, filters.endDate);
   const hoursDate = dateCond('lhl.log_date', filters.startDate, filters.endDate);
 
   const [enrolTrend] = await pool.query(
@@ -315,12 +329,12 @@ const getLearning = async (orgId, filters = {}) => {
   );
 
   const [compTrend] = await pool.query(
-    `SELECT DATE(e.completed_at) AS day, COUNT(*) AS completions
+    `SELECT DATE(prog.prog_completed_at) AS day, COUNT(*) AS completions
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
-       JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)
-      WHERE uo.organization_id = ? AND e.completed_at IS NOT NULL${compDate.sql}
-      GROUP BY DATE(e.completed_at)
+       JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)${PROG_JOIN}
+      WHERE uo.organization_id = ? AND ${COMPLETED} AND prog.prog_completed_at IS NOT NULL${compDate.sql}
+      GROUP BY DATE(prog.prog_completed_at)
       ORDER BY day ASC`,
     [...us.params, id, ...compDate.params]
   );
@@ -339,10 +353,10 @@ const getLearning = async (orgId, filters = {}) => {
   const [topCourses] = await pool.query(
     `SELECT c.id, c.title AS name,
             COUNT(e.id) AS enrolled,
-            COUNT(CASE WHEN e.completed_at IS NOT NULL THEN 1 END) AS completed
+            COUNT(CASE WHEN ${COMPLETED} THEN 1 END) AS completed
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
-       JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)
+       JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)${PROG_JOIN}
        JOIN course c ON c.id = e.course_id AND (c.is_deleted = 0 OR c.is_deleted IS NULL)
       WHERE uo.organization_id = ?
       GROUP BY c.id, c.title
