@@ -193,6 +193,28 @@ const EXPECTED_TABLES = [
         INDEX \`idx_clh_status\` (\`to_status\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
     `
+  },
+  {
+    name: 'course_approval_requests',
+    createSql: `
+      CREATE TABLE IF NOT EXISTS \`course_approval_requests\` (
+        \`id\`                BIGINT PRIMARY KEY AUTO_INCREMENT,
+        \`course_id\`         INT NOT NULL,
+        \`requires_approval\` TINYINT(1) NOT NULL DEFAULT 1,
+        \`approver_type\`     ENUM('user','email') NOT NULL,
+        \`approver_uuid\`     VARCHAR(36) NULL,
+        \`approver_email\`    VARCHAR(255) NULL,
+        \`status\`            ENUM('pending','approved','rejected','notified') NOT NULL DEFAULT 'pending',
+        \`requested_by\`      VARCHAR(36) NULL,
+        \`note\`              VARCHAR(500) NULL,
+        \`requested_at\`      TIMESTAMP NULL,
+        \`decided_at\`        TIMESTAMP NULL,
+        \`created_at\`        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\`        TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX \`idx_car_course\` (\`course_id\`),
+        INDEX \`idx_car_approver\` (\`approver_uuid\`, \`status\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `
   }
 ];
 

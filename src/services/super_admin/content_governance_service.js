@@ -174,6 +174,20 @@ const transitionLifecycle = async (courseId, action, note, actorUuid) => {
     };
   }
 
+  // Block until approved: if a course has a pending designated-user approval,
+  // only that approver may publish it (their decide() path passes actorUuid = approver).
+  if (action === 'approve') {
+    const [appr] = await pool.query(
+      `SELECT approver_uuid FROM course_approval_requests
+        WHERE course_id = ? AND requires_approval = 1 AND approver_type = 'user' AND status = 'pending'
+        ORDER BY id DESC LIMIT 1`,
+      [courseId]
+    );
+    if (appr.length && appr[0].approver_uuid && appr[0].approver_uuid !== actorUuid) {
+      return { success: false, status: 409, message: 'Awaiting approval from the designated approver' };
+    }
+  }
+
   // Build the UPDATE with action-specific side effects.
   const sets = ['status = ?'];
   const params = [rule.to];
