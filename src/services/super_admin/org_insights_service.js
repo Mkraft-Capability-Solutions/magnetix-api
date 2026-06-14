@@ -34,13 +34,13 @@ function dateCond(col, startDate, endDate) {
 const safeRate = (num, den) => (den > 0 ? Math.round((num / den) * 1000) / 10 : 0);
 
 // This DB's `enrol` table has no status/progress/completed_at columns. Completion is
-// derived from course_progress vs course_lesson (the pattern working code uses): an
-// enrolment `e` is complete when all its course's lessons are completed. Add PROG_JOIN
-// after the `enrol e` JOIN; COMPLETED is the per-enrolment completed flag; the
-// completion timestamp is prog.prog_completed_at (MAX completed-lesson time).
+// derived from course_progress vs course_lesson (the pattern the working learner code
+// uses): an enrolment `e` is complete when all its course's lessons are completed. Add
+// PROG_JOIN after the `enrol e` JOIN; COMPLETED is the per-enrolment completed flag.
+// There is no reliable completion timestamp, so completion is scoped/bucketed by
+// enrol.enrolled_date where a date is needed.
 const PROG_JOIN = `
-       LEFT JOIN (SELECT enroll_id, SUM(lesson_completed) AS done_lessons,
-                         MAX(completed_at) AS prog_completed_at
+       LEFT JOIN (SELECT enroll_id, SUM(lesson_completed) AS done_lessons
                     FROM course_progress GROUP BY enroll_id) prog ON prog.enroll_id = e.id
        LEFT JOIN (SELECT course_id, COUNT(*) AS total_lessons FROM course_lesson
                    WHERE (is_deleted = 0 OR is_deleted IS NULL) GROUP BY course_id) lc
@@ -152,7 +152,6 @@ const getSummary = async (orgId, filters = {}) => {
   const us = userScope(filters);
   const id = Number(orgId);
   const enrolDate = dateCond('e.enrolled_date', filters.startDate, filters.endDate);
-  const compDate = dateCond('prog.prog_completed_at', filters.startDate, filters.endDate);
   const hoursDate = dateCond('lhl.log_date', filters.startDate, filters.endDate);
   const loginDate = dateCond('ull.login_time', filters.startDate, filters.endDate);
   const subDate = dateCond('s.submitted_at', filters.startDate, filters.endDate);
@@ -182,8 +181,8 @@ const getSummary = async (orgId, filters = {}) => {
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
        JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)${PROG_JOIN}
-      WHERE uo.organization_id = ? AND ${COMPLETED}${compDate.sql}`,
-    [...us.params, id, ...compDate.params]
+      WHERE uo.organization_id = ? AND ${COMPLETED}${enrolDate.sql}`,
+    [...us.params, id, ...enrolDate.params]
   );
 
   const [[h]] = await pool.query(
@@ -314,7 +313,6 @@ const getLearning = async (orgId, filters = {}) => {
   const us = userScope(filters);
   const id = Number(orgId);
   const enrolDate = dateCond('e.enrolled_date', filters.startDate, filters.endDate);
-  const compDate = dateCond('prog.prog_completed_at', filters.startDate, filters.endDate);
   const hoursDate = dateCond('lhl.log_date', filters.startDate, filters.endDate);
 
   const [enrolTrend] = await pool.query(
@@ -328,15 +326,17 @@ const getLearning = async (orgId, filters = {}) => {
     [...us.params, id, ...enrolDate.params]
   );
 
+  // No reliable completion timestamp in this schema — bucket completed enrolments by
+  // their enrolment date (same scope as the enrollment trend).
   const [compTrend] = await pool.query(
-    `SELECT DATE(prog.prog_completed_at) AS day, COUNT(*) AS completions
+    `SELECT DATE(e.enrolled_date) AS day, COUNT(*) AS completions
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
        JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)${PROG_JOIN}
-      WHERE uo.organization_id = ? AND ${COMPLETED} AND prog.prog_completed_at IS NOT NULL${compDate.sql}
-      GROUP BY DATE(prog.prog_completed_at)
+      WHERE uo.organization_id = ? AND ${COMPLETED}${enrolDate.sql}
+      GROUP BY DATE(e.enrolled_date)
       ORDER BY day ASC`,
-    [...us.params, id, ...compDate.params]
+    [...us.params, id, ...enrolDate.params]
   );
 
   const [hoursTrend] = await pool.query(

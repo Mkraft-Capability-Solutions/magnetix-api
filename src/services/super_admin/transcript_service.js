@@ -61,9 +61,9 @@ const getLearners = async ({ orgId, search, page = 1, limit = 20 } = {}) => {
 
 // --- Deployment-safe inline assembly --------------------------------------
 // This DB's `enrol` table has had `progress`/`status`/`completed_at` dropped, so we
-// avoid the member-activity stored procedures (which SELECT those) and derive
-// everything from columns that exist: enrol.enrolled_date plus course_progress
-// (lesson_completed / completed_at) vs course_lesson.
+// avoid the member-activity stored procedures (which SELECT those) and mirror the
+// working learner transcript: completion is derived from course_progress.lesson_completed
+// vs course_lesson — no completion timestamp is used anywhere.
 
 const getProfile = async (userId) => {
   const [rows] = await pool.query(
@@ -86,8 +86,7 @@ const getCoursesInline = async (userId) => {
   const [rows] = await pool.query(
     `SELECT c.id AS course_id, c.title, e.enrolled_date,
             (SELECT COUNT(*) FROM course_lesson cl WHERE cl.course_id = c.id AND (cl.is_deleted = 0 OR cl.is_deleted IS NULL)) AS total_lessons,
-            (SELECT COUNT(*) FROM course_progress cp WHERE cp.enroll_id = e.id AND cp.lesson_completed = 1) AS lessons_completed,
-            (SELECT MAX(cp.completed_at) FROM course_progress cp WHERE cp.enroll_id = e.id AND cp.lesson_completed = 1) AS last_completed_at
+            (SELECT COUNT(*) FROM course_progress cp WHERE cp.enroll_id = e.id AND cp.lesson_completed = 1) AS lessons_completed
        FROM enrol e
        JOIN course c ON c.id = e.course_id
       WHERE e.user_id = ? AND (c.is_deleted = 0 OR c.is_deleted IS NULL)
@@ -105,7 +104,7 @@ const getCoursesInline = async (userId) => {
       status: isCompleted ? 'completed' : done > 0 ? 'in_progress' : 'enrolled',
       progress,
       enrolled_date: r.enrolled_date,
-      completed_at: isCompleted ? r.last_completed_at : null,
+      completed_at: null, // no reliable completion timestamp in this schema
       last_activity: null,
       lessons_completed: done,
     };
@@ -156,7 +155,7 @@ const getFullTranscript = async (userId) => {
     console.warn('Transcript assessments unavailable:', err.message);
   }
 
-  const completed = courses.filter((c) => c.completed_at).length;
+  const completed = courses.filter((c) => c.status === 'completed').length;
   const stats = {
     total_courses: courses.length,
     completed_courses: completed,
