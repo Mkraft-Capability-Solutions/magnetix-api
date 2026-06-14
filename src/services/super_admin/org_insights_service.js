@@ -58,7 +58,7 @@ const getOverview = async (filters = {}) => {
   const [enrol] = await pool.query(
     `SELECT uo.organization_id AS orgId,
             COUNT(e.id) AS enrollments,
-            COUNT(CASE WHEN e.status = 'completed' THEN 1 END) AS completions
+            COUNT(CASE WHEN e.completed_at IS NOT NULL THEN 1 END) AS completions
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
        JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)
@@ -168,7 +168,7 @@ const getSummary = async (orgId, filters = {}) => {
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
        JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)
-      WHERE uo.organization_id = ? AND e.status = 'completed'${compDate.sql}`,
+      WHERE uo.organization_id = ? AND e.completed_at IS NOT NULL${compDate.sql}`,
     [...us.params, id, ...compDate.params]
   );
 
@@ -319,7 +319,7 @@ const getLearning = async (orgId, filters = {}) => {
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
        JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)
-      WHERE uo.organization_id = ? AND e.status = 'completed' AND e.completed_at IS NOT NULL${compDate.sql}
+      WHERE uo.organization_id = ? AND e.completed_at IS NOT NULL${compDate.sql}
       GROUP BY DATE(e.completed_at)
       ORDER BY day ASC`,
     [...us.params, id, ...compDate.params]
@@ -339,7 +339,7 @@ const getLearning = async (orgId, filters = {}) => {
   const [topCourses] = await pool.query(
     `SELECT c.id, c.title AS name,
             COUNT(e.id) AS enrolled,
-            COUNT(CASE WHEN e.status = 'completed' THEN 1 END) AS completed
+            COUNT(CASE WHEN e.completed_at IS NOT NULL THEN 1 END) AS completed
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
        JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)
