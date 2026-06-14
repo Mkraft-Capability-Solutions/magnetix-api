@@ -210,6 +210,9 @@ app.use("/api/super-admin/users", superAdminUserOrganizationRoutes);
 app.use("/api/super-admin/rbac", superAdminRbacRoutes);
 app.use("/api/super-admin/hierarchy", superAdminHierarchyRoutes);
 app.use("/api/super-admin/content-governance", superAdminContentGovRoutes);
+app.use("/api/super-admin/org-insights", require("./routes/super_admin/org_insights_routes"));
+app.use("/api/course-approvals", require("./routes/course_approval_routes"));
+app.use("/api/super-admin/transcripts", require("./routes/super_admin/transcript_routes"));
 
 // SCORM manifest API endpoint
 const { getScormEntryPoint, parseScormManifest } = require("./utils/scormManifestParser");

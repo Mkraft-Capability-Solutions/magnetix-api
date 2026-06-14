@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const controller = require('../../controllers/super_admin/content_governance_controller');
+const approvalController = require('../../controllers/super_admin/course_approval_controller');
 const { authenticate, authorize } = require('../../middleware/auth_middleware');
 const { requirePermission } = require('../../middleware/permission_middleware');
 
@@ -15,6 +16,11 @@ router.delete('/categories/:id', requirePermission('content.taxonomy.manage'), c
 router.post('/subcategories', requirePermission('content.taxonomy.manage'), controller.createSubcategory);
 router.put('/subcategories/:id', requirePermission('content.taxonomy.manage'), controller.updateSubcategory);
 router.delete('/subcategories/:id', requirePermission('content.taxonomy.manage'), controller.deleteSubcategory);
+
+// --- Per-course approval configuration (super admin sets requires-approval + approver)
+router.get('/courses/:id/approval-config', requirePermission('content.course.view'), approvalController.getConfig);
+router.put('/courses/:id/approval-config', requirePermission('content.course.view'), approvalController.upsertConfig);
+router.post('/courses/:id/request-approval', requirePermission('content.course.view'), approvalController.requestApproval);
 
 // --- Course lifecycle queue + structure
 router.get('/courses', requirePermission('content.course.view'), controller.getCourses);
