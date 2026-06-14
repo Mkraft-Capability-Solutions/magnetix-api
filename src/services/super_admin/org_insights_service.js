@@ -75,7 +75,7 @@ const getOverview = async (filters = {}) => {
             COUNT(CASE WHEN ${COMPLETED} THEN 1 END) AS completions
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
-       JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)${PROG_JOIN}
+       JOIN enrol e ON e.user_id = uo.user_id${PROG_JOIN}
       WHERE 1=1${enrolDate.sql}
       GROUP BY uo.organization_id`,
     [...us.params, ...enrolDate.params]
@@ -171,7 +171,7 @@ const getSummary = async (orgId, filters = {}) => {
     `SELECT COUNT(e.id) AS enrollments
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
-       JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)
+       JOIN enrol e ON e.user_id = uo.user_id
       WHERE uo.organization_id = ?${enrolDate.sql}`,
     [...us.params, id, ...enrolDate.params]
   );
@@ -180,7 +180,7 @@ const getSummary = async (orgId, filters = {}) => {
     `SELECT COUNT(e.id) AS completions
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
-       JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)${PROG_JOIN}
+       JOIN enrol e ON e.user_id = uo.user_id${PROG_JOIN}
       WHERE uo.organization_id = ? AND ${COMPLETED}${enrolDate.sql}`,
     [...us.params, id, ...enrolDate.params]
   );
@@ -319,7 +319,7 @@ const getLearning = async (orgId, filters = {}) => {
     `SELECT DATE(e.enrolled_date) AS day, COUNT(*) AS enrollments
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
-       JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)
+       JOIN enrol e ON e.user_id = uo.user_id
       WHERE uo.organization_id = ?${enrolDate.sql}
       GROUP BY DATE(e.enrolled_date)
       ORDER BY day ASC`,
@@ -332,7 +332,7 @@ const getLearning = async (orgId, filters = {}) => {
     `SELECT DATE(e.enrolled_date) AS day, COUNT(*) AS completions
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
-       JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)${PROG_JOIN}
+       JOIN enrol e ON e.user_id = uo.user_id${PROG_JOIN}
       WHERE uo.organization_id = ? AND ${COMPLETED}${enrolDate.sql}
       GROUP BY DATE(e.enrolled_date)
       ORDER BY day ASC`,
@@ -356,7 +356,7 @@ const getLearning = async (orgId, filters = {}) => {
             COUNT(CASE WHEN ${COMPLETED} THEN 1 END) AS completed
        FROM user_organizations uo
        JOIN users u ON u.uuid = uo.user_id AND ${us.sql}
-       JOIN enrol e ON e.user_id = uo.user_id AND (e.is_deleted = 0 OR e.is_deleted IS NULL)${PROG_JOIN}
+       JOIN enrol e ON e.user_id = uo.user_id${PROG_JOIN}
        JOIN course c ON c.id = e.course_id AND (c.is_deleted = 0 OR c.is_deleted IS NULL)
       WHERE uo.organization_id = ?
       GROUP BY c.id, c.title
