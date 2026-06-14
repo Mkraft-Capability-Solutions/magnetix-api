@@ -59,31 +59,107 @@ const getLearners = async ({ orgId, search, page = 1, limit = 20 } = {}) => {
   };
 };
 
-/** Assemble one learner's full transcript (all sections) by reusing member-activity. */
+// --- Deployment-safe inline assembly --------------------------------------
+// This DB's `enrol` table has had `progress`/`status` dropped, so we avoid the
+// member-activity stored procedures (which SELECT e.progress / e.status) and
+// derive everything from columns that exist (enrolled_date, completed_at) +
+// course_progress / course_lesson.
+
+const getProfile = async (userId) => {
+  const [rows] = await pool.query(
+    `SELECT u.uuid AS id, u.email, u.role_id, u.status,
+            COALESCE(s.first_name, a.first_name, i.first_name, '') AS first_name,
+            COALESCE(s.last_name,  a.last_name,  i.last_name,  '') AS last_name
+       FROM users u
+       LEFT JOIN students    s ON u.uuid = s.user_id AND u.role_id = 1
+       LEFT JOIN admins      a ON u.uuid = a.user_id AND u.role_id IN (2, 3)
+       LEFT JOIN instructors i ON u.uuid = i.user_id AND u.role_id = 3
+      WHERE u.uuid = ? AND u.is_deleted = 0 LIMIT 1`,
+    [userId]
+  );
+  return rows[0] || null;
+};
+
+const getCoursesInline = async (userId) => {
+  const [rows] = await pool.query(
+    `SELECT c.id AS course_id, c.title, e.enrolled_date, e.completed_at,
+            (SELECT COUNT(*) FROM course_lesson cl WHERE cl.course_id = c.id AND (cl.is_deleted = 0 OR cl.is_deleted IS NULL)) AS total_lessons,
+            (SELECT COUNT(*) FROM course_progress cp WHERE cp.enroll_id = e.id AND cp.lesson_completed = 1) AS lessons_completed
+       FROM enrol e
+       JOIN course c ON c.id = e.course_id
+      WHERE e.user_id = ? AND (c.is_deleted = 0 OR c.is_deleted IS NULL)
+      ORDER BY e.enrolled_date DESC`,
+    [userId]
+  );
+  return rows.map((r) => {
+    const total = Number(r.total_lessons || 0);
+    const done = Number(r.lessons_completed || 0);
+    const progress = r.completed_at ? 100 : total > 0 ? Math.round((done / total) * 100) : 0;
+    return {
+      course_id: r.course_id,
+      title: r.title,
+      status: r.completed_at ? 'completed' : done > 0 ? 'in_progress' : 'enrolled',
+      progress,
+      enrolled_date: r.enrolled_date,
+      completed_at: r.completed_at,
+      last_activity: null,
+      lessons_completed: done,
+    };
+  });
+};
+
+const getCertificatesInline = async (userId) => {
+  const [rows] = await pool.query(
+    `SELECT 'self' AS source, id, certificate_name, status, issue_date AS issued_date, expiry_date
+       FROM student_certificates WHERE user_id = ?
+     UNION ALL
+     SELECT 'admin' AS source, id, certificate_name, status, issue_date AS issued_date, expiry_date
+       FROM admin_issued_certificates WHERE user_id = ?
+     ORDER BY issued_date DESC`,
+    [userId, userId]
+  );
+  return rows.map((r) => ({
+    source: r.source, id: r.id, certificate_name: r.certificate_name,
+    status: r.status, issued_date: r.issued_date, expiry_date: r.expiry_date || null, link: null,
+  }));
+};
+
+const getLearningHoursInline = async (userId) => {
+  const [[row]] = await pool.query(
+    'SELECT COALESCE(SUM(hours_spent), 0) AS totalHours FROM learning_hours_log WHERE user_id = ?',
+    [userId]
+  );
+  return { daily: [], totalHours: Number(row.totalHours || 0), days: 365 };
+};
+
+/** Assemble one learner's full transcript from deployment-safe queries. */
 const getFullTranscript = async (userId) => {
-  const [overview, courses, assessments, certificates, learningHours] = await Promise.all([
-    memberActivity.getOverview(userId),
-    memberActivity.getEnrolledCourses(userId),
-    memberActivity.getAssessments(userId),
-    memberActivity.getCertificates(userId),
-    memberActivity.getLearningHours(userId, 365),
+  const profile = await getProfile(userId);
+  if (!profile) return { success: false, status: 404, message: 'Learner not found' };
+
+  const [courses, certificates, learningHours] = await Promise.all([
+    getCoursesInline(userId),
+    getCertificatesInline(userId),
+    getLearningHoursInline(userId),
   ]);
 
-  if (!overview.success) {
-    return { success: false, status: 404, message: overview.error?.message || 'Learner not found' };
+  // Assessments still come from an existing SP; degrade gracefully if incompatible.
+  let assessments = [];
+  try {
+    const a = await memberActivity.getAssessments(userId);
+    if (a.success) assessments = a.data || [];
+  } catch (err) {
+    console.warn('Transcript assessments unavailable:', err.message);
   }
 
-  return {
-    success: true,
-    data: {
-      profile: overview.data.profile,
-      stats: overview.data.stats || {},
-      courses: courses.success ? (courses.data || []) : [],
-      assessments: assessments.success ? (assessments.data || []) : [],
-      certificates: certificates.success ? (certificates.data || []) : [],
-      learningHours: learningHours.success ? learningHours.data : { daily: [], totalHours: 0 },
-    },
+  const completed = courses.filter((c) => c.completed_at).length;
+  const stats = {
+    total_courses: courses.length,
+    completed_courses: completed,
+    total_certificates: certificates.length,
   };
+
+  return { success: true, data: { profile, stats, courses, assessments, certificates, learningHours } };
 };
 
 /** All learners in an org, each with a full transcript (for the combined PDF). */
