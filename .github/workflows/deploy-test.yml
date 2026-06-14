@@ -53,7 +53,7 @@ jobs:
           EMAIL_SENDER_NAME=${{ secrets.EMAIL_SENDER_NAME }}
           SUPPORT_EMAIL=${{ secrets.SUPPORT_EMAIL }}
           APP_NAME=${{ secrets.APP_NAME }}
-          FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+          FRONTEND_URL=${{ secrets.TEST_FRONTEND_URL }}
 
           PORT=${{ secrets.PORT }}
           NODE_ENV=${{ secrets.NODE_ENV }}
