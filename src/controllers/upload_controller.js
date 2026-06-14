@@ -1,5 +1,66 @@
 const uploadService = require('../services/upload_service');
 
+// Build an absolute URL so embedded images/links resolve in delivered emails,
+// not just same-origin in-app. Honors a proxy via x-forwarded-* headers.
+const absoluteUrl = (req, relativePath) => {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.headers['x-forwarded-host'] || req.get('host');
+  return `${proto}://${host}${relativePath}`;
+};
+
+exports.uploadMarketingImage = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+    const filename = await uploadService.uploadMarketingImage(req.file);
+    const relativeUrl = `/uploads/marketing/images/${filename}`;
+    res.json({
+      success: true,
+      message: 'Image uploaded successfully',
+      filename,
+      url: absoluteUrl(req, relativeUrl)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.uploadMarketingAttachment = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+    const filename = await uploadService.uploadMarketingAttachment(req.file);
+    const relativeUrl = `/uploads/marketing/attachments/${filename}`;
+    res.json({
+      success: true,
+      message: 'Attachment uploaded successfully',
+      filename,
+      originalName: req.file.originalname,
+      url: absoluteUrl(req, relativeUrl)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.uploadCertificationTemplate = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+    const filename = await uploadService.uploadCertificationTemplate(req.file);
+    res.json({
+      success: true,
+      message: 'Certification template uploaded successfully',
+      filename,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.uploadCourseThumbnail = async (req, res, next) => {
   try {
     if (!req.file) {
@@ -150,6 +211,24 @@ exports.uploadLessonMp4 = async (req, res, next) => {
       success: true,
       message: 'Lesson video uploaded successfully',
       data: { filename }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.uploadCertificate = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+
+    const filePath = await uploadService.uploadCertificate(req.file, req.user.uuid);
+
+    res.json({
+      success: true,
+      message: 'Certificate uploaded successfully',
+      data: { filePath }
     });
   } catch (error) {
     next(error);

@@ -2,16 +2,209 @@ const express = require("express");
 const router = express.Router();
 const adminCourseController = require("../../controllers/admin/course_controller");
 const { authenticate, authorize } = require("../../middleware/auth_middleware");
-router.use(authenticate);
-router.use(authorize(3));
+const {
+  validateAddSection,
+  validateUpdateSection,
+  validateAddLesson,
+  validateUpdateLesson,
+} = require("../../validators/courseSectionLessonValidator");
 
-router.get("/", adminCourseController.getAllCourses);
-router.get("/:courseId", adminCourseController.getCourse);
-router.post("/", adminCourseController.createCourse);
+router.use(authenticate);
+router.use(authorize(3, 4)); // Role 3 = Admin, Role 4 = Super Admin
+
+// ============================================================================
+// COURSE CRUD OPERATIONS
+// ============================================================================
+
+router.post("/", adminCourseController.addCourse);
 router.put("/:courseId", adminCourseController.updateCourse);
 router.delete("/:courseId", adminCourseController.deleteCourse);
+
+// ============================================================================
+// COURSE UPDATE OPERATIONS (Requirements, Outcomes, FAQs, Meta)
+// ============================================================================
+
+router.put(
+  "/:courseId/requirements",
+  adminCourseController.addCourseRequirements
+);
+router.put(
+  "/:courseId/outcomes",
+  adminCourseController.addCourseOutcomes
+);
+router.put(
+  "/:courseId/faqs",
+  adminCourseController.addCourseFAQs
+);
+router.put(
+  "/:courseId/meta",
+  adminCourseController.updateMetaKeywords
+);
+
+// ============================================================================
+// SECTIONS AND LESSONS
+// ============================================================================
+
+router.post(
+  "/:courseId/sections",
+  validateAddSection,
+  adminCourseController.addSection
+);
+router.get(
+  "/:courseId/sections",
+  adminCourseController.getSectionsByCourseId
+);
+router.put(
+  "/:courseId/sections/:sectionId",
+  validateUpdateSection,
+  adminCourseController.updateSection
+);
+router.post(
+  "/:courseId/lessons",
+  validateAddLesson,
+  adminCourseController.addLesson
+);
+router.put(
+  "/:courseId/lessons/reorder",
+  adminCourseController.reorderLessons
+);
+router.put(
+  "/:courseId/lessons/:lessonId",
+  validateUpdateLesson,
+  adminCourseController.updateLesson
+);
+router.delete(
+  "/:courseId/lessons/:lessonId",
+  adminCourseController.deleteLesson
+);
+router.get(
+  "/:courseId/lessons/:lessonId",
+  adminCourseController.getLessonById
+);
+
+// ============================================================================
+// INDIVIDUAL SECTION UPDATE ENDPOINTS (for editing)
+// ============================================================================
+
+router.put(
+  "/:courseId/basic",
+  adminCourseController.updateCourseBasicInfo
+);
+router.put(
+  "/:courseId/details",
+  adminCourseController.updateCourseDetails
+);
+router.put(
+  "/:courseId/media",
+  adminCourseController.updateCourseMedia
+);
+
+// ============================================================================
+// GET COURSES (Admin-specific - all courses)
+// ============================================================================
+
+router.get(
+  "/admin/active",
+  adminCourseController.getAdminActiveCourses
+);
+router.get(
+  "/admin/pending",
+  adminCourseController.getAdminPendingCourses
+);
+router.get(
+  "/admin/all",
+  adminCourseController.getAdminAllCourses
+);
+router.get(
+  "/admin/stats",
+  adminCourseController.getAdminCourseStats
+);
+
+// ============================================================================
+// METADATA (Categories, Subcategories, Languages, Instructors)
+// ============================================================================
+
+router.get("/metadata/categories", adminCourseController.getCategories);
+router.get("/metadata/subcategories", adminCourseController.getSubCategories);
+router.get("/metadata/languages", adminCourseController.getLanguages);
+router.get("/metadata/instructors", adminCourseController.getAllInstructors);
+router.post("/metadata/categories", adminCourseController.addCategory);
+router.post("/metadata/subcategories", adminCourseController.addSubCategory);
+
+// ============================================================================
+// STUDENT ENROLLMENT AND ANALYTICS
+// ============================================================================
+
+router.get(
+  "/:courseId/students",
+  adminCourseController.getEnrolledStudents
+);
+router.get(
+  "/:courseId/enrollments/progress",
+  adminCourseController.getEnrolledStudentsWithProgress
+);
+router.get(
+  "/:courseId/analytics",
+  adminCourseController.getCourseAnalytics
+);
+router.get(
+  "/:courseId/batches",
+  adminCourseController.getCourseBatches
+);
+
+// ============================================================================
+// ADMIN-SPECIFIC OPERATIONS
+// ============================================================================
+
 router.patch("/:courseId/approve", adminCourseController.approveCourse);
 router.patch("/:courseId/reject", adminCourseController.rejectCourse);
-router.get("/:courseId/details", adminCourseController.getCourseDetails);
+router.patch("/:courseId/status", adminCourseController.updateCourseStatus);
+
+// ============================================================================
+// COURSE OFFERINGS & SESSIONS
+// ============================================================================
+
+// Course Offerings
+router.post(
+  "/:courseId/offerings",
+  adminCourseController.createCourseOffering
+);
+router.get(
+  "/:courseId/offerings",
+  adminCourseController.getCourseOfferings
+);
+router.put(
+  "/offerings/:offeringId",
+  adminCourseController.updateCourseOffering
+);
+router.delete(
+  "/offerings/:offeringId",
+  adminCourseController.deleteCourseOffering
+);
+
+// Course Sessions
+router.post(
+  "/:courseId/sessions",
+  adminCourseController.createCourseSession
+);
+router.get(
+  "/:courseId/sessions",
+  adminCourseController.getCourseSessions
+);
+router.put(
+  "/sessions/:sessionId",
+  adminCourseController.updateCourseSession
+);
+router.delete(
+  "/sessions/:sessionId",
+  adminCourseController.deleteCourseSession
+);
+
+// ============================================================================
+// IMPORTANT: This route must come LAST to avoid route conflicts
+// Get course details by ID should be at the end
+// ============================================================================
+
+router.get("/:courseId", adminCourseController.getCourseDetailsById);
 
 module.exports = router;

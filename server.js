@@ -1,7 +1,14 @@
 require('dotenv').config();
+const http = require('http');
 const app = require('./src/app');
 const { promisePool } = require('./src/config/db');
+const { runPendingMigrations } = require('./src/config/run_migrations');
+const { ensureSchema } = require('./src/config/ensure_schema');
 const eventReminderScheduler = require('./src/schedulers/event_reminder_scheduler');
+const reportScheduler = require('./src/schedulers/report_scheduler');
+const assignmentReminderScheduler = require('./src/schedulers/assignment_reminder_scheduler');
+const marketingCampaignScheduler = require('./src/schedulers/marketing_campaign_scheduler');
+const { initializeSocketIO } = require('./src/socket/socketServer');
 const PORT = process.env.PORT || 3000;
 
 // Database connection test
@@ -24,11 +31,18 @@ function setupShutdownHandlers() {
     try {
       // Stop event reminder scheduler
       eventReminderScheduler.stop();
-      
+      assignmentReminderScheduler.stop();
+      marketingCampaignScheduler.stop();
+
+      // Close Socket.io connections
+      io.close(() => {
+        console.log('Socket.IO closed');
+      });
+
       // Close database pool
       await promisePool.end();
       console.log('Database pool closed');
-      
+
       // Close server
       server.close(() => {
         console.log('Server closed');
@@ -53,21 +67,77 @@ function setupShutdownHandlers() {
   process.on('SIGQUIT', () => shutdown('SIGQUIT'));
 }
 
+// Create HTTP server and initialize Socket.io
+const server = http.createServer(app);
+const io = initializeSocketIO(server);
+
 // Start the server
-const server = app.listen(PORT, async () => {
+server.listen(PORT, async () => {
   console.log(`\n🚀 Server is running on port ${PORT}`);
   console.log(`🔗 http://localhost:${PORT}`);
-  
+  console.log(`🔌 Socket.IO initialized for real-time support`);
+
   // Test database connection on startup
   await testDatabaseConnection();
-  
+
+  // Apply pending DB migrations (Sequelize/Umzug). The runner catches per-migration
+  // errors and continues — so a single broken legacy migration can't block boot.
+  // The real safety net for required schema is `ensureSchema()` below.
+  try {
+    const { applied, failed } = await runPendingMigrations();
+    if (applied.length > 0) {
+      console.log(`✅ Applied ${applied.length} migration(s): ${applied.join(', ')}`);
+    } else {
+      console.log('✅ Database migrations up-to-date');
+    }
+    if (failed && failed.length > 0) {
+      console.warn(`⚠ ${failed.length} migration(s) skipped due to errors. App will still start; ensureSchema covers required tables.`);
+    }
+  } catch (err) {
+    // Only the runner-level fatal errors land here (e.g., umzug couldn't connect at all).
+    console.error('❌ Migration runner crashed on startup:', err);
+    process.exit(1);
+  }
+
+  // Belt-and-braces schema check. Independent of SequelizeMeta — verifies critical
+  // tables actually exist in the DB and creates any that are missing. Protects
+  // against a wrong/stale SequelizeMeta state where a migration is recorded as
+  // applied but never actually ran.
+  try {
+    await ensureSchema();
+  } catch (err) {
+    console.error('❌ Schema verification failed on startup:', err);
+    process.exit(1);
+  }
+
   // Start event reminder scheduler
   try {
     await eventReminderScheduler.start();
   } catch (error) {
     console.error('⚠️  Failed to start event reminder scheduler:', error);
   }
-  
+
+  // Start report scheduler
+  try {
+    await reportScheduler.start();
+  } catch (error) {
+    console.error('⚠️  Failed to start report scheduler:', error);
+  }
+
+  // Start assignment reminder + escalation scheduler
+  try {
+    await assignmentReminderScheduler.start();
+  } catch (error) {
+    console.error('⚠️  Failed to start assignment reminder scheduler:', error);
+  }
+
+  // Start marketing campaign scheduler (auto-sends scheduled campaigns)
+  try {
+    await marketingCampaignScheduler.start();
+  } catch (error) {
+    console.error('⚠️  Failed to start marketing campaign scheduler:', error);
+  }
+
   // Setup shutdown handlers
   setupShutdownHandlers();
 });

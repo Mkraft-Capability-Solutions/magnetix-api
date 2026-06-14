@@ -49,11 +49,12 @@ exports.refreshToken = async (req, res, next) => {
       });
     }
 
-    const accessToken = await authService.refreshAccessToken(refreshToken);
+    const { accessToken, accessTokenExpiry } = await authService.refreshAccessToken(refreshToken);
 
     res.json({
       success: true,
       accessToken,
+      accessTokenExpiry,
     });
   } catch (error) {
     // Clear the invalid refresh token cookie
@@ -123,10 +124,8 @@ exports.login = async (req, res, next) => {
       message: "Login successful",
       accessToken,
       accessTokenExpiry,
-      refreshToken:
-        process.env.NODE_ENV === "development" ? refreshToken : undefined,
-      refreshTokenExpiry:
-        process.env.NODE_ENV === "development" ? refreshTokenExpiry : undefined,
+      refreshToken,
+      refreshTokenExpiry,
       user: {
         uuid: user.uuid,
         email: user.email,
@@ -135,6 +134,10 @@ exports.login = async (req, res, next) => {
         last_name: user.last_name,
         dp: user.dp || null,
         instance: user.instance,
+        managedTeamIds: user.managedTeamIds || [],
+        hasReportees: !!user.hasReportees,
+        organizations: user.organizations || [],
+        primaryOrganization: user.primaryOrganization || null,
       },
     };
 
@@ -181,6 +184,10 @@ exports.verify = async (req, res, next) => {
         last_name: user.last_name,
         dp: user.dp || null,
         instance: user.instance,
+        managedTeamIds: user.managedTeamIds || [],
+        hasReportees: !!user.hasReportees,
+        organizations: user.organizations || [],
+        primaryOrganization: user.primaryOrganization || null,
       },
     };
 

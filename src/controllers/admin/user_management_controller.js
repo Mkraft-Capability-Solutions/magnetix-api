@@ -1,0 +1,649 @@
+const userManagementService = require('../../services/admin/user_management_service');
+
+/**
+ * Get all users with filtering and pagination
+ */
+const getAllUsers = async (req, res) => {
+  try {
+    const { search, status, department, role, page = 1, limit = 10 } = req.query;
+
+    const result = await userManagementService.getAllUsers(
+      {
+        search,
+        status,
+        department,
+        role,
+        page: parseInt(page),
+        limit: parseInt(limit)
+      },
+      req.user.uuid,
+      req.user.role_id
+    );
+
+    res.json({
+      success: true,
+      data: result.users,
+      pagination: result.pagination
+    });
+  } catch (error) {
+    console.error('UserManagementController - getAllUsers error:', error);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to fetch users',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get user statistics
+ */
+const getUserStats = async (req, res) => {
+  try {
+    const stats = await userManagementService.getUserStats(req.user.uuid, req.user.role_id);
+
+    res.json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    console.error('UserManagementController - getUserStats error:', error);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to fetch user statistics',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get single user by ID
+ */
+const getUserById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await userManagementService.getUserById(id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: user
+    });
+  } catch (error) {
+    console.error('UserManagementController - getUserById error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch user',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get user's learning history
+ */
+const getUserLearningHistory = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const learningHistory = await userManagementService.getUserLearningHistory(id);
+
+    res.json({
+      success: true,
+      data: learningHistory
+    });
+  } catch (error) {
+    console.error('UserManagementController - getUserLearningHistory error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch learning history',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Create a new user
+ */
+const createUser = async (req, res) => {
+  try {
+    const { firstName, lastName, email, role, department, jobTitle, organizationId } = req.body;
+
+    // Validation
+    if (!firstName || !lastName || !email) {
+      return res.status(400).json({
+        success: false,
+        message: 'First name, last name, and email are required'
+      });
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid email format'
+      });
+    }
+
+    const result = await userManagementService.createUser({
+      firstName,
+      lastName,
+      email,
+      role: role || 'student',
+      department,
+      jobTitle,
+      organizationId,
+      instance: req.user?.instance || 'default'
+    });
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: result.message,
+      data: {
+        userId: result.userId,
+        generatedPassword: result.generatedPassword
+      }
+    });
+  } catch (error) {
+    console.error('UserManagementController - createUser error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create user',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Update user
+ */
+const updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { firstName, lastName, department, jobTitle, status } = req.body;
+
+    const result = await userManagementService.updateUser(id, {
+      firstName,
+      lastName,
+      department,
+      jobTitle,
+      status
+    }, req.user.uuid);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error('UserManagementController - updateUser error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update user',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Change user status
+ */
+const changeUserStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status is required'
+      });
+    }
+
+    const result = await userManagementService.changeUserStatus(id, status, req.user.uuid);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error('UserManagementController - changeUserStatus error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to change user status',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Change user role
+ */
+const changeUserRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    if (!role) {
+      return res.status(400).json({
+        success: false,
+        message: 'Role is required'
+      });
+    }
+
+    const result = await userManagementService.changeUserRole(id, role, req.user.uuid);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error('UserManagementController - changeUserRole error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to change user role',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Reset user password
+ */
+const resetUserPassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await userManagementService.resetUserPassword(id, req.user.uuid);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: result.message,
+      data: {
+        newPassword: result.newPassword
+      }
+    });
+  } catch (error) {
+    console.error('UserManagementController - resetUserPassword error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reset password',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Deactivate user
+ */
+const deactivateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const deactivatedBy = req.user.uuid;
+
+    const result = await userManagementService.deactivateUser(id, deactivatedBy, reason);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error('UserManagementController - deactivateUser error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to deactivate user',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Reactivate user
+ */
+const reactivateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const reactivatedBy = req.user.uuid;
+
+    const result = await userManagementService.reactivateUser(id, reactivatedBy);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error('UserManagementController - reactivateUser error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reactivate user',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get deactivation log
+ */
+const getDeactivationLog = async (req, res) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+
+    const result = await userManagementService.getDeactivationLog(
+      parseInt(page),
+      parseInt(limit)
+    );
+
+    res.json({
+      success: true,
+      data: result.logs,
+      pagination: result.pagination
+    });
+  } catch (error) {
+    console.error('UserManagementController - getDeactivationLog error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch deactivation log',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get departments for filter dropdown
+ */
+const getDepartments = async (req, res) => {
+  try {
+    const departments = await userManagementService.getDepartments();
+
+    res.json({
+      success: true,
+      data: departments
+    });
+  } catch (error) {
+    console.error('UserManagementController - getDepartments error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch departments',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get courses for enrollment
+ */
+const getCoursesForEnrollment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { search, page = 1, limit = 10 } = req.query;
+
+    const result = await userManagementService.getCoursesForEnrollment(id, {
+      search,
+      page: parseInt(page),
+      limit: parseInt(limit)
+    });
+
+    res.json({
+      success: true,
+      data: result.courses,
+      pagination: result.pagination
+    });
+  } catch (error) {
+    console.error('UserManagementController - getCoursesForEnrollment error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch courses',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Enroll user in a course
+ */
+const enrollUserInCourse = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { courseId } = req.body;
+
+    if (!courseId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Course ID is required'
+      });
+    }
+
+    const result = await userManagementService.enrollUserInCourse(id, courseId, req.user.uuid);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error('UserManagementController - enrollUserInCourse error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to enroll user',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Unenroll user from a course
+ */
+const unenrollUserFromCourse = async (req, res) => {
+  try {
+    const { id, courseId } = req.params;
+
+    const result = await userManagementService.unenrollUserFromCourse(id, courseId, req.user.uuid);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error('UserManagementController - unenrollUserFromCourse error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to unenroll user',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get admin logs for a user
+ */
+const getAdminLogs = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+
+    const result = await userManagementService.getAdminLogs(
+      id,
+      parseInt(page),
+      parseInt(limit)
+    );
+
+    res.json({
+      success: true,
+      data: result.logs,
+      pagination: result.pagination
+    });
+  } catch (error) {
+    console.error('UserManagementController - getAdminLogs error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch admin logs',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Bulk import users
+ */
+const bulkImportUsers = async (req, res) => {
+  try {
+    const { users } = req.body;
+
+    if (!users || !Array.isArray(users) || users.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Users array is required'
+      });
+    }
+
+    // Validate each user
+    const validationErrors = [];
+    users.forEach((user, index) => {
+      if (!user.firstName || !user.lastName || !user.email) {
+        validationErrors.push(`Row ${index + 1}: First name, last name, and email are required`);
+      }
+    });
+
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation errors',
+        errors: validationErrors
+      });
+    }
+
+    const result = await userManagementService.bulkImportUsers(
+      users,
+      req.user?.instance || 'default'
+    );
+
+    res.json({
+      success: true,
+      message: `Successfully imported ${result.success} users. ${result.failed} failed.`,
+      data: result
+    });
+  } catch (error) {
+    console.error('UserManagementController - bulkImportUsers error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to import users',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Set or clear the reports-to (direct manager) for a user.
+ * Body: { reportsToId: string|null }
+ */
+const changeReportsTo = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reportsToId } = req.body || {};
+    const result = await userManagementService.setReportsTo(
+      id,
+      reportsToId || null,
+      req.user.uuid,
+      req.user.role_id
+    );
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('UserManagementController - changeReportsTo error:', error);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to update reports-to'
+    });
+  }
+};
+
+module.exports = {
+  getAllUsers,
+  getUserStats,
+  getUserById,
+  getUserLearningHistory,
+  getCoursesForEnrollment,
+  enrollUserInCourse,
+  unenrollUserFromCourse,
+  createUser,
+  updateUser,
+  changeUserStatus,
+  changeUserRole,
+  resetUserPassword,
+  deactivateUser,
+  reactivateUser,
+  getDeactivationLog,
+  getDepartments,
+  getAdminLogs,
+  bulkImportUsers,
+  changeReportsTo
+};

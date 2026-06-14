@@ -1,0 +1,96 @@
+const express = require('express');
+const router = express.Router();
+const { authenticate, authorize } = require('../../middleware/auth_middleware');
+const aiLearningPathController = require('../../controllers/student/ai_learning_path_controller');
+
+/**
+ * Get all learning paths for authenticated student
+ * GET /api/student/ai-learning-path/learning-paths
+ */
+router.get('/learning-paths', authenticate, authorize(1), aiLearningPathController.getUserLearningPaths);
+
+/**
+ * Get detailed information about a specific learning path
+ * GET /api/student/ai-learning-path/learning-paths/:pathId
+ */
+router.get('/learning-paths/:pathId', authenticate, authorize(1), aiLearningPathController.getLearningPathDetail);
+
+/**
+ * Get progress data for Progress tab (Tab 2)
+ * GET /api/student/ai-learning-path/progress
+ */
+router.get('/progress', authenticate, authorize(1), aiLearningPathController.getProgressData);
+
+/**
+ * Get statistics data for Statistics tab (Tab 3)
+ * GET /api/student/ai-learning-path/statistics
+ */
+router.get('/statistics', authenticate, authorize(1), aiLearningPathController.getStatisticsData);
+
+/**
+ * Generate a learning path using AI (Gemini)
+ * POST /api/student/ai-learning-path/generate
+ * Body: { prompt: string }
+ */
+router.post('/generate', authenticate, authorize(1), aiLearningPathController.generateLearningPath);
+
+/**
+ * Save a generated learning path to database
+ * POST /api/student/ai-learning-path/save
+ * Body: { learningPath: GeneratedLearningPath }
+ */
+router.post('/save', authenticate, authorize(1), aiLearningPathController.saveLearningPath);
+
+/**
+ * Add a new skill to track
+ * POST /api/student/ai-learning-path/skills
+ */
+router.post('/skills', authenticate, authorize(1), aiLearningPathController.addSkill);
+
+/**
+ * Update an existing skill
+ * PUT /api/student/ai-learning-path/skills/:skillId
+ */
+router.put('/skills/:skillId', authenticate, authorize(1), aiLearningPathController.updateSkill);
+
+/**
+ * Delete a skill
+ * DELETE /api/student/ai-learning-path/skills/:skillId
+ */
+router.delete('/skills/:skillId', authenticate, authorize(1), aiLearningPathController.deleteSkill);
+
+/**
+ * Search trainees by name or email (for sharing)
+ * GET /api/student/ai-learning-path/trainees/search?q=searchQuery
+ */
+router.get('/trainees/search', authenticate, authorize(1), aiLearningPathController.searchTrainees);
+
+/**
+ * Share (copy) a learning path to another trainee
+ * POST /api/student/ai-learning-path/learning-paths/:pathId/share
+ * Body: { toUserId: string }
+ */
+router.post('/learning-paths/:pathId/share', authenticate, authorize(1), aiLearningPathController.shareLearningPath);
+
+/**
+ * Mark a module as complete
+ * POST /api/student/ai-learning-path/learning-paths/:pathId/modules/:moduleId/complete
+ * Body: { score?: number }
+ */
+router.post('/learning-paths/:pathId/modules/:moduleId/complete', authenticate, authorize(1), aiLearningPathController.markModuleComplete);
+
+/**
+ * Search platform courses matching module topics
+ * POST /api/student/ai-learning-path/search-platform-courses
+ * Body: { topics: string[], module_title: string, difficulty_level?: string }
+ */
+router.post('/search-platform-courses', authenticate, authorize(1), aiLearningPathController.searchPlatformCourses);
+
+/**
+ * Suggest external courses from the internet using AI
+ * POST /api/student/ai-learning-path/suggest-external-courses
+ * Body: { topics: string[], module_title: string, module_description?: string, difficulty_level: string }
+ */
+router.post('/suggest-external-courses', authenticate, authorize(1), aiLearningPathController.suggestExternalCourses);
+
+module.exports = router;

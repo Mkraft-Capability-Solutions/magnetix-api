@@ -1,6 +1,1100 @@
 const e = require("express");
 const AdminCourseService = require("../../services/admin/course_service");
+const courseSectionLessonService = require("../../services/admin/courseSectionLessonService");
 const batchAssignmentService = require("../../services/batch_assignment_service");
+const asyncHandler = require("../../utils/asyncHandler");
+const Joi = require("joi");
+
+// ============================================================================
+// VALIDATION SCHEMAS
+// ============================================================================
+
+const courseSchema = Joi.object({
+  id: Joi.number().optional().allow(null),
+  creator_id: Joi.string().optional().allow(""),
+  title: Joi.string().required(),
+  instructor: Joi.string().optional().allow(""),
+  instructorId: Joi.alternatives()
+    .try(Joi.number(), Joi.string())
+    .optional()
+    .allow(null, ""),
+  shortDescription: Joi.string().allow("").optional(),
+  description: Joi.string().allow("").optional(),
+  languageId: Joi.number().integer().min(1).required(),
+  categoryId: Joi.number().integer().min(1).required(),
+  subCategoryId: Joi.number().integer().min(1).required(),
+  level: Joi.string().valid("beginner", "intermediate", "advanced").required(),
+  courseDuration: Joi.string().allow("").optional(),
+  sections: Joi.array(),
+  thumbnail: Joi.alternatives()
+    .try(
+      Joi.string().allow(""),
+      Joi.object().unknown(true) // File object
+    )
+    .optional(),
+  mediaType: Joi.string().allow("").optional(),
+  mediaUrl: Joi.alternatives()
+    .try(
+      Joi.string().allow(""),
+      Joi.object().unknown(true) // File object
+    )
+    .optional(),
+  metaKeywords: Joi.alternatives()
+    .try(
+      Joi.array().items(Joi.string()),
+      Joi.string().allow("")
+    )
+    .optional()
+    .default([]),
+  metaDescription: Joi.string().allow("").optional(),
+  outcomes: Joi.array().items(Joi.string()).optional().default([]),
+  requirements: Joi.array().items(Joi.string()).optional().default([]),
+  faqs: Joi.array()
+    .items(
+      Joi.object({
+        question: Joi.string().required(),
+        answer: Joi.string().required(),
+      })
+    )
+    .optional()
+    .default([]),
+  lessons: Joi.array()
+    .items(
+      Joi.object({
+        id: Joi.alternatives()
+          .try(Joi.number(), Joi.string())
+          .optional()
+          .allow(null),
+        title: Joi.string().required(),
+        section: Joi.string().required(),
+        lessonType: Joi.string().valid("ILTS", "Content-Based").required(),
+        skills: Joi.array().items(Joi.string()).optional().default([]),
+
+        // Content-Based fields
+        contentType: Joi.string()
+          .valid("document", "scorm", "mp4", "url")
+          .optional(),
+        lessonContentDocument: Joi.alternatives()
+          .try(
+            Joi.string().allow(""),
+            Joi.object().unknown(true),
+            Joi.allow(null)
+          )
+          .optional(),
+        scormPackage: Joi.alternatives()
+          .try(
+            Joi.string().allow(""),
+            Joi.object().unknown(true),
+            Joi.allow(null)
+          )
+          .optional(),
+        videoUpload: Joi.alternatives()
+          .try(
+            Joi.string().allow(""),
+            Joi.object().unknown(true),
+            Joi.allow(null)
+          )
+          .optional(),
+        contentUrl: Joi.string().allow("").optional(),
+        lessonDuration: Joi.string().allow("").optional(),
+        description: Joi.string().allow("").optional(),
+
+        // ILTS fields
+        iltsType: Joi.string().valid("Online", "Offline").optional(),
+        iltsUrl: Joi.string().allow("").optional(),
+        startDate: Joi.string().allow("").optional(),
+        startTime: Joi.string().allow("").optional(),
+        endDate: Joi.string().allow("").optional(),
+        endTime: Joi.string().allow("").optional(),
+        eventVenue: Joi.string().allow("").optional(),
+        meetUrl: Joi.string().allow("").optional(),
+      })
+    )
+    .optional()
+    .default([]),
+  // Batch assignment fields
+  batchIds: Joi.array().items(Joi.number().integer()).optional().default([]),
+  availableToAllBatches: Joi.boolean().optional().default(false),
+});
+
+// ============================================================================
+// COURSE CRUD OPERATIONS
+// ============================================================================
+
+exports.addCourse = async (req, res, next) => {
+  try {
+    console.log(
+      "addCourse endpoint called with body:",
+      JSON.stringify(req.body, null, 2)
+    );
+
+    const { error } = courseSchema.validate(req.body, { abortEarly: false });
+    if (error) {
+      console.log(
+        "Validation errors:",
+        error.details.map((detail) => detail.message)
+      );
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        details: error.details.map((detail) => detail.message),
+      });
+    }
+
+    // Extract batch-related fields
+    const { batchIds = [], availableToAllBatches = false } = req.body;
+
+    // Create the course
+    const result = await AdminCourseService.addCourse(
+      req.user.uuid,
+      req.body
+    );
+    console.log("Course creation result:", result);
+
+    // Get the courseId from the result
+    const courseId = result.data?.courseId || result.data?.id;
+
+    if (courseId) {
+      // Assign batches to the course
+      await batchAssignmentService.assignBatchesToCourse(
+        courseId,
+        batchIds,
+        availableToAllBatches
+      );
+      console.log(`Batch assignment completed for course ${courseId}`);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Course created successfully",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("Error in addCourse controller:", error);
+    next(error);
+  }
+};
+
+exports.updateCourse = async (req, res, next) => {
+  try {
+    console.log(
+      "updateCourse endpoint called with ID:",
+      req.params.courseId,
+      "body:",
+      JSON.stringify(req.body, null, 2)
+    );
+
+    const { error } = courseSchema.validate(req.body, { abortEarly: false });
+    if (error) {
+      console.log(
+        "Validation errors:",
+        error.details.map((detail) => detail.message)
+      );
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        details: error.details.map((detail) => detail.message),
+      });
+    }
+
+    const result = await AdminCourseService.updateCourse(
+      req.user.uuid,
+      req.params.courseId,
+      req.body
+    );
+    console.log("Course update result:", result);
+
+    // Handle batch updates if provided
+    if (req.body.hasOwnProperty('availableToAllBatches') || req.body.batchIds) {
+      const { batchIds = [], availableToAllBatches = false } = req.body;
+
+      await batchAssignmentService.assignBatchesToCourse(
+        req.params.courseId,
+        batchIds,
+        availableToAllBatches
+      );
+      console.log(`Batch assignment updated for course ${req.params.courseId}`);
+    }
+
+    res.json({
+      success: true,
+      message: "Course updated successfully",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("Error in updateCourse controller:", error);
+    next(error);
+  }
+};
+
+exports.deleteCourse = async (req, res, next) => {
+  try {
+    await AdminCourseService.deleteCourse(
+      req.user.uuid,
+      req.params.courseId
+    );
+    res.json({
+      success: true,
+      message: "Course deleted successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ============================================================================
+// COURSE UPDATE OPERATIONS (Requirements, Outcomes, FAQs, Meta)
+// ============================================================================
+
+exports.addCourseRequirements = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const requirements = req.body.requirements;
+
+    if (!Array.isArray(requirements)) {
+      return res.status(400).json({
+        success: false,
+        message: "Requirements must be an array",
+      });
+    }
+    const result = await AdminCourseService.addCourseRequirements(
+      courseId,
+      requirements,
+      req.user.uuid
+    );
+
+    res.json({
+      success: true,
+      message: "Course requirements added successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in addCourseRequirements:", error);
+    next(error);
+  }
+};
+
+exports.addCourseOutcomes = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const outcomes = req.body.outcomes;
+
+    if (!Array.isArray(outcomes)) {
+      return res.status(400).json({
+        success: false,
+        message: "Outcomes must be an array",
+      });
+    }
+
+    const result = await AdminCourseService.addCourseOutcomes(
+      courseId,
+      outcomes,
+      req.user.uuid
+    );
+
+    res.json({
+      success: true,
+      message: "Course outcomes added successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in addCourseOutcomes:", error);
+    next(error);
+  }
+};
+
+exports.addCourseFAQs = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const faqs = req.body.faqs;
+
+    if (!Array.isArray(faqs)) {
+      return res.status(400).json({
+        success: false,
+        message: "FAQs must be an array",
+      });
+    }
+
+    const result = await AdminCourseService.addCourseFAQs(courseId, faqs, req.user.uuid);
+
+    res.json({
+      success: true,
+      message: "Course FAQs added successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in addCourseFAQs:", error);
+    next(error);
+  }
+};
+
+exports.updateMetaKeywords = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const { metaKeywords, metaDescription } = req.body;
+
+    // Convert metaKeywords to string if it's an array
+    let keywordsString = metaKeywords;
+    if (Array.isArray(metaKeywords)) {
+      keywordsString = metaKeywords.join(", ");
+    } else if (!metaKeywords) {
+      keywordsString = "";
+    } else if (typeof metaKeywords !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Meta keywords must be a string or array of strings",
+      });
+    }
+
+    const result = await AdminCourseService.updateMetaKeywords(
+      courseId,
+      keywordsString,
+      metaDescription,
+      req.user.uuid
+    );
+
+    res.json({
+      success: true,
+      message: "Meta keywords updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateMetaKeywords:", error);
+    next(error);
+  }
+};
+
+// ============================================================================
+// SECTIONS AND LESSONS
+// ============================================================================
+
+exports.addSection = asyncHandler(async (req, res) => {
+  const result = await courseSectionLessonService.addSection(
+    req.params.courseId,
+    req.body.title,
+    req.user.uuid
+  );
+
+  res.status(201).json({
+    success: true,
+    message: "Section added successfully",
+    data: result,
+  });
+});
+
+exports.getSectionsByCourseId = asyncHandler(async (req, res) => {
+  const sections = await courseSectionLessonService.getSectionsByCourseId(
+    req.params.courseId
+  );
+
+  res.json({
+    success: true,
+    data: sections,
+  });
+});
+
+exports.updateSection = asyncHandler(async (req, res) => {
+  const result = await courseSectionLessonService.updateSection(
+    req.params.courseId,
+    req.params.sectionId,
+    req.body.title,
+    req.user.uuid
+  );
+
+  res.json({
+    success: true,
+    message: "Section updated successfully",
+    data: result,
+  });
+});
+
+exports.addLesson = asyncHandler(async (req, res) => {
+  const lessonId = await courseSectionLessonService.addLesson(
+    req.params.courseId,
+    req.body,
+    req.user.uuid
+  );
+
+  res.status(201).json({
+    success: true,
+    message: "Lesson added successfully",
+    data: { id: lessonId },
+  });
+});
+
+exports.updateLesson = asyncHandler(async (req, res) => {
+  const result = await courseSectionLessonService.updateLesson(
+    req.params.courseId,
+    req.params.lessonId,
+    req.body,
+    req.user.uuid
+  );
+
+  res.json({
+    success: true,
+    message: "Lesson updated successfully",
+    data: result,
+  });
+});
+
+exports.reorderLessons = asyncHandler(async (req, res) => {
+  const { sectionId, lessonOrders } = req.body;
+  const result = await courseSectionLessonService.reorderLessons(
+    req.params.courseId,
+    sectionId,
+    lessonOrders
+  );
+
+  res.json({
+    success: true,
+    message: "Lessons reordered successfully",
+    data: result,
+  });
+});
+
+exports.deleteLesson = asyncHandler(async (req, res) => {
+  const result = await courseSectionLessonService.deleteLesson(
+    req.params.courseId,
+    req.params.lessonId
+  );
+
+  res.json({
+    success: true,
+    message: "Lesson deleted successfully",
+    data: result,
+  });
+});
+
+exports.getLessonById = asyncHandler(async (req, res) => {
+  const lesson = await courseSectionLessonService.getLessonById(
+    req.params.courseId,
+    req.params.lessonId
+  );
+
+  res.json({
+    success: true,
+    data: lesson,
+  });
+});
+
+exports.getAllInstructors = async (req, res, next) => {
+  try {
+    const instructors = await AdminCourseService.getAllInstructors();
+
+    res.json({
+      success: true,
+      data: instructors,
+    });
+  } catch (error) {
+    console.error("Error in getAllInstructors:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch instructors",
+      error: error.message,
+    });
+  }
+};
+
+// ============================================================================
+// INDIVIDUAL SECTION UPDATE ENDPOINTS (for editing)
+// ============================================================================
+
+exports.updateCourseBasicInfo = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const { title, shortDescription, description, category, subcategory, level, language, courseDuration, batchIds, availableToAllBatches } = req.body;
+    const updatedBy = req.user.uuid;
+
+    console.log('updateCourseBasicInfo called with batch data:', {
+      courseId,
+      batchIds,
+      availableToAllBatches,
+      batchIdsType: typeof batchIds,
+      batchIdsIsArray: Array.isArray(batchIds)
+    });
+
+    // Update course basic information
+    const result = await AdminCourseService.updateCourseBasicInfo(
+      courseId,
+      {
+        title,
+        shortDescription,
+        description,
+        categoryId: category,
+        subCategoryId: subcategory,
+        level,
+        languageId: language,
+        courseDuration,
+      },
+      updatedBy
+    );
+
+    // Update batch assignments
+    if (batchIds !== undefined || availableToAllBatches !== undefined) {
+      const batchIdsToAssign = Array.isArray(batchIds) ? batchIds : [];
+      const isAvailableToAll = availableToAllBatches === true || availableToAllBatches === 'true' || availableToAllBatches === 1;
+
+      console.log('Updating batch assignments:', {
+        batchIdsToAssign,
+        isAvailableToAll
+      });
+
+      await batchAssignmentService.assignBatchesToCourse(
+        courseId,
+        batchIdsToAssign,
+        isAvailableToAll
+      );
+    }
+
+    res.json({
+      success: true,
+      message: "Course basic information updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateCourseBasicInfo:", error);
+    next(error);
+  }
+};
+
+exports.updateCourseDetails = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const { requirements, outcomes, faqs } = req.body;
+    const updatedBy = req.user.uuid;
+
+    // Clear existing data first, then add new data
+    const result = await AdminCourseService.updateCourseDetails(
+      courseId,
+      { requirements, outcomes, faqs },
+      updatedBy
+    );
+
+    res.json({
+      success: true,
+      message: "Course details updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateCourseDetails:", error);
+    next(error);
+  }
+};
+
+exports.updateCourseMedia = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const { mediaType, mediaUrl } = req.body;
+    const updatedBy = req.user.uuid;
+
+    const result = await AdminCourseService.updateCourseMedia(
+      courseId,
+      { mediaType, mediaUrl },
+      updatedBy
+    );
+
+    res.json({
+      success: true,
+      message: "Course media updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateCourseMedia:", error);
+    next(error);
+  }
+};
+
+// ============================================================================
+// GET COURSES (Admin-specific - all courses)
+// ============================================================================
+
+exports.getAdminActiveCourses = async (req, res) => {
+  try {
+    const courses = await AdminCourseService.getAdminActiveCourses(
+      req.user.uuid
+    );
+    res.json({ success: true, data: courses });
+  } catch (error) {
+    console.error("Error fetching admin active courses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get active courses",
+      error: error.message,
+    });
+  }
+};
+
+exports.getAdminPendingCourses = async (req, res) => {
+  try {
+    const courses = await AdminCourseService.getAdminPendingCourses(
+      req.user.uuid
+    );
+    res.json({ success: true, data: courses });
+  } catch (error) {
+    console.error("Error fetching admin pending courses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get pending courses",
+      error: error.message,
+    });
+  }
+};
+
+exports.getAdminAllCourses = async (req, res) => {
+  try {
+    const courses = await AdminCourseService.getAdminAllCourses();
+    res.json({ success: true, data: courses });
+  } catch (error) {
+    console.error("Error fetching all courses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get courses",
+      error: error.message,
+    });
+  }
+};
+
+exports.getAdminCourseStats = async (req, res) => {
+  try {
+    const stats = await AdminCourseService.getAdminCourseStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    console.error("Error fetching course stats:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get course stats",
+      error: error.message,
+    });
+  }
+};
+
+// ============================================================================
+// METADATA (Categories, Subcategories, Languages)
+// ============================================================================
+
+exports.getCategories = async (req, res, next) => {
+  try {
+    const categories = await AdminCourseService.getCategories();
+    res.json({
+      success: true,
+      data: categories,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getSubCategories = async (req, res, next) => {
+  try {
+    const subCategories = await AdminCourseService.getSubCategories();
+    res.json({
+      success: true,
+      data: subCategories,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getLanguages = async (req, res, next) => {
+  try {
+    const languages = await AdminCourseService.getLanguages();
+    res.json({
+      success: true,
+      data: languages,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.addCategory = async (req, res, next) => {
+  try {
+    const { categoryName } = req.body;
+
+    if (!categoryName || !categoryName.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Category name is required",
+      });
+    }
+
+    const newCategory = await AdminCourseService.addCategory(
+      categoryName.trim(),
+      req.user.uuid
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Category added successfully",
+      data: newCategory,
+    });
+  } catch (error) {
+    if (error.message === "Category already exists") {
+      return res.status(409).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    next(error);
+  }
+};
+
+exports.addSubCategory = async (req, res, next) => {
+  try {
+    const { categoryId, subcategoryName } = req.body;
+
+    if (!categoryId) {
+      return res.status(400).json({
+        success: false,
+        message: "Category ID is required",
+      });
+    }
+
+    if (!subcategoryName || !subcategoryName.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Subcategory name is required",
+      });
+    }
+
+    const newSubCategory = await AdminCourseService.addSubCategory(
+      categoryId,
+      subcategoryName.trim(),
+      req.user.uuid
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Subcategory added successfully",
+      data: newSubCategory,
+    });
+  } catch (error) {
+    if (error.message === "Subcategory already exists for this category") {
+      return res.status(409).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    next(error);
+  }
+};
+
+// ============================================================================
+// STUDENT ENROLLMENT AND ANALYTICS
+// ============================================================================
+
+exports.getEnrolledStudents = async (req, res, next) => {
+  try {
+    const students = await AdminCourseService.getEnrolledStudents(
+      req.params.courseId,
+      req.user.uuid
+    );
+
+    res.json({
+      success: true,
+      data: students,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getEnrolledStudentsWithProgress = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const data = await AdminCourseService.getEnrolledStudentsWithProgress(
+      courseId
+    );
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    console.error("Error in getEnrolledStudentsWithProgress:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get enrolled students with progress",
+      error: error.message,
+    });
+  }
+};
+
+exports.getCourseAnalytics = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const timeFilter = req.query.timeFilter || 'all'; // 7days, 30days, 6months, all
+
+    const analytics = await AdminCourseService.getCourseAnalytics(
+      courseId,
+      req.user.uuid,
+      timeFilter
+    );
+
+    res.json({
+      success: true,
+      data: analytics,
+    });
+  } catch (error) {
+    console.error("Error in getCourseAnalytics:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get course analytics",
+      error: error.message,
+    });
+  }
+};
+
+exports.getCourseBatches = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const batchData = await batchAssignmentService.getCourseBatches(courseId);
+
+    res.json({
+      success: true,
+      data: batchData,
+    });
+  } catch (error) {
+    console.error("Error in getCourseBatches:", error);
+    next(error);
+  }
+};
+
+// ============================================================================
+// ADMIN-SPECIFIC OPERATIONS
+// ============================================================================
+
+exports.approveCourse = async (req, res) => {
+  try {
+    await AdminCourseService.approveCourse(req.params.courseId);
+    res.json({
+      success: true,
+      message: "Course approved successfully",
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+exports.rejectCourse = async (req, res) => {
+  try {
+    await AdminCourseService.rejectCourse(req.params.courseId);
+    res.json({
+      success: true,
+      message: "Course rejected successfully",
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateCourseStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required",
+      });
+    }
+
+    await AdminCourseService.updateCourseStatus(req.params.courseId, status);
+    res.json({
+      success: true,
+      message: "Course status updated successfully",
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+// ============================================================================
+// COURSE OFFERINGS & SESSIONS
+// ============================================================================
+
+exports.createCourseOffering = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const result = await AdminCourseService.createCourseOffering(
+      courseId,
+      req.body,
+      req.user.uuid
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Course offering created successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in createCourseOffering:", error);
+    next(error);
+  }
+};
+
+exports.getCourseOfferings = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const offerings = await AdminCourseService.getCourseOfferings(courseId);
+
+    res.json({
+      success: true,
+      data: offerings,
+    });
+  } catch (error) {
+    console.error("Error in getCourseOfferings:", error);
+    next(error);
+  }
+};
+
+exports.updateCourseOffering = async (req, res, next) => {
+  try {
+    const offeringId = req.params.offeringId;
+    const result = await AdminCourseService.updateCourseOffering(
+      offeringId,
+      req.body
+    );
+
+    res.json({
+      success: true,
+      message: "Course offering updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateCourseOffering:", error);
+    next(error);
+  }
+};
+
+exports.deleteCourseOffering = async (req, res, next) => {
+  try {
+    const offeringId = req.params.offeringId;
+    const result = await AdminCourseService.deleteCourseOffering(offeringId);
+
+    res.json({
+      success: true,
+      message: "Course offering deleted successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in deleteCourseOffering:", error);
+    next(error);
+  }
+};
+
+exports.createCourseSession = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const result = await AdminCourseService.createCourseSession(
+      courseId,
+      req.body,
+      req.user.uuid
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Course session created successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in createCourseSession:", error);
+    next(error);
+  }
+};
+
+exports.getCourseSessions = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const offeringId = req.query.offeringId || null;
+    const sessions = await AdminCourseService.getCourseSessions(
+      courseId,
+      offeringId
+    );
+
+    res.json({
+      success: true,
+      data: sessions,
+    });
+  } catch (error) {
+    console.error("Error in getCourseSessions:", error);
+    next(error);
+  }
+};
+
+exports.updateCourseSession = async (req, res, next) => {
+  try {
+    const sessionId = req.params.sessionId;
+    const result = await AdminCourseService.updateCourseSession(
+      sessionId,
+      req.body
+    );
+
+    res.json({
+      success: true,
+      message: "Course session updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateCourseSession:", error);
+    next(error);
+  }
+};
+
+exports.deleteCourseSession = async (req, res, next) => {
+  try {
+    const sessionId = req.params.sessionId;
+    const result = await AdminCourseService.deleteCourseSession(sessionId);
+
+    res.json({
+      success: true,
+      message: "Course session deleted successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in deleteCourseSession:", error);
+    next(error);
+  }
+};
+
+// ============================================================================
+// COURSE DETAILS
+// ============================================================================
+
+exports.getCourseDetailsById = async (req, res, next) => {
+  try {
+    console.log("getCourseDetailsById called for course:", req.params.courseId);
+
+    const courseDetails = await AdminCourseService.getCourseDetailsById(
+      req.params.courseId,
+      req.user.uuid
+    );
+
+    // Get batch assignments for the course
+    const batchInfo = await batchAssignmentService.getCourseBatches(req.params.courseId);
+    courseDetails.availableToAllBatches = batchInfo.availableToAll;
+    courseDetails.batches = batchInfo.batches;
+    courseDetails.batchIds = batchInfo.batches.map(b => b.id);
+
+    console.log(
+      "Course details retrieved:",
+      JSON.stringify(courseDetails, null, 2)
+    );
+
+    res.json({
+      success: true,
+      data: courseDetails,
+    });
+  } catch (error) {
+    console.error("Error in getCourseDetailsById:", error);
+    next(error);
+  }
+};
+
+// ============================================================================
+// LEGACY METHODS (kept for backwards compatibility)
+// ============================================================================
 
 exports.getAllCourses = async (req, res) => {
   try {
@@ -13,6 +1107,7 @@ exports.getAllCourses = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 exports.getCourse = async (req, res) => {
   try {
     const course = await AdminCourseService.getCourseById(req.params.courseId);
@@ -30,6 +1125,7 @@ exports.getCourse = async (req, res) => {
     res.status(404).json({ success: false, message: error.message });
   }
 };
+
 exports.createCourse = async (req, res) => {
   try {
     // Extract batch-related fields from request
@@ -61,46 +1157,7 @@ exports.createCourse = async (req, res) => {
     res.status(400).json({ success: false, message: error.message });
   }
 };
-exports.updateCourse = async (req, res) => {
-  try {
-    await AdminCourseService.updateCourse(req.params.id, req.body);
 
-    // Handle batch updates if provided
-    if (req.body.hasOwnProperty('availableToAllBatches') || req.body.batchIds) {
-      let batchIds = [];
-      let availableToAllBatches = false;
-
-      if (req.body.availableToAllBatches === true || req.body.availableToAllBatches === 'true') {
-        availableToAllBatches = true;
-      } else if (req.body.batchIds) {
-        batchIds = typeof req.body.batchIds === 'string'
-          ? JSON.parse(req.body.batchIds)
-          : req.body.batchIds;
-      }
-
-      await batchAssignmentService.assignBatchesToCourse(req.params.id, batchIds, availableToAllBatches);
-    }
-
-    res.json({
-      success: true,
-      message: "Course updated successfully",
-    });
-  } catch (error) {
-    console.error('Error in updateCourse controller:', error);
-    res.status(400).json({ success: false, message: error.message });
-  }
-};
-// exports.deleteCourse = async (req, res) => {
-//   try {
-//     await AdminCourseService.deleteCourse(req.params.id);
-//     res.json({
-//       success: true,
-//       message: "Course deleted successfully",
-//     });
-//   } catch (error) {
-//     res.status(400).json({ success: false, message: error.message });
-//   }
-// };
 exports.getCourseByInstructor = async (req, res) => {
   try {
     const courses = await AdminCourseService.getCoursesByInstructor(
@@ -114,41 +1171,6 @@ exports.getCourseByInstructor = async (req, res) => {
     res.status(404).json({ success: false, message: error.message });
   }
 };
-
-exports.approveCourse = async (req, res) => {
-  try {
-    await AdminCourseService.approveCourse(req.params.courseId);
-    res.json({
-      success: true,
-      message: "Course approved successfully",
-    });
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
-  }
-}
-
-exports.rejectCourse = async (req, res) => {  
-  try {
-    await AdminCourseService.rejectCourse(req.params.courseId);
-    res.json({
-      success: true,
-      message: "Course rejected successfully",
-    });
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
-  }
-}
-exports.deleteCourse = async (req, res) => {  
-  try {
-    await AdminCourseService.deleteCourse(req.params.courseId);
-    res.json({
-      success: true,
-      message: "Course deleted successfully",
-    });
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
-  }
-}
 
 exports.getCourseDetails = async (req, res) => {
   try {

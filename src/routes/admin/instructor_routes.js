@@ -4,7 +4,7 @@ const router = express.Router();
 const adminInstructorController = require("../../controllers/admin/instructor_controller");
 const { authenticate, authorize } = require("../../middleware/auth_middleware");
 router.use(authenticate);
-router.use(authorize(3));
+router.use(authorize(3, 4)); // Role 3 = Admin, Role 4 = Super Admin
 router.get("/", adminInstructorController.getAllInstructors);
 
 // Featured Mentors Routes (must come before /:instructorId)

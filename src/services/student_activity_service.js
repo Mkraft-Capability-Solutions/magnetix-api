@@ -1,9 +1,14 @@
 const { promisePool } = require('../config/db');
+const achievementsService = require('./student/achievements_service');
 
 class ActivityService {
   async logStudentSession(userId) {
     try {
       await promisePool.query('CALL log_student_session(?)', [userId]);
+
+      // Update daily login streak and award points
+      await achievementsService.updateStreak(userId);
+
       return true;
     } catch (error) {
       throw new Error(`Failed to log session: ${error.message}`);

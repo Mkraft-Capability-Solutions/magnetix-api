@@ -1,0 +1,59 @@
+name: Deploy to Test (staging)
+
+on:
+  push:
+    branches:
+      - staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.GCE_SSH_KEY }}
+
+      - name: Deploy via SSH
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }} << 'EOF'
+            cd ${{ secrets.TEST_SOURCE }}
+            git pull origin staging
+            npm install
+
+            # Create .env file with GitHub secrets
+            cat > .env << 'ENVEOF'
+          # Database Configuration
+          DB_HOST=${{ secrets.DB_HOST }}
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          DB_NAME=${{ secrets.TEST_DB_NAME }}
+          # Insert Gemini API Key
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL=${{ secrets.GEMINI_MODEL }}
+          # JWT Configuration
+          JWT_ACCESS_SECRET=${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_ACCESS_EXPIRY=${{ secrets.JWT_ACCESS_EXPIRY }}
+          JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+          JWT_REFRESH_EXPIRY=${{ secrets.JWT_REFRESH_EXPIRY }}
+
+          # Email Configuration
+          EMAIL_SERVICE=${{ secrets.EMAIL_SERVICE }}
+          EMAIL_USER=${{ secrets.EMAIL_USER }}
+          EMAIL_PASS=${{ secrets.EMAIL_PASS }}
+          EMAIL_FROM=${{ secrets.EMAIL_FROM }}
+          EMAIL_SENDER_NAME=${{ secrets.EMAIL_SENDER_NAME }}
+          SUPPORT_EMAIL=${{ secrets.SUPPORT_EMAIL }}
+          APP_NAME=${{ secrets.APP_NAME }}
+          FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+
+          PORT=${{ secrets.PORT }}
+          NODE_ENV=${{ secrets.NODE_ENV }}
+          ENVEOF
+
+            pm2 restart test-magnetix-api --update-env
+          EOF

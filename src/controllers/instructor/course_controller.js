@@ -106,6 +106,8 @@ const courseSchema = Joi.object({
   // Batch assignment fields
   batchIds: Joi.array().items(Joi.number().integer()).optional().default([]),
   availableToAllBatches: Joi.boolean().optional().default(false),
+  // Course status
+  status: Joi.string().valid('pending', 'active', 'inactive').optional(),
 });
 
 exports.addCourse = async (req, res, next) => {
@@ -788,6 +790,28 @@ exports.updateLesson = async (req, res, next) => {
   }
 };
 
+exports.reorderLessons = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const { sectionId, lessonOrders } = req.body;
+    const result = await instructorCourseService.reorderLessons(
+      courseId,
+      sectionId,
+      lessonOrders,
+      req.user.uuid
+    );
+
+    res.json({
+      success: true,
+      message: "Lessons reordered successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in reorderLessons:", error);
+    next(error);
+  }
+};
+
 exports.deleteLesson = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;
@@ -823,6 +847,30 @@ exports.getSectionsByCourseId = async (req, res, next) => {
   }
 };
 
+exports.getLessonById = async (req, res, next) => {
+  try {
+    const { courseId, lessonId } = req.params;
+    const lesson = await instructorCourseService.getLessonById(
+      courseId,
+      lessonId
+    );
+
+    res.json({
+      success: true,
+      data: lesson,
+    });
+  } catch (error) {
+    console.error("Error in getLessonById:", error);
+    if (error.message === "Lesson not found") {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    next(error);
+  }
+};
+
 exports.getCourseBatches = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;
@@ -835,6 +883,390 @@ exports.getCourseBatches = async (req, res, next) => {
     });
   } catch (error) {
     console.error("Error in getCourseBatches:", error);
+    next(error);
+  }
+};
+
+// ============================================================================
+// INSTRUCTOR LEARNING CONTROLLERS (Instructor as Learner)
+// These endpoints allow instructors to browse, enroll, and save courses
+// ============================================================================
+
+exports.getSubscribedCourses = async (req, res, next) => {
+  try {
+    const courses = await instructorCourseService.getSubscribedCourses(req.user.uuid);
+    res.json({
+      success: true,
+      data: courses,
+    });
+  } catch (error) {
+    console.error("Error in getSubscribedCourses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get subscribed courses",
+      error: error.message,
+    });
+  }
+};
+
+exports.exploreCourses = async (req, res, next) => {
+  try {
+    const courses = await instructorCourseService.exploreCourses(req.user.uuid);
+    res.json({
+      success: true,
+      data: courses,
+    });
+  } catch (error) {
+    console.error("Error in exploreCourses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get explore courses",
+      error: error.message,
+    });
+  }
+};
+
+exports.getAllActiveCourses = async (req, res, next) => {
+  try {
+    const courses = await instructorCourseService.getAllActiveCourses(req.user.uuid);
+    res.json({
+      success: true,
+      data: courses,
+    });
+  } catch (error) {
+    console.error("Error in getAllActiveCourses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get all active courses",
+      error: error.message,
+    });
+  }
+};
+
+exports.getSavedCourses = async (req, res, next) => {
+  try {
+    const courses = await instructorCourseService.getSavedCourses(req.user.uuid);
+    res.json({
+      success: true,
+      data: courses,
+    });
+  } catch (error) {
+    console.error("Error in getSavedCourses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get saved courses",
+      error: error.message,
+    });
+  }
+};
+
+exports.saveCourse = async (req, res, next) => {
+  try {
+    const { course_id } = req.body;
+
+    if (!course_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Course ID is required",
+      });
+    }
+
+    const result = await instructorCourseService.saveCourse(req.user.uuid, course_id);
+    res.json({
+      success: true,
+      message: result.message || "Course saved successfully",
+      data: null,
+    });
+  } catch (error) {
+    console.error("Error in saveCourse:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to save course",
+    });
+  }
+};
+
+exports.unsaveCourse = async (req, res, next) => {
+  try {
+    const { course_id } = req.body;
+
+    if (!course_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Course ID is required",
+      });
+    }
+
+    const result = await instructorCourseService.unsaveCourse(req.user.uuid, course_id);
+    res.json({
+      success: true,
+      message: result.message || "Course unsaved successfully",
+      data: null,
+    });
+  } catch (error) {
+    console.error("Error in unsaveCourse:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to unsave course",
+    });
+  }
+};
+
+exports.enrollInCourse = async (req, res, next) => {
+  try {
+    const { course_id } = req.body;
+
+    if (!course_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Course ID is required",
+      });
+    }
+
+    const result = await instructorCourseService.enrollInCourse(req.user.uuid, course_id);
+    res.json({
+      success: true,
+      message: result.message || "Successfully enrolled in course",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in enrollInCourse:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to enroll in course",
+    });
+  }
+};
+
+exports.getCourseDetailsForLearning = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const courseDetails = await instructorCourseService.getCourseDetailsForLearning(
+      req.user.uuid,
+      courseId
+    );
+
+    res.json({
+      success: true,
+      data: courseDetails,
+    });
+  } catch (error) {
+    console.error("Error in getCourseDetailsForLearning:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get course details",
+      error: error.message,
+    });
+  }
+};
+
+// ============================================================================
+// COURSE OFFERINGS & SESSIONS CONTROLLERS
+// ============================================================================
+
+/**
+ * Create a course offering
+ */
+exports.createCourseOffering = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const result = await instructorCourseService.createCourseOffering(
+      courseId,
+      req.body,
+      req.user.uuid
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Course offering created successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in createCourseOffering:", error);
+    next(error);
+  }
+};
+
+/**
+ * Get course offerings
+ */
+exports.getCourseOfferings = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const offerings = await instructorCourseService.getCourseOfferings(courseId);
+
+    res.json({
+      success: true,
+      data: offerings,
+    });
+  } catch (error) {
+    console.error("Error in getCourseOfferings:", error);
+    next(error);
+  }
+};
+
+/**
+ * Update a course offering
+ */
+exports.updateCourseOffering = async (req, res, next) => {
+  try {
+    const offeringId = req.params.offeringId;
+    const result = await instructorCourseService.updateCourseOffering(
+      offeringId,
+      req.body
+    );
+
+    res.json({
+      success: true,
+      message: "Course offering updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateCourseOffering:", error);
+    next(error);
+  }
+};
+
+/**
+ * Delete a course offering
+ */
+exports.deleteCourseOffering = async (req, res, next) => {
+  try {
+    const offeringId = req.params.offeringId;
+    const result = await instructorCourseService.deleteCourseOffering(offeringId);
+
+    res.json({
+      success: true,
+      message: "Course offering deleted successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in deleteCourseOffering:", error);
+    next(error);
+  }
+};
+
+/**
+ * Create a course session
+ */
+exports.createCourseSession = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const result = await instructorCourseService.createCourseSession(
+      courseId,
+      req.body,
+      req.user.uuid
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Course session created successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in createCourseSession:", error);
+    next(error);
+  }
+};
+
+/**
+ * Get course sessions
+ */
+exports.getCourseSessions = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const offeringId = req.query.offeringId || null;
+    const sessions = await instructorCourseService.getCourseSessions(
+      courseId,
+      offeringId
+    );
+
+    res.json({
+      success: true,
+      data: sessions,
+    });
+  } catch (error) {
+    console.error("Error in getCourseSessions:", error);
+    next(error);
+  }
+};
+
+/**
+ * Update a course session
+ */
+exports.updateCourseSession = async (req, res, next) => {
+  try {
+    const sessionId = req.params.sessionId;
+    const result = await instructorCourseService.updateCourseSession(
+      sessionId,
+      req.body
+    );
+
+    res.json({
+      success: true,
+      message: "Course session updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateCourseSession:", error);
+    next(error);
+  }
+};
+
+/**
+ * Delete a course session
+ */
+exports.deleteCourseSession = async (req, res, next) => {
+  try {
+    const sessionId = req.params.sessionId;
+    const result = await instructorCourseService.deleteCourseSession(sessionId);
+
+    res.json({
+      success: true,
+      message: "Course session deleted successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in deleteCourseSession:", error);
+    next(error);
+  }
+};
+
+// Update course status
+exports.updateCourseStatus = async (req, res, next) => {
+  try {
+    const courseId = req.params.courseId;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required",
+      });
+    }
+
+    // Validate status value
+    const validStatuses = ['active', 'inactive', 'pending'];
+    if (!validStatuses.includes(status.toLowerCase())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status value. Must be one of: active, inactive, pending",
+      });
+    }
+
+    const result = await instructorCourseService.updateCourseStatus(
+      courseId,
+      status,
+      req.user.uuid
+    );
+
+    res.json({
+      success: true,
+      message: "Course status updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in updateCourseStatus:", error);
     next(error);
   }
 };

@@ -179,7 +179,7 @@ class NotificationController {
     try {
       // Get instructor UUID from authenticated user
       const instructorUuid = req.user?.uuid;
-      
+
       if (!instructorUuid) {
         return res.status(401).json({
           success: false,
@@ -189,7 +189,7 @@ class NotificationController {
 
       const { type } = req.params;
       const validTypes = ['session_request', 'mentorship_request', 'course_enrollment', 'event_participation', 'course_verification'];
-      
+
       if (!validTypes.includes(type)) {
         return res.status(400).json({
           success: false,
@@ -217,7 +217,7 @@ class NotificationController {
 
       // Get all notifications and filter by type
       const result = await notificationService.getInstructorNotifications(
-        instructorUuid, 
+        instructorUuid,
         100, // Get more to filter
         0
       );
@@ -246,6 +246,127 @@ class NotificationController {
 
     } catch (error) {
       console.error('Error in getNotificationsByType:', error);
+      next(error);
+    }
+  }
+
+  // ============================================
+  // UNIVERSAL NOTIFICATION METHODS (All Users)
+  // ============================================
+
+  /**
+   * Get user's notifications with pagination
+   * GET /api/notifications
+   */
+  async getUserNotifications(req, res, next) {
+    try {
+      const userId = req.user?.uuid;
+      if (!userId) {
+        return res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      }
+
+      const { limit = 20, offset = 0, type, isRead } = req.query;
+      const result = await notificationService.getUserNotifications(
+        userId,
+        parseInt(limit),
+        parseInt(offset),
+        type || null,
+        isRead !== undefined ? (isRead === 'true' ? 1 : 0) : null
+      );
+
+      res.json({
+        success: true,
+        data: result,
+        pagination: { limit: parseInt(limit), offset: parseInt(offset) }
+      });
+    } catch (error) {
+      console.error('Get notifications error:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Get unread notification count
+   * GET /api/notifications/count
+   */
+  async getUnreadCount(req, res, next) {
+    try {
+      const userId = req.user?.uuid;
+      if (!userId) {
+        return res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      }
+
+      const result = await notificationService.getUnreadCount(userId);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      console.error('Get unread count error:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Mark single notification as read
+   * PUT /api/notifications/:uuid/read
+   */
+  async markAsRead(req, res, next) {
+    try {
+      const { uuid } = req.params;
+      const userId = req.user?.uuid;
+      if (!userId) {
+        return res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      }
+
+      const result = await notificationService.markAsRead(uuid, userId);
+      if (result && result.affectedRows > 0) {
+        res.json({ success: true, data: { uuid }, message: 'Notification marked as read' });
+      } else {
+        res.status(404).json({ success: false, error: { message: 'Notification not found' } });
+      }
+    } catch (error) {
+      console.error('Mark as read error:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Mark all notifications as read
+   * PUT /api/notifications/read-all
+   */
+  async markAllAsRead(req, res, next) {
+    try {
+      const userId = req.user?.uuid;
+      if (!userId) {
+        return res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      }
+
+      const result = await notificationService.markAllAsRead(userId);
+      res.json({ success: true, data: result, message: 'All notifications marked as read' });
+    } catch (error) {
+      console.error('Mark all as read error:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Delete notification (soft delete)
+   * DELETE /api/notifications/:uuid
+   */
+  async deleteNotification(req, res, next) {
+    try {
+      const { uuid } = req.params;
+      const userId = req.user?.uuid;
+      if (!userId) {
+        return res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      }
+
+      const result = await notificationService.deleteNotification(uuid, userId);
+      if (result) {
+        res.json({ success: true, data: { uuid }, message: 'Notification deleted' });
+      } else {
+        res.status(404).json({ success: false, error: { message: 'Notification not found' } });
+      }
+    } catch (error) {
+      console.error('Delete notification error:', error);
       next(error);
     }
   }

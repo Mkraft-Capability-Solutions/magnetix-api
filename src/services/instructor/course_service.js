@@ -13,6 +13,7 @@ const {
   SkillDTO,
   DTOTransformer,
 } = require("../../dto/instructor/course_dto");
+const { RatingStatsDTO } = require("../../dto/course_dto");
 
 class InstructorCourseService {
   async addCourse(userId, courseData) {
@@ -46,27 +47,38 @@ class InstructorCourseService {
 
     try {
       // Add main course
+      // Convert empty arrays to NULL for stored procedure
+      const metaKeywordsValue = metaKeywords && metaKeywords.length > 0
+        ? (Array.isArray(metaKeywords) ? metaKeywords.join(',') : metaKeywords)
+        : null;
+
       const [result] = await connection.query(
         "CALL add_instructor_course(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           userId,
           title,
-          shortDescription,
-          description,
+          shortDescription || null,
+          description || null,
           languageId,
           categoryId,
           subCategoryId,
           level,
-          courseDuration,
-          thumbnail,
-          mediaType,
-          mediaUrl,
-          metaKeywords,
-          metaDescription,
+          courseDuration || null,
+          thumbnail || null,
+          mediaType || null,
+          mediaUrl || null,
+          metaKeywordsValue,
+          metaDescription || null,
         ]
       );
 
-      const courseId = result[0][0].id;
+      // Debug: Log the entire result structure
+      console.log("Raw result from stored procedure:", JSON.stringify(result, null, 2));
+      console.log("result[0]:", result[0]);
+      console.log("result[0][0]:", result[0] ? result[0][0] : "undefined");
+
+      // The stored procedure returns 'id' field
+      const courseId = result[0][0].id || result[0][0].courseId;
       console.log("Course created with ID:", courseId);
 
       if (!courseId) {
@@ -182,7 +194,7 @@ class InstructorCourseService {
           }
 
           const [lessonResult] = await connection.query(
-            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
               lesson.title,
               lesson.sectionId, // Use existing section ID
@@ -197,6 +209,10 @@ class InstructorCourseService {
               userId,
               userId,
               lessonOrder,
+              lesson.assessmentId || null,
+              lesson.requireSectionCompletion || 0,
+              lesson.assessmentStartDate || null,
+              lesson.assessmentEndDate || null,
             ]
           );
 
@@ -297,7 +313,7 @@ class InstructorCourseService {
             [sectionGroup.sectionTitle, courseId, userId, userId]
           );
 
-          const sectionId = sectionResult[0][0].id;
+          const sectionId = sectionResult[0][0].id || sectionResult[0][0].sectionId;
           console.log(`Section created with ID: ${sectionId}`);
 
           // Process lessons in this new section
@@ -354,7 +370,7 @@ class InstructorCourseService {
             console.log(`Lesson order: ${lessonOrder}`);
 
             const [lessonResult] = await connection.query(
-              "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               [
                 lesson.title,
                 sectionId,
@@ -369,6 +385,10 @@ class InstructorCourseService {
                 userId,
                 userId,
                 lessonOrder,
+                lesson.assessmentId || null,
+                lesson.requireSectionCompletion || 0,
+                lesson.assessmentStartDate || null,
+                lesson.assessmentEndDate || null,
               ]
             );
 
@@ -621,24 +641,29 @@ class InstructorCourseService {
 
     try {
       // Update main course
+      // Convert empty arrays to NULL for stored procedure
+      const metaKeywordsValue = metaKeywords && metaKeywords.length > 0
+        ? (Array.isArray(metaKeywords) ? metaKeywords.join(',') : metaKeywords)
+        : null;
+
       const [result] = await connection.query(
         "CALL update_instructor_course(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           courseId,
           userId,
           title,
-          shortDescription,
-          description,
+          shortDescription || null,
+          description || null,
           languageId,
           categoryId,
           subCategoryId,
           level,
-          courseDuration,
-          thumbnail,
-          mediaType,
-          mediaUrl,
-          metaKeywords,
-          metaDescription,
+          courseDuration || null,
+          thumbnail || null,
+          mediaType || null,
+          mediaUrl || null,
+          metaKeywordsValue,
+          metaDescription || null,
         ]
       );
 
@@ -784,7 +809,7 @@ class InstructorCourseService {
           }
 
           const [lessonResult] = await connection.query(
-            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
               lesson.title,
               lesson.sectionId, // Use existing section ID
@@ -799,6 +824,10 @@ class InstructorCourseService {
               userId,
               userId,
               lessonOrder,
+              lesson.assessmentId || null,
+              lesson.requireSectionCompletion || 0,
+              lesson.assessmentStartDate || null,
+              lesson.assessmentEndDate || null,
             ]
           );
 
@@ -898,7 +927,7 @@ class InstructorCourseService {
             [sectionGroup.sectionTitle, courseId, userId, userId]
           );
 
-          const sectionId = sectionResult[0][0].id;
+          const sectionId = sectionResult[0][0].id || sectionResult[0][0].sectionId;
           console.log(`Update - Section created with ID: ${sectionId}`);
 
           // Process lessons in this new section
@@ -949,7 +978,7 @@ class InstructorCourseService {
             console.log(`Update - Lesson order: ${lessonOrder}`);
 
             const [lessonResult] = await connection.query(
-              "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               [
                 lesson.title,
                 sectionId,
@@ -964,6 +993,10 @@ class InstructorCourseService {
                 userId,
                 userId,
                 lessonOrder,
+                lesson.assessmentId || null,
+                lesson.requireSectionCompletion || 0,
+                lesson.assessmentStartDate || null,
+                lesson.assessmentEndDate || null,
               ]
             );
 
@@ -1153,7 +1186,7 @@ class InstructorCourseService {
   // Get active courses directly from table
   async getInstructorActiveCourses(userId) {
     const [rows] = await promisePool.query(
-      `SELECT * FROM course 
+      `SELECT * FROM course
             WHERE creator_id = ? AND status = 'active' AND is_deleted = 0`,
       [userId]
     );
@@ -1163,7 +1196,7 @@ class InstructorCourseService {
   // Get pending courses directly from table
   async getInstructorPendingCourses(userId) {
     const [rows] = await promisePool.query(
-      `SELECT * FROM course 
+      `SELECT * FROM course
             WHERE creator_id = ? AND status = 'pending' AND is_deleted = 0
             ORDER BY last_updated DESC`,
       [userId]
@@ -1172,18 +1205,46 @@ class InstructorCourseService {
   }
 
   async getCategories() {
-    const [rows] = await promisePool.query("CALL get_all_categories()");
-    return rows[0];
+    // Use direct query with proper column aliases
+    const [rows] = await promisePool.query(`
+      SELECT
+        id,
+        category_name as name,
+        created_date as createdAt,
+        last_updated as updatedAt
+      FROM category
+      ORDER BY category_name ASC
+    `);
+    return rows;
   }
 
   async getSubCategories() {
-    const [rows] = await promisePool.query("CALL get_all_subcategories()");
-    return rows[0];
+    // Use direct query with proper column aliases
+    const [rows] = await promisePool.query(`
+      SELECT
+        id,
+        subcategory_name as name,
+        category_id as categoryId,
+        created_date as createdAt,
+        last_updated as updatedAt
+      FROM sub_category
+      ORDER BY category_id, subcategory_name ASC
+    `);
+    return rows;
   }
 
   async getLanguages() {
-    const [rows] = await promisePool.query("CALL get_all_languages()");
-    return rows[0];
+    // Use direct query with proper column aliases
+    const [rows] = await promisePool.query(`
+      SELECT
+        id,
+        language_name as name,
+        language_name as code,
+        created_date as createdAt
+      FROM language
+      ORDER BY language_name ASC
+    `);
+    return rows;
   }
 
   // Add new category
@@ -1350,11 +1411,11 @@ class InstructorCourseService {
             // Add content-based lesson details
             if (row.lesson_type === 'Content-Based') {
               lesson.content = {
-                type: row.content_type,
-                document: row.content_document,
-                scorm: row.content_scorm,
-                mp4: row.content_mp4,
-                url: row.content_url
+                type: row.contentType,
+                document: row.lessonContentDocument,
+                scorm: row.scormPackage,
+                mp4: row.videoUpload,
+                url: row.contentUrl
               };
             }
 
@@ -1792,31 +1853,40 @@ class InstructorCourseService {
       console.log('Full lesson data received:', JSON.stringify(lessonData, null, 2));
 
       // Ensure all parameters are properly defined (null instead of undefined)
+      // Order must match stored procedure signature: add_course_lesson(
+      //   p_title, p_section_id, p_lesson_type, p_lesson_content_type,
+      //   p_lesson_content_document, p_lesson_content_scorm, p_lesson_content_mp4, p_lesson_content_url,
+      //   p_lesson_duration, p_course_id, p_creator_id, p_last_updated_by, p_lesson_order,
+      //   p_assessment_id, p_require_section_completion, p_assessment_start_date, p_assessment_end_date)
       const params = [
-        lessonData.title || null,
-        lessonData.sectionId || null,
-        lessonData.lessonType || "Content-Based",
-        dbContentType || null,
-        documentFile === undefined ? null : documentFile,
-        scormFile === undefined ? null : scormFile,
-        mp4File === undefined ? null : mp4File,
-        contentUrl === undefined ? null : contentUrl,
-        lessonData.lessonDuration || lessonData.duration || null,
-        courseId,
-        creatorId,
-        creatorId,
-        lessonData.lessonOrder || null, // Let stored procedure calculate if not provided
+        lessonData.title || null,                        // p_title
+        lessonData.sectionId || null,                    // p_section_id
+        lessonData.lessonType || "Content-Based",        // p_lesson_type (ENUM)
+        dbContentType || null,                           // p_lesson_content_type (ENUM)
+        documentFile === undefined ? null : documentFile, // p_lesson_content_document
+        scormFile === undefined ? null : scormFile,      // p_lesson_content_scorm
+        mp4File === undefined ? null : mp4File,          // p_lesson_content_mp4
+        contentUrl === undefined ? null : contentUrl,    // p_lesson_content_url
+        lessonData.lessonDuration || lessonData.duration || null, // p_lesson_duration
+        courseId,                                        // p_course_id
+        creatorId,                                       // p_creator_id
+        creatorId,                                       // p_last_updated_by
+        lessonData.lessonOrder || null,                  // p_lesson_order (null = auto-calculate)
+        lessonData.assessmentId || null,                 // p_assessment_id
+        lessonData.requireSectionCompletion || 0,        // p_require_section_completion
+        lessonData.assessmentStartDate || null,          // p_assessment_start_date
+        lessonData.assessmentEndDate || null,             // p_assessment_end_date
       ];
 
       console.log('SQL parameters:', params);
 
       // Use the stored procedure to get automatic lesson ordering
       const [result] = await connection.query(
-        "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "CALL add_course_lesson(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params
       );
 
-      const lessonId = result[0][0].id;
+      const lessonId = result[0][0].id || result[0][0].lessonId;
       console.log("Lesson created with ID:", lessonId);
 
       // Note: File uploads are handled on the frontend after lesson creation
@@ -1927,16 +1997,117 @@ class InstructorCourseService {
   async getSectionsByCourseId(courseId) {
     console.log("getSectionsByCourseId called with courseId:", courseId);
 
-    const [rows] = await promisePool.query(
-      "SELECT * FROM course_section WHERE course_id = ?",
+    // Get sections
+    const [sections] = await promisePool.query(
+      "SELECT * FROM course_section WHERE course_id = ? ORDER BY id ASC",
       [courseId]
     );
 
-    if (rows.length === 0) {
-      throw new Error("No sections found for this course");
-    }
+    // Get lessons for this course
+    const [lessons] = await promisePool.query(
+      `SELECT l.*
+      FROM course_lesson l
+      WHERE l.course_id = ?
+      ORDER BY l.section_id, l.lesson_order, l.id ASC`,
+      [courseId]
+    );
 
-    return rows.map((row) => new CourseSectionDTO(row));
+    // Group lessons by section
+    const sectionsWithLessons = sections.map((section) => {
+      const sectionLessons = lessons.filter(
+        (lesson) => lesson.section_id === section.id
+      );
+
+      return {
+        id: section.id,
+        title: section.title,
+        sectionOrder: section.id, // Using id as order since section_order doesn't exist
+        createdAt: section.created_date,
+        lessons: sectionLessons.map((lesson) => ({
+          id: lesson.id,
+          title: lesson.title,
+          section: section.title,
+          sectionId: section.id,
+          lessonType: lesson.lesson_type,
+          lessonOrder: lesson.lesson_order,
+          // Content-Based fields
+          contentType: lesson.lesson_content_type,
+          lessonContentDocument: lesson.lesson_content_document,
+          lesson_content_scorm: lesson.lesson_content_scorm,
+          lesson_content_mp4: lesson.lesson_content_mp4,
+          lesson_content_url: lesson.lesson_content_url,
+          lessonDuration: lesson.lesson_duration,
+          description: lesson.description,
+          duration: lesson.lesson_duration,
+          skills: lesson.skills ? JSON.parse(lesson.skills) : [],
+          // ILTS fields
+          iltsType: lesson.ilts_type,
+          iltsUrl: lesson.ilts_url,
+          startDate: lesson.start_date,
+          startTime: lesson.start_time,
+          endDate: lesson.end_date,
+          endTime: lesson.end_time,
+          eventVenue: lesson.event_venue,
+          meetUrl: lesson.meet_url,
+        })),
+      };
+    });
+
+    return sectionsWithLessons;
+  }
+
+  // Get single lesson by ID
+  async getLessonById(courseId, lessonId) {
+    console.log("getLessonById called with courseId:", courseId, "lessonId:", lessonId);
+
+    try {
+      // Get lesson details
+      const [lessons] = await promisePool.query(
+        `SELECT l.*, s.title as section_title
+        FROM course_lesson l
+        LEFT JOIN course_section s ON l.section_id = s.id
+        WHERE l.id = ? AND l.course_id = ?`,
+        [lessonId, courseId]
+      );
+
+      if (lessons.length === 0) {
+        throw new Error("Lesson not found");
+      }
+
+      const lesson = lessons[0];
+
+      // Map database columns to expected format
+      return {
+        id: lesson.id,
+        title: lesson.title,
+        section: lesson.section_title,
+        sectionId: lesson.section_id,
+        lessonType: lesson.lesson_type,
+        lessonOrder: lesson.lesson_order,
+        // Content-Based fields
+        contentType: lesson.lesson_content_type,
+        lessonContentDocument: lesson.lesson_content_document,
+        lesson_content_scorm: lesson.lesson_content_scorm,
+        lesson_content_mp4: lesson.lesson_content_mp4,
+        lesson_content_url: lesson.lesson_content_url,
+        lessonDuration: lesson.lesson_duration,
+        duration: lesson.lesson_duration,
+        description: lesson.description,
+        skills: lesson.skills ? JSON.parse(lesson.skills) : [],
+        // ILTS fields
+        iltsType: lesson.ilts_type,
+        iltsUrl: lesson.ilts_url,
+        startDate: lesson.start_date,
+        startTime: lesson.start_time,
+        endDate: lesson.end_date,
+        endTime: lesson.end_time,
+        eventVenue: lesson.event_venue,
+        meetUrl: lesson.meet_url,
+      };
+    } catch (error) {
+      console.error("Error in getLessonById:", error);
+      throw error;
+    }
   }
 
   // Individual section update methods for editing
@@ -2602,6 +2773,623 @@ class InstructorCourseService {
       throw error;
     } finally {
       connection.release();
+    }
+  }
+
+  // ============================================================================
+  // INSTRUCTOR LEARNING METHODS (Instructor as Learner)
+  // These methods allow instructors to browse, enroll, and save courses
+  // Uses the same stored procedures as student service
+  // ============================================================================
+
+  async getSubscribedCourses(instructorId) {
+    try {
+      const query = `
+        SELECT
+          c.id,
+          c.title,
+          c.short_description as shortDescription,
+          c.thumbnail,
+          c.level,
+          c.course_duration as duration,
+          cat.name as category,
+          e.enrolled_at as enrolledDate,
+          COALESCE(cp.progress_percentage, 0) as progress,
+          (SELECT COUNT(*) FROM course_lesson cl WHERE cl.course_id = c.id) as lessonCount,
+          (SELECT COUNT(*) FROM course_lesson_progress clp
+           WHERE clp.course_id = c.id
+           AND clp.user_id = ?
+           AND clp.status = 'completed') as completedLessons
+        FROM enrol e
+        INNER JOIN course c ON e.course_id = c.id AND c.is_deleted = 0
+        LEFT JOIN course_category cat ON c.category_id = cat.id AND cat.is_deleted = 0
+        LEFT JOIN course_progress cp ON cp.course_id = c.id AND cp.user_id = e.user_id
+        WHERE e.user_id = ?
+          AND c.status = 'published'
+        ORDER BY e.enrolled_at DESC
+      `;
+
+      const [result] = await promisePool.query(query, [instructorId, instructorId]);
+      return result;
+    } catch (error) {
+      console.error('Error in getSubscribedCourses:', error);
+      throw error;
+    }
+  }
+
+  async exploreCourses(instructorId) {
+    try {
+      // Direct SQL query to avoid stored procedure ambiguity issues
+      const query = `
+        SELECT
+          c.id,
+          c.title,
+          c.short_description as shortDescription,
+          c.thumbnail,
+          c.level,
+          c.course_duration as duration,
+          cat.name as category,
+          c.created_at as publishedDate,
+          (SELECT COUNT(*) FROM enrol e WHERE e.course_id = c.id) as enrollmentCount,
+          (SELECT COUNT(*) FROM course_lesson cl WHERE cl.course_id = c.id) as lessonCount,
+          EXISTS(SELECT 1 FROM saved_courses sc WHERE sc.user_id = ? AND sc.course_id = c.id) as isSaved
+        FROM course c
+        LEFT JOIN course_category cat ON c.category_id = cat.id AND cat.is_deleted = 0
+        WHERE c.status = 'published'
+          AND c.is_deleted = 0
+          AND NOT EXISTS (SELECT 1 FROM enrol e WHERE e.user_id = ? AND e.course_id = c.id)
+        ORDER BY c.created_at DESC
+      `;
+
+      const [result] = await promisePool.query(query, [instructorId, instructorId]);
+      return result;
+    } catch (error) {
+      console.error('Error in exploreCourses:', error);
+      throw error;
+    }
+  }
+
+  async getSavedCourses(instructorId) {
+    try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(instructorId.toLowerCase())) {
+        throw new Error('Invalid instructor UUID format');
+      }
+
+      // Use the same stored procedure as student service
+      const [result] = await promisePool.query(
+        'CALL get_saved_courses(?)',
+        [instructorId]
+      );
+
+      return result[0];
+    } catch (error) {
+      console.error('Error in getSavedCourses:', error);
+      throw error;
+    }
+  }
+
+  async getAllActiveCourses(instructorId) {
+    try {
+      // Query to get all active courses regardless of creator or enrollment
+      const query = `
+        SELECT
+          c.id,
+          c.title,
+          c.short_description as shortDescription,
+          c.thumbnail,
+          c.level,
+          c.course_duration as duration,
+          cat.name as category,
+          c.created_at as publishedDate,
+          (SELECT COUNT(*) FROM enrol e WHERE e.course_id = c.id) as enrollmentCount,
+          (SELECT COUNT(*) FROM course_lesson cl WHERE cl.course_id = c.id) as lessonCount,
+          EXISTS(SELECT 1 FROM saved_courses sc WHERE sc.user_id = ? AND sc.course_id = c.id) as isSaved,
+          EXISTS(SELECT 1 FROM enrol e WHERE e.user_id = ? AND e.course_id = c.id) as is_enrolled
+        FROM course c
+        LEFT JOIN course_category cat ON c.category_id = cat.id AND cat.is_deleted = 0
+        WHERE c.status = 'active'
+          AND c.is_deleted = 0
+        ORDER BY c.created_at DESC
+      `;
+
+      const [result] = await promisePool.query(query, [instructorId, instructorId]);
+      return result;
+    } catch (error) {
+      console.error('Error in getAllActiveCourses:', error);
+      throw error;
+    }
+  }
+
+  async saveCourse(instructorId, courseId) {
+    try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(instructorId.toLowerCase())) {
+        throw new Error('Invalid instructor UUID format');
+      }
+
+      if (!courseId || isNaN(courseId)) {
+        throw new Error('Invalid course ID');
+      }
+
+      // Use the same stored procedure as student service
+      const [result] = await promisePool.query(
+        'CALL save_course(?, ?)',
+        [instructorId, courseId]
+      );
+
+      return { message: result[0][0].message };
+    } catch (error) {
+      if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+        throw new Error('The course or instructor does not exist');
+      }
+      console.error('Error in saveCourse:', error);
+      throw error;
+    }
+  }
+
+  async unsaveCourse(instructorId, courseId) {
+    try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(instructorId.toLowerCase())) {
+        throw new Error('Invalid instructor UUID format');
+      }
+
+      if (!courseId || isNaN(courseId)) {
+        throw new Error('Invalid course ID');
+      }
+
+      // Use the same stored procedure as student service
+      const [result] = await promisePool.query(
+        'CALL unsave_course(?, ?)',
+        [instructorId, courseId]
+      );
+
+      return { message: result[0][0].message };
+    } catch (error) {
+      if (error.code === '45000') {
+        throw new Error(error.sqlMessage);
+      }
+      console.error('Error in unsaveCourse:', error);
+      throw error;
+    }
+  }
+
+  async enrollInCourse(instructorId, courseId) {
+    const connection = await promisePool.getConnection();
+    try {
+      const normalizedInstructorId = instructorId.toLowerCase();
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(normalizedInstructorId)) {
+        throw new Error('Invalid instructor UUID format');
+      }
+
+      await connection.beginTransaction();
+
+      // Check if course exists
+      const [courseCheck] = await connection.query(
+        'SELECT id, status FROM course WHERE id = ? AND is_deleted = 0',
+        [courseId]
+      );
+
+      if (courseCheck.length === 0) {
+        throw new Error('Course does not exist');
+      }
+
+      if (courseCheck[0].status !== 'published') {
+        throw new Error('Course is not available for enrollment');
+      }
+
+      // Check if already enrolled
+      const [enrollCheck] = await connection.query(
+        'SELECT id FROM enrol WHERE user_id = ? AND course_id = ?',
+        [normalizedInstructorId, courseId]
+      );
+
+      if (enrollCheck.length > 0) {
+        await connection.rollback();
+        throw new Error('You are already enrolled in this course');
+      }
+
+      // Insert enrollment
+      await connection.query(
+        'INSERT INTO enrol (user_id, course_id, enrolled_at) VALUES (?, ?, NOW())',
+        [normalizedInstructorId, courseId]
+      );
+
+      // Initialize course progress
+      await connection.query(
+        'INSERT INTO course_progress (user_id, course_id, progress_percentage, created_at) VALUES (?, ?, 0, NOW())',
+        [normalizedInstructorId, courseId]
+      );
+
+      // Get first lesson to unlock
+      const [firstLesson] = await connection.query(
+        `SELECT cl.id
+         FROM course_lesson cl
+         INNER JOIN course_section cs ON cl.section_id = cs.id
+         WHERE cs.course_id = ? AND cs.is_deleted = 0
+         ORDER BY cs.section_order ASC, cl.lesson_order ASC
+         LIMIT 1`,
+        [courseId]
+      );
+
+      if (firstLesson.length > 0) {
+        // Unlock first lesson
+        await connection.query(
+          `INSERT INTO course_lesson_progress (user_id, course_id, lesson_id, status, created_at)
+           VALUES (?, ?, ?, 'in_progress', NOW())`,
+          [normalizedInstructorId, courseId, firstLesson[0].id]
+        );
+      }
+
+      await connection.commit();
+
+      return {
+        message: 'Successfully enrolled in course',
+        firstLessonUnlocked: firstLesson.length > 0
+      };
+    } catch (error) {
+      await connection.rollback();
+      if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+        throw new Error('The course or instructor does not exist');
+      }
+      console.error('Error in enrollInCourse:', error);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async getCourseDetailsForLearning(instructorId, courseId) {
+    try {
+      // Helper function to map lesson URLs to contentUrl based on content type
+      const mapLessonUrls = (lessons) => {
+        return lessons.map(lesson => {
+          let contentUrl = '';
+
+          console.log('Mapping lesson:', {
+            id: lesson.id,
+            title: lesson.title,
+            contentType: lesson.contentType,
+            documentUrl: lesson.documentUrl,
+            videoUrl: lesson.videoUrl,
+            scormUrl: lesson.scormUrl,
+            externalUrl: lesson.externalUrl
+          });
+
+          // Map the specific URL field to contentUrl based on content type
+          if (lesson.contentType === 'document') {
+            contentUrl = lesson.documentUrl || '';
+          } else if (lesson.contentType === 'mp4') {
+            contentUrl = lesson.videoUrl || '';
+          } else if (lesson.contentType === 'scorm') {
+            contentUrl = lesson.scormUrl || '';
+          } else if (lesson.contentType === 'url') {
+            contentUrl = lesson.externalUrl || '';
+          }
+
+          console.log('Mapped contentUrl:', contentUrl);
+
+          return {
+            ...lesson,
+            contentUrl
+          };
+        });
+      };
+
+      // First check enrollment status
+      const [enrollmentCheck] = await promisePool.query(
+        'CALL check_course_enrollment(?, ?)',
+        [instructorId, courseId]
+      );
+      const isEnrolled = enrollmentCheck[0][0].is_enrolled;
+
+      // Get appropriate course details based on enrollment
+      if (isEnrolled) {
+        const [results] = await promisePool.query(
+          'CALL get_course_enrolled_details(?, ?)',
+          [instructorId, courseId]
+        );
+
+        // Process results - same structure as student service
+        const courseInfo = results[0][0];
+        const requirements = results[1];
+        const outcomes = results[2];
+        const faqs = results[3];
+        const skills = results[4];
+        const sections = results[5];
+        const contentLessons = results[6];
+        const iltsLessons = results[7];
+        const reviews = results[8];
+        const ratingStats = results[9][0];
+        const lessonsWithProgress = results[10];
+        const progressSummary = results[11][0];
+        const achievedSkills = results[12];
+
+        // Map lesson URLs to contentUrl
+        const mappedLessons = mapLessonUrls(lessonsWithProgress);
+
+        return {
+          ...courseInfo,
+          requirements,
+          outcomes,
+          faqs,
+          skills,
+          sections,
+          lessons: mappedLessons,
+          reviews,
+          rating_stats: new RatingStatsDTO(ratingStats),
+          progress: progressSummary,
+          achieved_skills: achievedSkills,
+          is_enrolled: true
+        };
+      } else {
+        const [results] = await promisePool.query(
+          'CALL get_course_basic_details(?)',
+          [courseId]
+        );
+
+        const courseInfo = results[0][0];
+        const requirements = results[1];
+        const outcomes = results[2];
+        const faqs = results[3];
+        const skills = results[4];
+        const sections = results[5];
+        const contentLessons = results[6];
+        const iltsLessons = results[7];
+        const reviews = results[8];
+        const ratingStats = results[9][0];
+
+        const allLessons = [...contentLessons, ...iltsLessons];
+
+        // Map lesson URLs to contentUrl
+        const mappedLessons = mapLessonUrls(allLessons);
+
+        return {
+          ...courseInfo,
+          requirements,
+          outcomes,
+          faqs,
+          skills,
+          sections,
+          lessons: mappedLessons,
+          reviews,
+          rating_stats: new RatingStatsDTO(ratingStats),
+          is_enrolled: false
+        };
+      }
+    } catch (error) {
+      console.error('Error in getCourseDetailsForLearning:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // COURSE OFFERINGS & SESSIONS METHODS
+  // ============================================================================
+
+  /**
+   * Create a course offering
+   */
+  async createCourseOffering(courseId, offeringData, creatorId) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_create_course_offering(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          courseId,
+          offeringData.name,
+          offeringData.locationId || null,
+          offeringData.locationName || null,
+          offeringData.startDate,
+          offeringData.endDate,
+          offeringData.timezone || 'EST',
+          offeringData.totalSeats,
+          offeringData.enableWaitlist ? 1 : 0,
+          creatorId
+        ]
+      );
+
+      return result[0][0];
+    } catch (error) {
+      console.error('Error creating course offering:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get course offerings by course ID
+   */
+  async getCourseOfferings(courseId) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_get_course_offerings(?)',
+        [courseId]
+      );
+
+      return result[0];
+    } catch (error) {
+      console.error('Error getting course offerings:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a course offering
+   */
+  async updateCourseOffering(offeringId, offeringData) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_update_course_offering(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          offeringId,
+          offeringData.name,
+          offeringData.locationId || null,
+          offeringData.locationName || null,
+          offeringData.startDate,
+          offeringData.endDate,
+          offeringData.timezone || 'EST',
+          offeringData.totalSeats,
+          offeringData.enableWaitlist ? 1 : 0,
+          offeringData.status || 'Draft'
+        ]
+      );
+
+      return result[0][0];
+    } catch (error) {
+      console.error('Error updating course offering:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a course offering (soft delete)
+   */
+  async deleteCourseOffering(offeringId) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_delete_course_offering(?)',
+        [offeringId]
+      );
+
+      return result[0][0];
+    } catch (error) {
+      console.error('Error deleting course offering:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a course session
+   */
+  async createCourseSession(courseId, sessionData, creatorId) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_create_course_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          courseId,
+          sessionData.offeringId || null,
+          sessionData.sectionId || null,
+          sessionData.lessonId || null,
+          sessionData.name,
+          sessionData.sessionDate,
+          sessionData.startTime,
+          sessionData.endTime,
+          sessionData.instructorId || null,
+          sessionData.deliveryMethod || 'Virtual',
+          sessionData.locationId || null,
+          sessionData.roomId || null,
+          sessionData.locationRoom || null,
+          sessionData.virtualMeetingLink || null,
+          sessionData.maxCapacity || 0,
+          sessionData.description || null,
+          creatorId
+        ]
+      );
+
+      return result[0][0];
+    } catch (error) {
+      console.error('Error creating course session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get course sessions by course ID or offering ID
+   */
+  async getCourseSessions(courseId, offeringId = null) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_get_course_sessions(?, ?)',
+        [courseId, offeringId]
+      );
+
+      return result[0];
+    } catch (error) {
+      console.error('Error getting course sessions:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a course session
+   */
+  async updateCourseSession(sessionId, sessionData) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_update_course_session(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          sessionId,
+          sessionData.name,
+          sessionData.sessionDate,
+          sessionData.startTime,
+          sessionData.endTime,
+          sessionData.instructorId || null,
+          sessionData.deliveryMethod || 'Virtual',
+          sessionData.locationId || null,
+          sessionData.roomId || null,
+          sessionData.locationRoom || null,
+          sessionData.virtualMeetingLink || null,
+          sessionData.maxCapacity || 0,
+          sessionData.description || null,
+          sessionData.status || 'Scheduled'
+        ]
+      );
+
+      return result[0][0];
+    } catch (error) {
+      console.error('Error updating course session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a course session (soft delete)
+   */
+  async deleteCourseSession(sessionId) {
+    try {
+      const [result] = await promisePool.query(
+        'CALL sp_delete_course_session(?)',
+        [sessionId]
+      );
+
+      return result[0][0];
+    } catch (error) {
+      console.error('Error deleting course session:', error);
+      throw error;
+    }
+  }
+
+  async updateCourseStatus(courseId, status, instructorId) {
+    try {
+      // Verify the course belongs to the instructor
+      const [courseCheck] = await promisePool.query(
+        'SELECT id, creator_id FROM course WHERE id = ? AND is_deleted = 0',
+        [courseId]
+      );
+
+      if (courseCheck.length === 0) {
+        throw new Error('Course not found');
+      }
+
+      if (courseCheck[0].creator_id !== instructorId) {
+        throw new Error('You do not have permission to update this course');
+      }
+
+      // Update the course status
+      await promisePool.query(
+        'UPDATE course SET status = ?, last_updated = NOW(), last_updated_by = ? WHERE id = ?',
+        [status, instructorId, courseId]
+      );
+
+      return {
+        courseId: parseInt(courseId),
+        status: status,
+        message: 'Course status updated successfully'
+      };
+    } catch (error) {
+      console.error('Error updating course status:', error);
+      throw error;
     }
   }
 }

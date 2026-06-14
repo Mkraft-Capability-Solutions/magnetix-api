@@ -67,20 +67,20 @@ class AuthService {
     const decodedAccess = jwt.decode(accessToken) || {};
     const decodedRefresh = jwt.decode(refreshToken) || {};
 
-    // absolute expiry timestamps (UNIX seconds)
-    const accessTokenExpiry = decodedAccess.exp || now;
-    const refreshTokenExpiry = decodedRefresh.exp || now;
+    // expiry timestamps as UNIX SECONDS (per JWT spec) used for relative-time math
+    const accessTokenExpirySeconds = decodedAccess.exp || now;
+    const refreshTokenExpirySeconds = decodedRefresh.exp || now;
 
     // time until expiry (seconds from now)
-    const accessTokenExpiresIn = Math.max(0, accessTokenExpiry - now);
-    const refreshTokenExpiresIn = Math.max(0, refreshTokenExpiry - now);
+    const accessTokenExpiresIn = Math.max(0, accessTokenExpirySeconds - now);
+    const refreshTokenExpiresIn = Math.max(0, refreshTokenExpirySeconds - now);
 
     return {
       accessToken,
       refreshToken,
-      // absolute expiry (UNIX seconds)
-      accessTokenExpiry,
-      refreshTokenExpiry,
+      // absolute expiry as UNIX MILLISECONDS — frontend compares against Date.now()
+      accessTokenExpiry: accessTokenExpirySeconds * 1000,
+      refreshTokenExpiry: refreshTokenExpirySeconds * 1000,
       // convenience: seconds until expiry
       accessTokenExpiresIn,
       refreshTokenExpiresIn,
@@ -101,10 +101,14 @@ class AuthService {
       }
 
       const user = rows[0];
-      return this.generateTokens(user, user.session_id).accessToken;
+      // Return both the new token and its absolute expiry (ms) so the frontend
+      // can schedule the next proactive refresh against the real TTL instead of
+      // assuming a hardcoded 1-hour window.
+      const { accessToken, accessTokenExpiry } = this.generateTokens(user, user.session_id);
+      return { accessToken, accessTokenExpiry };
     } catch (error) {
       console.log(error);
-      throw new Error("Invalid refresh token" + error.message);
+      throw new Error("Invalid refresh token: " + error.message);
     }
   }
 
@@ -155,6 +159,64 @@ class AuthService {
       user.uuid,
     ]);
 
+    // Log user login activity for streak calculation
+    try {
+      await promisePool.query(
+        `INSERT INTO user_login_log (user_uuid, login_time)
+         VALUES (?, NOW())`,
+        [user.uuid]
+      );
+    } catch (loginLogError) {
+      // Don't fail login if logging fails, just log the error
+      console.error('Failed to log user login:', loginLogError);
+    }
+
+    // Look up teams this user manages so the frontend can show the Manager UI.
+    // We include teams managed directly AND teams managed by anyone in their
+    // downline (via users.reports_to_uuid) — so a senior manager sees their
+    // junior managers' teams too.
+    let managedTeamIds = [];
+    let hasReportees = false;
+    try {
+      const {
+        getManagedTeamIdsForUser,
+        userHasReportees
+      } = require('../utils/manager_hierarchy');
+      const [mIds, rep] = await Promise.all([
+        getManagedTeamIdsForUser(user.uuid),
+        userHasReportees(user.uuid)
+      ]);
+      managedTeamIds = mIds;
+      hasReportees = rep;
+    } catch (mgrErr) {
+      console.error('Failed to load manager hierarchy info:', mgrErr);
+    }
+
+    // Look up the user's organization(s) so the frontend can show "Org: X"
+    // in the header without a second round-trip after login.
+    let organizations = [];
+    try {
+      const [orgRows] = await promisePool.query(
+        `SELECT o.id, o.name, o.is_active, uo.assigned_at
+           FROM user_organizations uo
+           INNER JOIN organizations o ON uo.organization_id = o.id
+           WHERE uo.user_id = ? AND o.is_active = 1
+           ORDER BY uo.assigned_at ASC`,
+        [user.uuid]
+      );
+      organizations = orgRows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        isActive: r.is_active === 1
+      }));
+    } catch (orgErr) {
+      console.error('Failed to load user organizations:', orgErr);
+    }
+    // The "primary" org is the one we display prominently. Today's data model
+    // typically has one org per user; if there are multiple, pick the oldest
+    // assignment (most stable over time).
+    const primaryOrganization = organizations[0] || null;
+
     // Return user and tokens
     return {
       user: {
@@ -166,6 +228,10 @@ class AuthService {
         dp: user.dp || null,
         status: user.status,
         instance: user.instance,
+        managedTeamIds,
+        hasReportees,
+        organizations,
+        primaryOrganization,
       },
       ...this.generateTokens(user, sessionId),
     };

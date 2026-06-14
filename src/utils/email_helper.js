@@ -123,6 +123,431 @@ Both options will expire in 1 hour.`;
     });
   }
 
+  async sendInvitationEmail(email, firstName, { password, roleLabel, organizationNames = [] }) {
+    const orgs = Array.isArray(organizationNames) ? organizationNames.filter(Boolean) : [];
+    const orgList = orgs.join(', ');
+    const orgClause = orgs.length > 0 ? ` for ${orgList}` : '';
+
+    const templateData = {
+      appName: process.env.APP_NAME || 'Learning Management System',
+      firstName: firstName || 'there',
+      email,
+      password,
+      roleLabel: roleLabel || 'User',
+      organizationNames: orgs,
+      organizationList: orgList,
+      hasOrganizations: orgs.length > 0,
+      loginUrl: `${process.env.FRONTEND_URL}/login`,
+      supportEmail: process.env.SUPPORT_EMAIL || 'support@multiplierskraft.com',
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['invitation']
+      ? this.templates['invitation'](templateData)
+      : `<p>Welcome to ${templateData.appName}, ${templateData.firstName}!</p>
+         <p>You've been added as a ${templateData.roleLabel}${orgClause}.</p>
+         <p>Email: ${email}<br/>Temporary password: ${password}</p>
+         <p>Log in at: ${templateData.loginUrl}</p>`;
+
+    const text = `Welcome to ${templateData.appName}, ${templateData.firstName}!
+
+You've been added as a ${templateData.roleLabel}${orgClause}. Use the credentials below to sign in.
+
+Email: ${email}
+Temporary password: ${password}
+${orgs.length > 0 ? `Organization${orgs.length > 1 ? 's' : ''}: ${orgList}\n` : ''}
+How to log in:
+1. Open ${templateData.loginUrl} in your browser.
+2. Enter the email and temporary password above.
+3. Click Log In.
+4. Go to your profile settings and change your password.
+
+For security, please change your password immediately after your first login and never share it with anyone.
+
+Need help? Contact ${templateData.supportEmail}.`;
+
+    return this.sendEmail({
+      to: email,
+      subject: orgs.length > 0
+        ? `Welcome to ${orgList} on ${templateData.appName}`
+        : `You've been invited to ${templateData.appName}`,
+      html,
+      text,
+      priority: 'high'
+    });
+  }
+
+  // ==============================================================
+  // Assignment feature emails
+  // ==============================================================
+
+  _formatAssignmentDate(value) {
+    if (!value) return '';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString('en-US', {
+      weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true
+    });
+  }
+
+  _assignmentLearnerUrl(assignmentUuid) {
+    return `${process.env.FRONTEND_URL}/learner/assignments/${assignmentUuid}`;
+  }
+
+  _assignmentSubmissionsUrl(assignmentUuid, role = 'admin') {
+    return `${process.env.FRONTEND_URL}/${role}/assignments/${assignmentUuid}/submissions`;
+  }
+
+  async sendAssignmentCreatedEmail(email, firstName, assignment) {
+    const typeLabel = assignment.type === 'assessment' ? 'Take an assessment' : 'Submit a document';
+    const scopeLabel = assignment.scope === 'organization' ? 'Organization-wide' : 'Team';
+    const templateData = {
+      appName: process.env.APP_NAME || 'Learning Management System',
+      firstName: firstName || 'there',
+      assignmentTitle: assignment.title,
+      description: assignment.description || '',
+      typeLabel,
+      scopeLabel,
+      startDate: this._formatAssignmentDate(assignment.start_date),
+      endDate: this._formatAssignmentDate(assignment.end_date),
+      assignmentUrl: this._assignmentLearnerUrl(assignment.uuid),
+      supportEmail: process.env.SUPPORT_EMAIL || 'support@multiplierskraft.com',
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['assignment-created']
+      ? this.templates['assignment-created'](templateData)
+      : `<p>Hi ${templateData.firstName},</p><p>A new assignment "${templateData.assignmentTitle}" is available. Due by ${templateData.endDate}.</p><p><a href="${templateData.assignmentUrl}">Open assignment</a></p>`;
+
+    const text = `Hi ${templateData.firstName},
+
+A new assignment has been created for you on ${templateData.appName}.
+
+Title: ${templateData.assignmentTitle}
+Type: ${typeLabel}
+Available from: ${templateData.startDate}
+Due by: ${templateData.endDate}
+
+Open it: ${templateData.assignmentUrl}
+
+Late submissions will not be accepted. Need help? Contact ${templateData.supportEmail}.`;
+
+    return this.sendEmail({
+      to: email,
+      subject: `New assignment: ${assignment.title}`,
+      html,
+      text
+    });
+  }
+
+  async sendAssignmentReminderEmail(email, firstName, assignment, hoursRemaining) {
+    const typeLabel = assignment.type === 'assessment' ? 'Take an assessment' : 'Submit a document';
+    const templateData = {
+      appName: process.env.APP_NAME || 'Learning Management System',
+      firstName: firstName || 'there',
+      assignmentTitle: assignment.title,
+      typeLabel,
+      hoursRemaining: hoursRemaining || 24,
+      endDate: this._formatAssignmentDate(assignment.end_date),
+      assignmentUrl: this._assignmentLearnerUrl(assignment.uuid),
+      supportEmail: process.env.SUPPORT_EMAIL || 'support@multiplierskraft.com',
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['assignment-reminder']
+      ? this.templates['assignment-reminder'](templateData)
+      : `<p>Hi ${templateData.firstName},</p><p>Reminder: "${templateData.assignmentTitle}" is due in ~${templateData.hoursRemaining} hours (${templateData.endDate}).</p>`;
+
+    const text = `Hi ${templateData.firstName},
+
+Reminder: your assignment "${templateData.assignmentTitle}" is due in approximately ${templateData.hoursRemaining} hours.
+Due by: ${templateData.endDate}
+
+Open it: ${templateData.assignmentUrl}
+
+Late submissions will not be accepted.`;
+
+    return this.sendEmail({
+      to: email,
+      subject: `Reminder: ${assignment.title} due in ${hoursRemaining}h`,
+      html,
+      text,
+      priority: 'high'
+    });
+  }
+
+  async sendSubmissionConfirmationEmail(email, firstName, assignment, submission) {
+    const templateData = {
+      appName: process.env.APP_NAME || 'Learning Management System',
+      firstName: firstName || 'there',
+      assignmentTitle: assignment.title,
+      submittedAt: this._formatAssignmentDate(submission.submitted_at || new Date()),
+      fileName: submission.file_name || '',
+      assessmentScore: submission.assessment_score || '',
+      allowResubmission: !!assignment.allow_resubmission,
+      endDate: this._formatAssignmentDate(assignment.end_date),
+      assignmentUrl: this._assignmentLearnerUrl(assignment.uuid),
+      supportEmail: process.env.SUPPORT_EMAIL || 'support@multiplierskraft.com',
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['assignment-submission-confirm']
+      ? this.templates['assignment-submission-confirm'](templateData)
+      : `<p>Hi ${templateData.firstName},</p><p>We received your submission for "${templateData.assignmentTitle}" at ${templateData.submittedAt}.</p>`;
+
+    const text = `Hi ${templateData.firstName},
+
+We received your submission for "${templateData.assignmentTitle}" at ${templateData.submittedAt}.
+${templateData.fileName ? `File: ${templateData.fileName}\n` : ''}${templateData.assessmentScore ? `Score: ${templateData.assessmentScore}\n` : ''}
+${templateData.allowResubmission ? `You can update your submission until ${templateData.endDate}.` : 'Your submission is final and cannot be changed.'}
+
+View it: ${templateData.assignmentUrl}`;
+
+    return this.sendEmail({
+      to: email,
+      subject: `Submission received: ${assignment.title}`,
+      html,
+      text
+    });
+  }
+
+  async sendSubmissionReceivedEmail(creatorEmail, creatorName, learnerName, learnerEmail, assignment, submission) {
+    const role = (submission && submission.recipientRole) || 'admin';
+    const templateData = {
+      appName: process.env.APP_NAME || 'Learning Management System',
+      recipientName: creatorName || 'there',
+      learnerName,
+      learnerEmail,
+      assignmentTitle: assignment.title,
+      submittedAt: this._formatAssignmentDate((submission && submission.submitted_at) || new Date()),
+      fileName: (submission && submission.file_name) || '',
+      assessmentScore: (submission && submission.assessment_score) || '',
+      submissionUrl: this._assignmentSubmissionsUrl(assignment.uuid, role),
+      supportEmail: process.env.SUPPORT_EMAIL || 'support@multiplierskraft.com',
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['assignment-submission-received']
+      ? this.templates['assignment-submission-received'](templateData)
+      : `<p>Hi ${templateData.recipientName},</p><p>${learnerName} submitted "${assignment.title}".</p>`;
+
+    const text = `Hi ${templateData.recipientName},
+
+${learnerName} (${learnerEmail}) has submitted assignment "${assignment.title}" at ${templateData.submittedAt}.
+${templateData.fileName ? `File: ${templateData.fileName}\n` : ''}${templateData.assessmentScore ? `Score: ${templateData.assessmentScore}\n` : ''}
+Review it: ${templateData.submissionUrl}`;
+
+    return this.sendEmail({
+      to: creatorEmail,
+      subject: `New submission: ${assignment.title}`,
+      html,
+      text
+    });
+  }
+
+  async sendMissedDeadlineLearnerEmail(email, firstName, assignment) {
+    const templateData = {
+      appName: process.env.APP_NAME || 'Learning Management System',
+      firstName: firstName || 'there',
+      assignmentTitle: assignment.title,
+      endDate: this._formatAssignmentDate(assignment.end_date),
+      supportEmail: process.env.SUPPORT_EMAIL || 'support@multiplierskraft.com',
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['assignment-missed-learner']
+      ? this.templates['assignment-missed-learner'](templateData)
+      : `<p>Hi ${templateData.firstName},</p><p>You missed the deadline for "${templateData.assignmentTitle}" (${templateData.endDate}).</p>`;
+
+    const text = `Hi ${templateData.firstName},
+
+The deadline for "${templateData.assignmentTitle}" has passed (${templateData.endDate}) and we did not receive a submission from you.
+
+Your manager and admin have been notified. Contact ${templateData.supportEmail} if you believe this is in error.`;
+
+    return this.sendEmail({
+      to: email,
+      subject: `Missed deadline: ${assignment.title}`,
+      html,
+      text
+    });
+  }
+
+  async sendMissedDeadlineEscalationEmail(recipientEmail, recipientName, assignment, missedUsers, recipientRole = 'admin') {
+    const templateData = {
+      appName: process.env.APP_NAME || 'Learning Management System',
+      recipientName: recipientName || 'there',
+      assignmentTitle: assignment.title,
+      endDate: this._formatAssignmentDate(assignment.end_date),
+      missedCount: missedUsers.length,
+      missedUsers,
+      assignmentUrl: this._assignmentSubmissionsUrl(assignment.uuid, recipientRole),
+      supportEmail: process.env.SUPPORT_EMAIL || 'support@multiplierskraft.com',
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['assignment-missed-escalation']
+      ? this.templates['assignment-missed-escalation'](templateData)
+      : `<p>Hi ${templateData.recipientName},</p><p>${missedUsers.length} learner(s) missed the deadline for "${assignment.title}".</p>`;
+
+    const text = `Hi ${templateData.recipientName},
+
+${missedUsers.length} learner(s) did not submit "${assignment.title}" by the deadline (${templateData.endDate}).
+
+Missed:
+${missedUsers.map(u => `  - ${u.name} <${u.email}>`).join('\n')}
+
+Review in dashboard: ${templateData.assignmentUrl}`;
+
+    return this.sendEmail({
+      to: recipientEmail,
+      subject: `Missed submissions: ${assignment.title}`,
+      html,
+      text,
+      priority: 'high'
+    });
+  }
+
+  async sendReviewCompletedEmail(email, firstName, assignment, status, feedback, reviewerName) {
+    const statusLabel = {
+      reviewed: 'Reviewed',
+      rejected: 'Rejected',
+      submitted: 'Acknowledged'
+    }[status] || status;
+
+    const templateData = {
+      appName: process.env.APP_NAME || 'Learning Management System',
+      firstName: firstName || 'there',
+      assignmentTitle: assignment.title,
+      statusLabel,
+      reviewerName: reviewerName || '',
+      reviewedAt: this._formatAssignmentDate(new Date()),
+      feedback: feedback || '',
+      assignmentUrl: this._assignmentLearnerUrl(assignment.uuid),
+      supportEmail: process.env.SUPPORT_EMAIL || 'support@multiplierskraft.com',
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['assignment-review-completed']
+      ? this.templates['assignment-review-completed'](templateData)
+      : `<p>Hi ${templateData.firstName},</p><p>Your submission for "${templateData.assignmentTitle}" has been reviewed: ${statusLabel}.</p>${feedback ? `<p>Feedback: ${feedback}</p>` : ''}`;
+
+    const text = `Hi ${templateData.firstName},
+
+Your submission for "${templateData.assignmentTitle}" has been reviewed.
+Status: ${statusLabel}
+${reviewerName ? `Reviewed by: ${reviewerName}\n` : ''}Reviewed at: ${templateData.reviewedAt}
+${feedback ? `\nFeedback:\n${feedback}\n` : ''}
+View it: ${templateData.assignmentUrl}`;
+
+    return this.sendEmail({
+      to: email,
+      subject: `Submission reviewed: ${assignment.title}`,
+      html,
+      text
+    });
+  }
+
+  /**
+   * Email a learner the per-question result of an assessment submission.
+   * payload: { assignmentTitle, assignmentUuid, score, maxScore, percentage,
+   *            questionsAndAnswers[], showCorrect, appUrl }
+   */
+  async sendAssessmentResultEmail(email, firstName, payload) {
+    const safeQA = Array.isArray(payload.questionsAndAnswers) ? payload.questionsAndAnswers : [];
+    const templateData = {
+      appName: process.env.APP_NAME || 'Learning Management System',
+      firstName: firstName || 'there',
+      assignmentTitle: payload.assignmentTitle || 'Assessment',
+      score: payload.score != null ? payload.score : '-',
+      maxScore: payload.maxScore != null ? payload.maxScore : '-',
+      percentage: payload.percentage != null ? `${payload.percentage}%` : '-',
+      questions: safeQA.map((q, idx) => {
+        const userAnswerDisplay = q.answerText
+          || (Array.isArray(q.answerOptions) ? q.answerOptions.join(', ') : '')
+          || (q.answerRating != null ? `Rating: ${q.answerRating}` : '(no answer)');
+        const correctAnswerDisplay = (payload.showCorrect && Array.isArray(q.correct_answers) && Array.isArray(q.options))
+          ? q.correct_answers.map(idx => q.options[idx]).filter(Boolean).join(', ')
+          : '';
+        return {
+          number: idx + 1,
+          questionText: q.questionText,
+          userAnswer: userAnswerDisplay,
+          correctAnswer: correctAnswerDisplay,
+          aiScore: q.aiScore != null ? `${q.aiScore} / ${q.questionMaxScore || q.aiMaxScore || ''}` : '',
+          aiFeedback: q.aiFeedback || ''
+        };
+      }),
+      assignmentUrl: payload.assignmentUuid
+        ? `${payload.appUrl || process.env.FRONTEND_URL || ''}/learner/assignments/${payload.assignmentUuid}`
+        : '',
+      supportEmail: process.env.SUPPORT_EMAIL || 'support@multiplierskraft.com',
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['assignment-assessment-result']
+      ? this.templates['assignment-assessment-result'](templateData)
+      : `<p>Hi ${templateData.firstName},</p><p>Your result for "${templateData.assignmentTitle}": ${templateData.score} / ${templateData.maxScore} (${templateData.percentage})</p>`;
+
+    const textLines = [
+      `Hi ${templateData.firstName},`,
+      ``,
+      `Your assessment result for "${templateData.assignmentTitle}":`,
+      `Score: ${templateData.score} / ${templateData.maxScore} (${templateData.percentage})`,
+      ``,
+      ...templateData.questions.flatMap((q) => [
+        `Q${q.number}. ${q.questionText}`,
+        `   Your answer: ${q.userAnswer}`,
+        ...(q.correctAnswer ? [`   Correct: ${q.correctAnswer}`] : []),
+        ...(q.aiScore ? [`   AI score: ${q.aiScore}`] : []),
+        ...(q.aiFeedback ? [`   Feedback: ${q.aiFeedback}`] : []),
+        ``
+      ]),
+      templateData.assignmentUrl ? `View online: ${templateData.assignmentUrl}` : ''
+    ];
+
+    return this.sendEmail({
+      to: email,
+      subject: `Assessment result: ${templateData.assignmentTitle}`,
+      html,
+      text: textLines.filter(Boolean).join('\n')
+    });
+  }
+
+  async sendManagerAssignedEmail(managerEmail, managerName, team) {
+    const templateData = {
+      appName: process.env.APP_NAME || 'Learning Management System',
+      managerName: managerName || 'there',
+      teamName: team.name,
+      memberCount: team.memberCount,
+      organizationName: team.organizationName || '',
+      managerUrl: `${process.env.FRONTEND_URL}/manager`,
+      supportEmail: process.env.SUPPORT_EMAIL || 'support@multiplierskraft.com',
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['team-manager-assigned']
+      ? this.templates['team-manager-assigned'](templateData)
+      : `<p>Hi ${templateData.managerName},</p><p>You are now the manager of ${team.name}. <a href="${templateData.managerUrl}">Open dashboard</a>.</p>`;
+
+    const text = `Hi ${templateData.managerName},
+
+You have been assigned as the manager of "${team.name}" on ${templateData.appName}.
+${templateData.organizationName ? `Organization: ${templateData.organizationName}\n` : ''}${templateData.memberCount ? `Members: ${templateData.memberCount}\n` : ''}
+You can now view your team's data, create assignments for them, and review submissions.
+
+Open the manager dashboard: ${templateData.managerUrl}`;
+
+    return this.sendEmail({
+      to: managerEmail,
+      subject: `You're now managing ${team.name}`,
+      html,
+      text,
+      priority: 'high'
+    });
+  }
+
   async sendWelcomeEmail(email, firstName) {
     const templateData = {
       appName: process.env.APP_NAME || 'Learning Management System',
@@ -368,6 +793,37 @@ Both options will expire in 1 hour.`;
       html,
       text,
       priority: 'high'
+    });
+  }
+
+  async sendScheduledReportEmail(recipients, reportTitle, pdfBuffer, fileName) {
+    const templateData = {
+      appName: process.env.APP_NAME || 'Learning Management System',
+      reportTitle,
+      generatedAt: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      year: new Date().getFullYear()
+    };
+
+    const html = this.templates['scheduled-report']
+      ? this.templates['scheduled-report'](templateData)
+      : `<p>Your scheduled report "${reportTitle}" is attached.</p>`;
+
+    const text = `Your scheduled "${reportTitle}" report has been generated and is attached to this email.\nGenerated: ${templateData.generatedAt}`;
+
+    const recipientList = Array.isArray(recipients) ? recipients.join(', ') : recipients;
+
+    return this.sendEmail({
+      to: recipientList,
+      subject: `Scheduled Report: ${reportTitle} - ${new Date().toLocaleDateString('en-IN')}`,
+      html,
+      text,
+      attachments: [
+        {
+          filename: fileName || 'analytics-report.pdf',
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        }
+      ]
     });
   }
 

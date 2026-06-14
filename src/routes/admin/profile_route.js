@@ -4,7 +4,7 @@ const adminProfileController = require("../../controllers/admin/profile_controll
 const { authenticate, authorize } = require("../../middleware/auth_middleware");
 
 router.use(authenticate);
-router.use(authorize(3));
+router.use(authorize(3, 4)); // Role 3 = Admin, Role 4 = Super Admin
 
 router.get("/", adminProfileController.getProfile);
 router.put("/", adminProfileController.updateProfile);
