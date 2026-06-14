@@ -25,8 +25,11 @@ jobs:
             cd ${{ secrets.TEST_SOURCE }}
             echo "Deploying into: $(pwd)"
             git fetch origin staging
-            git reset --hard origin/staging
-            echo "Now at commit: $(git rev-parse --short HEAD)"
+            # Check out the staging branch itself (force-reset to origin/staging) so the
+            # box is ON 'staging', not main. -f discards local working-tree drift (e.g.
+            # package-lock changes from npm install) that would otherwise block it.
+            git checkout -f -B staging origin/staging
+            echo "Now on branch: $(git branch --show-current) @ $(git rev-parse --short HEAD)"
             npm install
 
             # Create .env file with GitHub secrets
@@ -55,7 +58,7 @@ jobs:
           APP_NAME=${{ secrets.APP_NAME }}
           FRONTEND_URL=${{ secrets.TEST_FRONTEND_URL }}
 
-          PORT=${{ secrets.PORT }}
+          PORT=${{ secrets.TEST_PORT }}
           NODE_ENV=${{ secrets.NODE_ENV }}
           ENVEOF
 
