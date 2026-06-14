@@ -8,19 +8,33 @@ const app = express();
 
 require("dotenv").config();
 
+// Normalize an origin for tolerant comparison (strip whitespace / trailing slash).
+const normalizeOrigin = (o) => String(o || "").trim().replace(/\/+$/, "");
+
 const allowedOrigins = [
   "http://localhost:3000",
   process.env.FRONTEND_URL,
   process.env.ASSESSMENT_URL,
-  "https://magnetix-prod.web.app","https://mkraftmagnetix.com","https://www.mkraftmagnetix.com"
-].filter(Boolean);
+  "https://magnetix-prod.web.app",
+  "https://mkraftmagnetix.com",
+  "https://www.mkraftmagnetix.com",
+  "https://test.mkraftmagnetix.com", // staging frontend
+].filter(Boolean).map(normalizeOrigin);
+
+const isAllowedOrigin = (origin) => {
+  const o = normalizeOrigin(origin);
+  if (allowedOrigins.includes(o)) return true;
+  // Any https subdomain of our own domains (test/www/apex/future).
+  if (/^https:\/\/([a-z0-9-]+\.)*(mkraftmagnetix\.com|milekraft\.com)$/i.test(o)) return true;
+  return false;
+};
 
 app.use(cors({
   origin: (origin, callback) => {
     // allow Postman / curl / server-to-server
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
       console.error("❌ Blocked by CORS:", origin);
