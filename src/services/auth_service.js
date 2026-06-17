@@ -217,6 +217,25 @@ class AuthService {
     // assignment (most stable over time).
     const primaryOrganization = organizations[0] || null;
 
+    // Resolve which functionalities the user's org is allowed to use so the
+    // frontend can filter the sidebar without a second round-trip. OPT-OUT
+    // model: a fresh/unconfigured org (or no org, e.g. super admin) gets the
+    // full catalog. Failures here must never block login.
+    let allowedFeatures = [];
+    try {
+      const orgFeaturesService = require('./super_admin/org_features_service');
+      if (user.role_id === 4 || !primaryOrganization) {
+        allowedFeatures = orgFeaturesService.getCatalog().map((f) => f.key);
+      } else {
+        allowedFeatures = await orgFeaturesService.getAllowedFeatureKeysForOrg(primaryOrganization.id);
+      }
+    } catch (featErr) {
+      console.error('Failed to load allowed org features:', featErr);
+      // Fail open: leave allowedFeatures empty -> frontend treats missing as
+      // "show everything", so a transient error never hides menus.
+      allowedFeatures = [];
+    }
+
     // Return user and tokens
     return {
       user: {
@@ -232,6 +251,7 @@ class AuthService {
         hasReportees,
         organizations,
         primaryOrganization,
+        allowedFeatures,
       },
       ...this.generateTokens(user, sessionId),
     };

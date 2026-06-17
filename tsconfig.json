@@ -1,0 +1,35 @@
+{
+  // TypeScript config for the gradually-typed backend. The app is historically
+  // CommonJS JavaScript; new files are authored in .ts and run via ts-node in
+  // transpile-only mode (see package.json `start`/`dev`). ts-node only hooks
+  // the `.ts`/`.tsx` extensions, so existing `.js` files keep being loaded
+  // natively by Node — no behavioural change to the JS codebase.
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    // Keep .js out of the TS program: ts-node would otherwise register a `.js`
+    // handler and route the ENTIRE legacy JS codebase through transpilation.
+    "allowJs": false,
+    "checkJs": false,
+    "skipLibCheck": true,
+    // Loose by design — this is a JS codebase getting incremental types, not a
+    // strict greenfield project. Tighten later per-file if desired.
+    "strict": false,
+    "noImplicitAny": false,
+    "sourceMap": false,
+    "declaration": false,
+    "outDir": "dist"
+  },
+  "ts-node": {
+    // No type-checking at runtime — just strip types. Keeps boot fast and means
+    // a type error in a .ts file can never stop the server from starting.
+    "transpileOnly": true,
+    "files": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
