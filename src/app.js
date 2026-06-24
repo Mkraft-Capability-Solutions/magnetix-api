@@ -126,6 +126,7 @@ const superAdminUserOrganizationRoutes = require("./routes/super_admin/user_orga
 const superAdminRbacRoutes = require("./routes/super_admin/rbac_routes");
 const superAdminHierarchyRoutes = require("./routes/super_admin/hierarchy_routes");
 const superAdminContentGovRoutes = require("./routes/super_admin/content_governance_routes");
+const byteVideoRoutes = require("./routes/byte_video_routes");
 
 // Use routes with API prefixes
 app.use("/api/landing", landingRoutes);
@@ -133,6 +134,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/protected", protectedRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/content/uploads", uploadRoutes);
+app.use("/api/content/byte-videos", byteVideoRoutes);
 app.use("/api/student/courses", studentCourseRoutes);
 app.use("/api/student/mentorship", studentMentorshipRoutes);
 app.use("/api/student/events", studentEventRoutes);
