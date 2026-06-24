@@ -8,6 +8,7 @@ const eventReminderScheduler = require('./src/schedulers/event_reminder_schedule
 const reportScheduler = require('./src/schedulers/report_scheduler');
 const assignmentReminderScheduler = require('./src/schedulers/assignment_reminder_scheduler');
 const marketingCampaignScheduler = require('./src/schedulers/marketing_campaign_scheduler');
+const byteVideoScheduler = require('./src/schedulers/byte_video_scheduler');
 const { initializeSocketIO } = require('./src/socket/socketServer');
 const PORT = process.env.PORT || 3000;
 
@@ -33,6 +34,7 @@ function setupShutdownHandlers() {
       eventReminderScheduler.stop();
       assignmentReminderScheduler.stop();
       marketingCampaignScheduler.stop();
+      byteVideoScheduler.stop();
 
       // Close Socket.io connections
       io.close(() => {
@@ -136,6 +138,13 @@ server.listen(PORT, async () => {
     await marketingCampaignScheduler.start();
   } catch (error) {
     console.error('⚠️  Failed to start marketing campaign scheduler:', error);
+  }
+
+  // Start byte video scheduler (renders queued AI short-videos)
+  try {
+    await byteVideoScheduler.start();
+  } catch (error) {
+    console.error('⚠️  Failed to start byte video scheduler:', error);
   }
 
   // Setup shutdown handlers

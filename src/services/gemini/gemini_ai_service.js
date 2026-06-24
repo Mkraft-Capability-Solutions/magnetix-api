@@ -117,6 +117,106 @@ class GeminiAIService {
   }
 
   /**
+   * Generate a short-video script (storyboard) from a user command.
+   * Used by the Byte Video "explainer" provider. Returns a small set of
+   * scenes, each with an on-screen caption and a narration line.
+   * @param {string} command - User's video command / prompt
+   * @returns {Promise<Object>} { title, scenes: [{ caption, narration }] }
+   */
+  async generateVideoScript(command) {
+    await this.ensureInitialized();
+
+    const prompt = this._buildVideoScriptPrompt(command);
+
+    try {
+      console.log('🎬 Generating byte-video script for:', command.substring(0, 50) + '...');
+
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      let text = response.text();
+
+      text = this._extractJSON(text);
+      const script = JSON.parse(text);
+      return this._validateVideoScript(script);
+    } catch (error) {
+      console.error('❌ Gemini video-script error:', error.message);
+
+      if (error.message.includes('SAFETY')) {
+        throw new Error('CONTENT_FILTERED: Unable to generate a video for this request. Please try a different topic.');
+      }
+      if (error instanceof SyntaxError) {
+        throw new Error('PARSE_ERROR: Failed to parse AI video script. Please try again.');
+      }
+      throw new Error(`AI_SERVICE_ERROR: ${error.message}`);
+    }
+  }
+
+  /**
+   * Build the prompt for generating a short-video script.
+   * @param {string} command - User's video command
+   * @returns {string} Complete prompt
+   */
+  _buildVideoScriptPrompt(command) {
+    const sanitizedInput = command
+      .replace(/<[^>]*>/g, '')
+      .replace(/[<>]/g, '')
+      .trim();
+
+    return `You are an expert instructional video scriptwriter. Turn the user's request into a short, engaging explainer video script of 4-6 scenes that reads well as narration and fits roughly 30-60 seconds total.
+
+User's request: "${sanitizedInput}"
+
+Return ONLY valid JSON with this EXACT structure (no markdown, no code blocks):
+{
+  "title": "A short, descriptive video title (max 80 characters)",
+  "scenes": [
+    {
+      "caption": "A very short on-screen caption / heading for this scene (max 60 characters, no emojis)",
+      "narration": "1-2 sentences of spoken narration for this scene (plain text, max 280 characters)",
+      "imageQuery": "2-4 plain keywords describing a relevant real photo for this scene (for stock-photo search, e.g. 'green plant leaves sunlight')"
+    }
+  ]
+}
+
+Guidelines:
+1. Produce 4-6 scenes with a logical flow (hook -> key points -> takeaway).
+2. "caption" is short text shown on screen; "narration" is what the voice says.
+3. "imageQuery" must be concrete, visual keywords (objects/scenes a photographer would shoot), NOT abstract phrases — this drives a stock-photo search.
+4. Keep language clear and learner-friendly. No markdown, no emojis, no special characters that break captions.
+5. Return ONLY the JSON object.
+
+Generate the script now:`;
+  }
+
+  /**
+   * Validate and normalize a generated video script.
+   * @param {Object} script - Raw script from AI
+   * @returns {Object} { title, scenes: [{ caption, narration }] }
+   */
+  _validateVideoScript(script) {
+    if (!script || typeof script.title !== 'string' || !script.title.trim()) {
+      throw new Error('PARSE_ERROR: Missing or invalid title in AI video script');
+    }
+    if (!Array.isArray(script.scenes) || script.scenes.length === 0) {
+      throw new Error('PARSE_ERROR: Missing or invalid scenes in AI video script');
+    }
+
+    const scenes = script.scenes
+      .map((s) => ({
+        caption: typeof s.caption === 'string' ? s.caption.trim().slice(0, 120) : '',
+        narration: typeof s.narration === 'string' ? s.narration.trim().slice(0, 400) : '',
+        imageQuery: typeof s.imageQuery === 'string' ? s.imageQuery.trim().slice(0, 100) : '',
+      }))
+      .filter((s) => s.caption || s.narration);
+
+    if (scenes.length === 0) {
+      throw new Error('PARSE_ERROR: AI video script contained no usable scenes');
+    }
+
+    return { title: script.title.trim().slice(0, 200), scenes };
+  }
+
+  /**
    * Extract JSON from response text, removing markdown code blocks if present
    * @param {string} text - Raw response text
    * @returns {string} Clean JSON string
