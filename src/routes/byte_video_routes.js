@@ -8,6 +8,8 @@ router.use(authenticate, authorize(2, 4));
 
 router.post('/', byteVideoController.createByteVideo);
 router.get('/', byteVideoController.listByteVideos);
+// Static path before '/:id' so it isn't captured as an id.
+router.get('/voices', byteVideoController.listVoices);
 router.get('/:id', byteVideoController.getByteVideo);
 router.delete('/:id', byteVideoController.deleteByteVideo);
 // Create a new Content-Based lesson from a completed byte video.

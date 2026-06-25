@@ -13,6 +13,7 @@ const createSchema = Joi.object({
     'any.required': 'A command describing the video is required',
   }),
   title: Joi.string().max(200).allow('').optional(),
+  voiceId: Joi.string().max(64).allow('', null).optional(),
 });
 
 const createLessonSchema = Joi.object({
@@ -36,6 +37,15 @@ exports.createByteVideo = async (req, res, next) => {
       });
     }
     const response = await byteVideoService.createJob(req.user.uuid, req.user.role_id, value);
+    return sendService(res, response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.listVoices = async (req, res, next) => {
+  try {
+    const response = await byteVideoService.listVoices();
     return sendService(res, response);
   } catch (err) {
     next(err);

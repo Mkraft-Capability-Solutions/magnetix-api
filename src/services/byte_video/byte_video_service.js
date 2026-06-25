@@ -10,6 +10,7 @@ const { ServiceResponseDTO, ErrorResponseDTO } = require('../../dto/response_dto
 const { getProvider } = require('./providers');
 const ff = require('./ffmpeg_util');
 const lessonService = require('../admin/lesson_service');
+const voiceSource = require('./voice_source');
 
 const ROLE_LABELS = { 2: 'instructor', 4: 'super_admin' };
 
@@ -24,6 +25,7 @@ function mapRow(row) {
     title: row.title,
     status: row.status,
     provider: row.provider,
+    voiceId: row.voice_id || null,
     scriptJson: row.script_json
       ? (typeof row.script_json === 'string' ? JSON.parse(row.script_json) : row.script_json)
       : null,
@@ -39,14 +41,25 @@ function mapRow(row) {
 }
 
 class ByteVideoService {
+  /** Selectable narration voices for the generate form. */
+  async listVoices() {
+    try {
+      const voices = await voiceSource.listVoices();
+      return new ServiceResponseDTO(true, voices);
+    } catch (error) {
+      console.error('listVoices error:', error.message);
+      return new ErrorResponseDTO({ message: error.message, code: 'VOICES_ERROR' }, 500);
+    }
+  }
+
   /** Create a pending generation job for the current user. */
-  async createJob(userUuid, roleId, { command, title }) {
+  async createJob(userUuid, roleId, { command, title, voiceId }) {
     try {
       const provider = getProvider().name;
       const [result] = await promisePool.query(
-        `INSERT INTO byte_videos (created_by, creator_role, command, title, status, provider)
-         VALUES (?, ?, ?, ?, 'pending', ?)`,
-        [userUuid, roleLabel(roleId), command, title || null, provider]
+        `INSERT INTO byte_videos (created_by, creator_role, command, title, status, provider, voice_id)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
+        [userUuid, roleLabel(roleId), command, title || null, provider, voiceId || null]
       );
       const [rows] = await promisePool.query('SELECT * FROM byte_videos WHERE id = ?', [result.insertId]);
       return new ServiceResponseDTO(true, mapRow(rows[0]), 'Byte video queued for generation');

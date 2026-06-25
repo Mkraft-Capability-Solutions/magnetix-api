@@ -43,24 +43,26 @@ async function generate(job) {
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'byte-video-'));
 
   try {
-    const sceneClips = [];
-    const durations = [];
+    const voiceId = job.voiceId || job.voice_id || null; // chosen voice; falls back to env/default
+    const scenes = [];
 
     for (let i = 0; i < script.scenes.length; i++) {
       const scene = script.scenes[i];
       const sceneMp4 = path.join(workDir, `scene_${i}.mp4`);
       const narration = scene.narration || scene.caption || '';
 
-      // Narration audio (ElevenLabs -> gTTS; silent fallback on failure).
-      let audioPath = null;
-      let durationSec = estimateSeconds(narration);
+      // Narration audio + word timings (ElevenLabs -> gTTS; silent on failure).
+      let voicePath = null;
+      let words = null;
+      let voiceSec = estimateSeconds(narration);
       if (narration) {
         const candidate = path.join(workDir, `scene_${i}.mp3`);
         try {
-          const ok = await voiceSource.synthesizeSpeech(narration, candidate);
-          if (ok && fs.existsSync(candidate) && fs.statSync(candidate).size > 0) {
-            audioPath = candidate;
-            durationSec = (await ff.probeDurationSeconds(candidate)) || durationSec;
+          const r = await voiceSource.synthesizeSpeech(narration, candidate, { voiceId });
+          if (r.ok && fs.existsSync(candidate) && fs.statSync(candidate).size > 0) {
+            voicePath = candidate;
+            words = r.words;
+            voiceSec = (await ff.probeDurationSeconds(candidate)) || voiceSec;
           }
         } catch (ttsErr) {
           console.warn(`⚠️  Byte Video voice failed on scene ${i}, using silent scene:`, ttsErr.message);
@@ -87,30 +89,22 @@ async function generate(job) {
         }
       }
 
-      const dur = await cinematic.renderScene({
-        kind,
-        sourcePath,
-        caption: scene.caption,
-        narration,
-        audioPath,
-        durationSec,
-        index: i,
-        workDir,
-        outMp4: sceneMp4,
+      const clipDur = await cinematic.renderScene({
+        kind, sourcePath, caption: scene.caption, narration, words, voiceSec,
+        index: i, workDir, outMp4: sceneMp4,
       });
 
-      sceneClips.push(sceneMp4);
-      durations.push(dur);
+      scenes.push({ video: sceneMp4, clipDur, voicePath, voiceSec });
     }
 
-    // 2. Stitch with crossfades + thumbnail into uploads/byte_videos
+    // 2. Combine (crossfade video + continuous audio) + thumbnail
     const base = `${Date.now()}`;
     const outputFilename = `${base}.mp4`;
     const thumbnailFilename = `${base}.jpg`;
     const outputPath = path.join(ff.BYTE_VIDEO_DIR, outputFilename);
     const thumbPath = path.join(ff.BYTE_VIDEO_DIR, thumbnailFilename);
 
-    await cinematic.stitchScenes(sceneClips, durations, outputPath, workDir);
+    await cinematic.composeFinal(scenes, outputPath, workDir);
 
     let finalThumb = null;
     try {
@@ -121,7 +115,7 @@ async function generate(job) {
     }
 
     const totalSeconds = (await ff.probeDurationSeconds(outputPath))
-      || durations.reduce((a, b) => a + b, 0);
+      || scenes.reduce((a, s) => a + s.clipDur, 0);
 
     return {
       title: script.title,
