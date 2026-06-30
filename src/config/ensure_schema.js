@@ -176,6 +176,24 @@ const EXPECTED_TABLES = [
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
     `
   },
+  // --- Per-org feature access (see migrations-sequelize/20260617120000-org-features.js
+  // and src/config/org_features_catalog.ts). OPT-OUT model: a row with
+  // is_enabled = 0 disables that functionality for the org; absence = enabled.
+  {
+    name: 'organization_features',
+    createSql: `
+      CREATE TABLE IF NOT EXISTS \`organization_features\` (
+        \`organization_id\` INT NOT NULL,
+        \`feature_key\`     VARCHAR(64) NOT NULL,
+        \`is_enabled\`      TINYINT(1) NOT NULL DEFAULT 1,
+        \`updated_by\`      VARCHAR(36) NULL,
+        \`updated_at\`      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`organization_id\`, \`feature_key\`),
+        INDEX \`idx_orgfeat_org\` (\`organization_id\`),
+        INDEX \`idx_orgfeat_disabled\` (\`organization_id\`, \`is_enabled\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `
+  },
   // --- Content governance lifecycle history
   // (see migrations-sequelize/20260610120100-content-governance.js).
   {
