@@ -151,6 +151,16 @@ app.use("/api/student/teams", studentTeamRoutes);
 app.use("/api/student/transcript", studentTranscriptRoutes);
 app.use("/api/student/instructor-availability", studentInstructorAvailabilityRoutes);
 app.use("/api/student/instructor-profile", studentInstructorProfileRoutes);
+// Org-feature gate for the certification family. These routers sit on broad
+// /api/admin & /api/student mounts, so we gate their specific sub-prefixes here
+// (registered first) and let requests fall through to the real routers below.
+// Gating the broad mounts directly would 403 unrelated endpoints when an org
+// disables certifications.
+app.use("/api/admin/certifications", featureGate("certifications"));
+app.use("/api/admin/user-certificates", featureGate("certifications"));
+app.use("/api/admin/external-certificates", featureGate("certifications"));
+app.use("/api/student/certifications", featureGate("certifications"));
+app.use("/api/student/certificates", featureGate("certifications"));
 app.use("/api/student/certificates", studentCertificatesRoutes);
 app.use("/api/student", studentCertificationRoutes);
 app.use("/api/student/achievements", studentAchievementsRoutes);
@@ -234,7 +244,7 @@ app.use("/api/super-admin/content-governance", superAdminContentGovRoutes);
 app.use("/api/super-admin/org-features", superAdminOrgFeaturesRoutes);
 app.use("/api/org-features", orgFeaturesRoutes);
 app.use("/api/super-admin/org-insights", require("./routes/super_admin/org_insights_routes"));
-app.use("/api/course-approvals", require("./routes/course_approval_routes"));
+app.use("/api/course-approvals", featureGate("approvals"), require("./routes/course_approval_routes"));
 app.use("/api/super-admin/transcripts", require("./routes/super_admin/transcript_routes"));
 
 // SCORM manifest API endpoint
