@@ -170,9 +170,16 @@ app.use("/api/notification-permissions", notificationPermissionRoutes);
 app.use("/api/instructor/mentorship", instructorMentorshipRoutes);
 app.use("/api/instructor/events", instructorEventRoutes);
 app.use("/api/instructor/notifications", instructorNotificationRoutes);
+// NOTE: instructorProfileRoutes and instructorAvailabilityRoutes are mounted at
+// the broad "/api/instructor" path with a blanket `authorize(2)` (instructor
+// only). Course routes MUST be mounted before them, otherwise that instructor-
+// only guard runs first for every "/api/instructor/*" request and 403s Admins
+// (3) / Super Admins (4) on course section/lesson endpoints. Course routes have
+// no "/profile" or "/availability" paths, so those still fall through and stay
+// instructor-only.
+app.use("/api/instructor", instructorCourseRoutes);
 app.use("/api/instructor", instructorProfileRoutes);
 app.use("/api/instructor", instructorAvailabilityRoutes);
-app.use("/api/instructor", instructorCourseRoutes);
 app.use("/api/instructor/dashboard", instructorDashboardRoutes);
 app.use("/api/instructor/reports", instructorReportRoutes);
 app.use("/api/instructor/teams", instructorTeamRoutes);
