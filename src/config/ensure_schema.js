@@ -20,6 +20,7 @@
  */
 
 const { promisePool } = require('./db');
+const { PROCEDURES } = require('./procedures_catalog');
 
 const EXPECTED_TABLES = [
   // NOTE: We deliberately omit FOREIGN KEY constraints from these tables.
@@ -233,6 +234,35 @@ const EXPECTED_TABLES = [
         INDEX \`idx_car_approver\` (\`approver_uuid\`, \`status\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
     `
+  },
+  // --- Byte Video generation jobs + results
+  // (see migrations-sequelize/20260622120000-byte-videos.js and
+  //  20260625120000-byte-videos-voice.js). `voice_id` is inlined here so the
+  //  full table self-heals in one shot even if the migrations were skipped —
+  //  this is the table whose absence broke Byte Video in prod.
+  {
+    name: 'byte_videos',
+    createSql: `
+      CREATE TABLE IF NOT EXISTS \`byte_videos\` (
+        \`id\`                  BIGINT PRIMARY KEY AUTO_INCREMENT,
+        \`created_by\`          VARCHAR(36) NOT NULL,
+        \`creator_role\`        VARCHAR(32) NOT NULL,
+        \`command\`             TEXT NOT NULL,
+        \`title\`               VARCHAR(255) NULL,
+        \`status\`              ENUM('pending','processing','completed','failed') NOT NULL DEFAULT 'pending',
+        \`provider\`            VARCHAR(32) NOT NULL DEFAULT 'explainer',
+        \`voice_id\`            VARCHAR(64) NULL,
+        \`script_json\`         JSON NULL,
+        \`output_filename\`     VARCHAR(255) NULL,
+        \`thumbnail_filename\`  VARCHAR(255) NULL,
+        \`duration_seconds\`    INT NULL,
+        \`error_message\`       TEXT NULL,
+        \`created_at\`          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\`          TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX \`idx_byte_videos_owner\` (\`created_by\`, \`status\`),
+        INDEX \`idx_byte_videos_status\` (\`status\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `
   }
 ];
 
@@ -263,7 +293,32 @@ const EXPECTED_COLUMNS = [
     table: 'course',
     column: 'reviewed_by',
     addSql: `ALTER TABLE \`course\` ADD COLUMN \`reviewed_by\` VARCHAR(36) NULL`
-  }
+  },
+  // Byte Video: chosen narration voice. Heals the case where `byte_videos`
+  // pre-existed (from the first migration) but the voice migration was skipped.
+  // (see migrations-sequelize/20260625120000-byte-videos-voice.js)
+  {
+    table: 'byte_videos',
+    column: 'voice_id',
+    addSql: `ALTER TABLE \`byte_videos\` ADD COLUMN \`voice_id\` VARCHAR(64) NULL AFTER \`provider\``
+  },
+  // course_lesson: columns the 17-param add_course_lesson procedure reads/writes.
+  // Missing any of these breaks all lesson adds (normal + "Add from Library").
+  // (see migrations-sequelize/20260709130000-fix-add-course-lesson-assessment-params.js)
+  { table: 'course_lesson', column: 'lesson_order',                addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`lesson_order\` INT DEFAULT 0` },
+  { table: 'course_lesson', column: 'lesson_content_type',         addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`lesson_content_type\` VARCHAR(50) NULL` },
+  { table: 'course_lesson', column: 'lesson_content_document',     addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`lesson_content_document\` VARCHAR(500) NULL` },
+  { table: 'course_lesson', column: 'lesson_content_scorm',        addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`lesson_content_scorm\` VARCHAR(500) NULL` },
+  { table: 'course_lesson', column: 'lesson_content_mp4',          addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`lesson_content_mp4\` VARCHAR(500) NULL` },
+  { table: 'course_lesson', column: 'lesson_content_url',          addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`lesson_content_url\` VARCHAR(1000) NULL` },
+  { table: 'course_lesson', column: 'lesson_duration',             addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`lesson_duration\` VARCHAR(100) NULL` },
+  { table: 'course_lesson', column: 'creator_id',                  addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`creator_id\` VARCHAR(36) NULL` },
+  { table: 'course_lesson', column: 'last_updated_by',             addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`last_updated_by\` VARCHAR(36) NULL` },
+  { table: 'course_lesson', column: 'is_deleted',                  addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`is_deleted\` TINYINT(1) DEFAULT 0` },
+  { table: 'course_lesson', column: 'assessment_id',               addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`assessment_id\` INT NULL DEFAULT NULL` },
+  { table: 'course_lesson', column: 'require_section_completion',  addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`require_section_completion\` TINYINT(1) DEFAULT 0` },
+  { table: 'course_lesson', column: 'assessment_start_date',       addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`assessment_start_date\` DATE NULL DEFAULT NULL` },
+  { table: 'course_lesson', column: 'assessment_end_date',         addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`assessment_end_date\` DATE NULL DEFAULT NULL` }
 ];
 
 async function tableExists(name) {
@@ -364,4 +419,80 @@ async function ensureSchema() {
   }
 }
 
-module.exports = { ensureSchema, EXPECTED_TABLES, EXPECTED_COLUMNS };
+/**
+ * Return the stored body (BEGIN…END) of a procedure, or null if it doesn't
+ * exist. ROUTINE_DEFINITION does not include the parameter list, so `marker`
+ * substrings must be chosen from the body (see procedures_catalog.js).
+ */
+async function procedureBody(name) {
+  const [rows] = await promisePool.query(
+    `SELECT ROUTINE_DEFINITION AS def
+       FROM information_schema.routines
+      WHERE routine_schema = DATABASE()
+        AND routine_type = 'PROCEDURE'
+        AND routine_name = ?`,
+    [name]
+  );
+  if (!rows || rows.length === 0) return null;
+  return rows[0].def || '';
+}
+
+/**
+ * Boot-time stored-procedure self-heal. Independent of SequelizeMeta, exactly
+ * like ensureSchema(). For each procedure in the catalog: if it's missing, or
+ * present but STALE (its body lacks the marker that only the correct version
+ * contains), DROP + CREATE it from the canonical definition. Otherwise leave it
+ * untouched — no needless churn, and no DROP/CREATE race in the common case.
+ *
+ * Must run AFTER ensureSchema() so columns the procedures depend on
+ * (e.g. course_lesson.assessment_end_date) already exist.
+ */
+async function ensureProcedures() {
+  console.log('🔍 ensureProcedures: verifying critical stored procedures...');
+  let upToDate = 0;
+  let reconciled = 0;
+  const stillBroken = [];
+
+  for (const { name, marker, create } of PROCEDURES) {
+    let body;
+    try {
+      body = await procedureBody(name);
+    } catch (err) {
+      console.error(`  ❌ Could not introspect procedure \`${name}\`:`, err.message);
+      stillBroken.push(name);
+      continue;
+    }
+
+    const present = body !== null;
+    const current = present && (!marker || body.includes(marker));
+    if (current) {
+      upToDate++;
+      continue;
+    }
+
+    console.log(`  ⚠ Procedure \`${name}\` is ${present ? 'stale' : 'missing'} — (re)creating...`);
+    try {
+      await promisePool.query(`DROP PROCEDURE IF EXISTS \`${name}\``);
+      await promisePool.query(create);
+      reconciled++;
+      console.log(`  ✅ \`${name}\` reconciled`);
+    } catch (err) {
+      // Non-fatal: a broken procedure degrades a feature but shouldn't block
+      // boot. Surface it loudly so it gets remediated.
+      console.error(`  ❌ Failed to (re)create \`${name}\`:`, err.message);
+      stillBroken.push(name);
+    }
+  }
+
+  console.log(
+    `🔍 ensureProcedures: ${upToDate} up-to-date, ${reconciled} reconciled`
+  );
+  if (stillBroken.length > 0) {
+    console.warn(
+      `⚠ Schema gap: the following procedures are still broken after ensureProcedures — ` +
+        `dependent features will fail until remediated: ${stillBroken.join(', ')}`
+    );
+  }
+}
+
+module.exports = { ensureSchema, ensureProcedures, EXPECTED_TABLES, EXPECTED_COLUMNS };

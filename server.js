@@ -3,7 +3,7 @@ const http = require('http');
 const app = require('./src/app');
 const { promisePool } = require('./src/config/db');
 const { runPendingMigrations } = require('./src/config/run_migrations');
-const { ensureSchema } = require('./src/config/ensure_schema');
+const { ensureSchema, ensureProcedures } = require('./src/config/ensure_schema');
 const eventReminderScheduler = require('./src/schedulers/event_reminder_scheduler');
 const reportScheduler = require('./src/schedulers/report_scheduler');
 const assignmentReminderScheduler = require('./src/schedulers/assignment_reminder_scheduler');
@@ -110,6 +110,18 @@ server.listen(PORT, async () => {
   } catch (err) {
     console.error('❌ Schema verification failed on startup:', err);
     process.exit(1);
+  }
+
+  // Stored-procedure self-heal — runs AFTER ensureSchema so the columns the
+  // procedures depend on already exist. Independent of SequelizeMeta: reconciles
+  // get_user_details / add_course_lesson whenever the DB has a missing or stale
+  // version (the drift that repeatedly broke login header + lesson creation).
+  // Non-fatal by design — a bad procedure degrades a feature, it shouldn't block
+  // the whole app from booting.
+  try {
+    await ensureProcedures();
+  } catch (err) {
+    console.error('⚠️  Procedure verification failed on startup (continuing):', err);
   }
 
   // Start event reminder scheduler
