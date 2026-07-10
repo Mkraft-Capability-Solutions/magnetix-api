@@ -137,6 +137,56 @@ BEGIN
   SELECT v_lesson_id as id, v_lesson_id as lessonId, 'Lesson created successfully' as message;
 END`;
 
+// --- sp_get_course_completion_report ----------------------------------------
+// The legacy version computed completedCount as
+//   COUNT(DISTINCT CASE WHEN e.last_updated IS NOT NULL THEN e.user_id END)
+// i.e. it counted EVERY enrolment as "completed" (last_updated is virtually
+// never null) — reporting ~100% completion for every course, in the SuperAdmin
+// AND instructor course-completion reports. This version uses the real
+// definition: an enrolment is complete when the course has lessons and the
+// enrolment's completed-lesson count reaches the course's lesson count
+// (identical to the KPI band / enrolment funnel). Marker: `lesson_completed`,
+// present only in the corrected body.
+const COURSE_COMPLETION_REPORT_CREATE = `
+CREATE PROCEDURE sp_get_course_completion_report(
+  IN p_instructor_id VARCHAR(36),
+  IN p_from_date DATE,
+  IN p_to_date DATE
+)
+BEGIN
+  SELECT
+    c.id AS courseId,
+    c.title AS courseTitle,
+    COALESCE(cat.category_name, 'Uncategorized') AS category,
+    COUNT(DISTINCT e.id) AS totalEnrollments,
+    COUNT(DISTINCT CASE WHEN tl.lc > 0 AND cd.cc >= tl.lc THEN e.id END) AS completedCount,
+    ROUND(
+      COUNT(DISTINCT CASE WHEN tl.lc > 0 AND cd.cc >= tl.lc THEN e.id END) * 100.0
+      / NULLIF(COUNT(DISTINCT e.id), 0), 1
+    ) AS completionRate,
+    ROUND(COALESCE(SUM(cd.total_time), 0) / NULLIF(COUNT(DISTINCT e.id), 0), 0) AS avgTimeSpentMinutes,
+    c.course_duration AS courseDuration
+  FROM course c
+  LEFT JOIN enrol e ON c.id = e.course_id
+    AND (p_from_date IS NULL OR e.enrolled_date >= p_from_date)
+    AND (p_to_date IS NULL OR e.enrolled_date <= p_to_date)
+  LEFT JOIN category cat ON c.category_id = cat.id
+  LEFT JOIN (
+    SELECT cl.course_id, COUNT(*) AS lc
+    FROM course_lesson cl WHERE cl.is_deleted = 0 GROUP BY cl.course_id
+  ) tl ON tl.course_id = c.id
+  LEFT JOIN (
+    SELECT cp.enroll_id,
+           COUNT(CASE WHEN cp.lesson_completed = 1 THEN 1 END) AS cc,
+           SUM(cp.time_spent) AS total_time
+    FROM course_progress cp GROUP BY cp.enroll_id
+  ) cd ON cd.enroll_id = e.id
+  WHERE c.is_deleted = 0
+    AND (p_instructor_id IS NULL OR c.creator_id = p_instructor_id)
+  GROUP BY c.id, c.title, cat.category_name, c.course_duration
+  ORDER BY completionRate DESC, totalEnrollments DESC;
+END`;
+
 /**
  * Procedures reconciled on every boot by ensureProcedures().
  * Order does not matter (procedures are independent).
@@ -152,6 +202,11 @@ const PROCEDURES = [
     marker: 'assessment_end_date',
     create: ADD_COURSE_LESSON_CREATE,
   },
+  {
+    name: 'sp_get_course_completion_report',
+    marker: 'lesson_completed',
+    create: COURSE_COMPLETION_REPORT_CREATE,
+  },
 ];
 
 module.exports = {
@@ -159,4 +214,5 @@ module.exports = {
   GET_USER_DETAILS_CREATE,
   GET_USER_DETAILS_CREATE_LEGACY,
   ADD_COURSE_LESSON_CREATE,
+  COURSE_COMPLETION_REPORT_CREATE,
 };
