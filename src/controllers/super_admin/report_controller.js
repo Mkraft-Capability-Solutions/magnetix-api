@@ -316,6 +316,32 @@ exports.getCourseCompletionData = async (req, res) => {
   }
 };
 
+// ===========================================================================
+// EXTENDED ANALYTICS endpoints. Thin wrappers around the service; each returns
+// { success, data }. Errors are logged and surfaced as 500 with a message.
+// ===========================================================================
+
+const analyticsHandler = (serviceFn, label) => async (req, res) => {
+  try {
+    const data = await serviceFn();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error(`Report Controller - ${label} error:`, error);
+    res.status(500).json({ success: false, message: `Failed to fetch ${label}`, error: error.message });
+  }
+};
+
+exports.getKpiSummary = analyticsHandler(reportService.getKpiSummary, 'KPI summary');
+exports.getDepartments = analyticsHandler(reportService.getDepartments, 'departments');
+exports.getEnrollmentFunnel = analyticsHandler(reportService.getEnrollmentFunnel, 'enrollment funnel');
+exports.getTimeDistribution = analyticsHandler(reportService.getTimeDistribution, 'time distribution');
+exports.getActivityHeatmap = analyticsHandler(reportService.getActivityHeatmap, 'activity heatmap');
+exports.getLevelDistribution = analyticsHandler(reportService.getLevelDistribution, 'level distribution');
+exports.getCertificationExpiry = analyticsHandler(reportService.getCertificationExpiry, 'certification expiry');
+exports.getAssessmentScores = analyticsHandler(reportService.getAssessmentScores, 'assessment scores');
+exports.getCohortRetention = analyticsHandler(reportService.getCohortRetention, 'cohort retention');
+exports.getTeamPerformance = analyticsHandler(reportService.getTeamPerformance, 'team performance');
+
 /**
  * Get learning engagement report preview data
  * GET /api/admin/reports/learning-engagement-data
