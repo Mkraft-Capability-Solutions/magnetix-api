@@ -58,7 +58,7 @@ class GeminiAIService {
         console.log(`✅ Gemini AI Service initialized with model: ${modelName}`);
         return;
       } catch (error) {
-        console.log(`⚠️ Model ${modelName} failed: ${error.message.substring(0, 100)}`);
+        console.log(`⚠️ Model ${modelName} failed: ${error.message}`);
         continue;
       }
     }
