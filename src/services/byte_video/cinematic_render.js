@@ -94,7 +94,7 @@ function chunksProportional(narration, voiceSec) {
 }
 
 function titleFilter(caption, workDir, tag, voiceSec) {
-  if (!TITLE_FONT || !caption) return null;
+  if (!TITLE_FONT || !caption || !ff.hasDrawtext()) return null;
   const file = path.join(workDir, `${tag}_title.txt`);
   fs.writeFileSync(file, ff.wrapCaption(caption, 30, 2), 'utf8');
   const outAt = Math.min(3.6, Math.max(2.2, voiceSec - 0.3));
@@ -109,7 +109,7 @@ function titleFilter(caption, workDir, tag, voiceSec) {
 }
 
 function subtitleFilters(narration, voiceSec, workDir, tag, words) {
-  if (!SUBTITLE_FONT || !narration) return [];
+  if (!SUBTITLE_FONT || !narration || !ff.hasDrawtext()) return [];
   const chunks = chunksFromWords(words, voiceSec) || chunksProportional(narration, voiceSec);
   return chunks.map((c, i) => {
     const file = path.join(workDir, `${tag}_sub${i}.txt`);

@@ -9,8 +9,70 @@
  */
 const path = require('path');
 const fs = require('fs');
-const { execFile } = require('child_process');
-const ffmpegPath = require('ffmpeg-static');
+const { execFile, execFileSync } = require('child_process');
+
+/**
+ * Pick an ffmpeg binary that can actually draw text.
+ *
+ * The binary shipped by `ffmpeg-static` is built without libfreetype, so it has
+ * no `drawtext` filter and every caption/subtitle filtergraph fails to parse
+ * ("No such filter: 'drawtext'"). A distro ffmpeg (apt, Homebrew) does have it.
+ * Probe the candidates once at load and take the first that reports `drawtext`;
+ * if none does, fall back to whatever exists and render without text rather than
+ * failing the render outright.
+ */
+function bundledFfmpeg() {
+  try {
+    return require('ffmpeg-static');
+  } catch (_) {
+    return null;
+  }
+}
+
+function supportsDrawtext(bin) {
+  try {
+    const out = execFileSync(bin, ['-hide_banner', '-filters'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      maxBuffer: 1024 * 1024 * 8,
+      timeout: 15000,
+    });
+    return /\bdrawtext\b/.test(out);
+  } catch (_) {
+    return false;
+  }
+}
+
+function resolveFfmpeg() {
+  const candidates = [
+    process.env.FFMPEG_PATH,
+    bundledFfmpeg(),
+    'ffmpeg',
+    '/usr/bin/ffmpeg',
+    '/usr/local/bin/ffmpeg',
+    '/opt/homebrew/bin/ffmpeg',
+  ].filter(Boolean);
+
+  for (const bin of candidates) {
+    if (supportsDrawtext(bin)) return { bin, drawtext: true };
+  }
+  return { bin: candidates[0] || 'ffmpeg', drawtext: false };
+}
+
+const { bin: ffmpegPath, drawtext: HAS_DRAWTEXT } = resolveFfmpeg();
+
+if (!HAS_DRAWTEXT) {
+  console.warn(
+    `⚠️  ffmpeg at "${ffmpegPath}" has no drawtext filter (built without libfreetype). ` +
+    'Byte Videos will render without titles/subtitles. Install a system ffmpeg ' +
+    '(apt install ffmpeg) or set FFMPEG_PATH to a build with libfreetype.'
+  );
+}
+
+/** True when the selected ffmpeg can render `drawtext` (i.e. has libfreetype). */
+function hasDrawtext() {
+  return HAS_DRAWTEXT;
+}
 
 // uploads/byte_videos lives at the magnetix-api root (this file is 3 dirs deep).
 const BYTE_VIDEO_DIR = path.join(__dirname, '../../../uploads/byte_videos');
@@ -84,7 +146,7 @@ async function makeSlide(caption, outPng, workDir) {
   const font = findFont();
   const colorInput = `color=c=${BG_COLOR}:s=${WIDTH}x${HEIGHT}`;
 
-  if (!font || !caption) {
+  if (!font || !caption || !HAS_DRAWTEXT) {
     await runFfmpeg(['-f', 'lavfi', '-i', colorInput, '-frames:v', '1', outPng]);
     return;
   }
@@ -143,7 +205,7 @@ async function makeImageScene(imagePath, caption, audioPath, seconds, outMp4, wo
     `zoompan=z='min(zoom+0.0004,1.25)':d=${frames}:` +
     `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${WIDTH}x${HEIGHT}:fps=${FRAME_RATE}`;
 
-  if (font && caption) {
+  if (font && caption && HAS_DRAWTEXT) {
     const capFile = path.join(workDir, `cap_${path.basename(outMp4)}.txt`);
     fs.writeFileSync(capFile, wrapCaption(caption, 34, 3), 'utf8');
     vf +=
@@ -183,7 +245,7 @@ async function makeVideoScene(clipPath, caption, audioPath, seconds, outMp4, wor
   const font = findFont();
 
   let vf = `scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},setsar=1,fps=${FRAME_RATE}`;
-  if (font && caption) {
+  if (font && caption && HAS_DRAWTEXT) {
     const capFile = path.join(workDir, `cap_${path.basename(outMp4)}.txt`);
     fs.writeFileSync(capFile, wrapCaption(caption, 34, 3), 'utf8');
     vf +=
@@ -276,6 +338,7 @@ module.exports = {
   BYTE_VIDEO_DIR,
   LESSON_MP4_DIR,
   ffmpegPath,
+  hasDrawtext,
   findFont,
   ensureDir,
   runFfmpeg,
