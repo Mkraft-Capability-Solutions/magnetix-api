@@ -128,7 +128,9 @@ exports.addCourse = async (req, res, next) => {
       JSON.stringify(req.body, null, 2)
     );
 
-    const { error } = courseSchema.validate(req.body, { abortEarly: false });
+    // stripUnknown: drop unexpected keys (e.g. a frontend-sent `status`) instead
+    // of 400-ing. The service reads only known fields, so extras are harmless.
+    const { error } = courseSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
     if (error) {
       console.log(
         "Validation errors:",
@@ -184,7 +186,9 @@ exports.updateCourse = async (req, res, next) => {
       JSON.stringify(req.body, null, 2)
     );
 
-    const { error } = courseSchema.validate(req.body, { abortEarly: false });
+    // stripUnknown: drop unexpected keys (e.g. a frontend-sent `status`) instead
+    // of 400-ing. The service reads only known fields, so extras are harmless.
+    const { error } = courseSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
     if (error) {
       console.log(
         "Validation errors:",
