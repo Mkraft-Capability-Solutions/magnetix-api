@@ -1,3 +1,14 @@
+// Register ts-node so the TypeScript modules required transitively by ./src/app
+// (the org_features_* feature and other .ts files) resolve even when this process
+// is launched as a bare `node server.js` — e.g. a pm2 definition that lacks the
+// `-r ts-node/register` flag that `npm start` passes. Without this, `node server.js`
+// throws "Cannot find module './routes/super_admin/org_features_routes'".
+// Idempotent: a no-op when ts-node is already registered via the -r flag.
+// Transpile-only (per tsconfig `ts-node` block) keeps boot fast and type-error-proof.
+if (!process[Symbol.for('ts-node.register.instance')]) {
+  require('ts-node').register({ transpileOnly: true });
+}
+
 require('dotenv').config();
 const http = require('http');
 const app = require('./src/app');
