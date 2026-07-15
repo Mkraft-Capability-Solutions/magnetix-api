@@ -42,6 +42,11 @@ jobs:
           # Insert Gemini API Key
           GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL=${{ secrets.GEMINI_MODEL }}
+          # Mini Video (Byte Video) provider keys
+          BYTE_VIDEO_PROVIDER=${{ secrets.BYTE_VIDEO_PROVIDER }}
+          PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}
+          ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID=${{ secrets.ELEVENLABS_VOICE_ID }}
           # JWT Configuration
           JWT_ACCESS_SECRET=${{ secrets.JWT_ACCESS_SECRET }}
           JWT_ACCESS_EXPIRY=${{ secrets.JWT_ACCESS_EXPIRY }}
