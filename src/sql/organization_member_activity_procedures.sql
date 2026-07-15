@@ -13,42 +13,48 @@ DROP PROCEDURE IF EXISTS get_member_enrolled_courses;
 DELIMITER //
 CREATE PROCEDURE get_member_enrolled_courses(IN p_user_id VARCHAR(36))
 BEGIN
-  -- Status and completion are both derived from `progress` + `course_progress`
-  -- because some deployments of this DB lack the `status` and `completed_at`
-  -- columns on `enrol`. The shipping student dashboard proc uses the same pattern.
+  -- `enrol` has no progress/status/completed_at columns. Progress is derived
+  -- from completed course_progress rows vs the course's course_lesson count
+  -- (identical to the dashboard/transcript definition). There is no completion
+  -- timestamp column, so activity dates use course_progress.last_access, which
+  -- is updated whenever a lesson-progress row changes. Computed once in a
+  -- derived table so the outer CASE can reference the progress value.
   SELECT
-    c.id AS course_id,
-    c.title AS title,
+    course_id,
+    title,
     CASE
-      WHEN COALESCE(e.progress, 0) >= 100 THEN 'completed'
-      WHEN COALESCE(e.progress, 0) > 0
-        OR EXISTS (SELECT 1 FROM course_progress cp WHERE cp.enroll_id = e.id)
-        THEN 'in_progress'
+      WHEN progress >= 100 THEN 'completed'
+      WHEN progress > 0 OR lessons_started > 0 THEN 'in_progress'
       ELSE 'enrolled'
     END AS status,
-    COALESCE(e.progress, 0) AS progress,
-    e.enrolled_date AS enrolled_date,
-    CASE
-      WHEN COALESCE(e.progress, 0) >= 100 THEN (
-        SELECT MAX(cp.completed_at)
-        FROM course_progress cp
-        WHERE cp.enroll_id = e.id AND cp.lesson_completed = 1
-      )
-      ELSE NULL
-    END AS completed_at,
-    (
-      SELECT MAX(cp.completed_at)
-      FROM course_progress cp
-      WHERE cp.enroll_id = e.id
-    ) AS last_activity,
-    (
-      SELECT COUNT(*) FROM course_progress cp
-      WHERE cp.enroll_id = e.id AND cp.lesson_completed = 1
-    ) AS lessons_completed
-  FROM enrol e
-  INNER JOIN course c ON c.id = e.course_id
-  WHERE e.user_id = p_user_id
-  ORDER BY e.enrolled_date DESC;
+    progress,
+    enrolled_date,
+    CASE WHEN progress >= 100 THEN completed_at ELSE NULL END AS completed_at,
+    last_activity,
+    lessons_completed
+  FROM (
+    SELECT
+      c.id AS course_id,
+      c.title AS title,
+      e.enrolled_date AS enrolled_date,
+      (SELECT COUNT(*) FROM course_progress cp
+         WHERE cp.enroll_id = e.id AND cp.lesson_completed = 1) AS lessons_completed,
+      (SELECT COUNT(*) FROM course_progress cp
+         WHERE cp.enroll_id = e.id) AS lessons_started,
+      COALESCE(ROUND(100.0 *
+        (SELECT COUNT(*) FROM course_progress cp
+           WHERE cp.enroll_id = e.id AND cp.lesson_completed = 1)
+        / NULLIF((SELECT COUNT(*) FROM course_lesson cl
+           WHERE cl.course_id = e.course_id), 0), 0), 0) AS progress,
+      (SELECT MAX(cp.last_access) FROM course_progress cp
+         WHERE cp.enroll_id = e.id AND cp.lesson_completed = 1) AS completed_at,
+      (SELECT MAX(cp.last_access) FROM course_progress cp
+         WHERE cp.enroll_id = e.id) AS last_activity
+    FROM enrol e
+    INNER JOIN course c ON c.id = e.course_id
+    WHERE e.user_id = p_user_id
+  ) t
+  ORDER BY enrolled_date DESC;
 END //
 DELIMITER ;
 

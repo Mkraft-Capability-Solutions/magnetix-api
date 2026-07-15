@@ -318,7 +318,10 @@ const EXPECTED_COLUMNS = [
   { table: 'course_lesson', column: 'assessment_id',               addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`assessment_id\` INT NULL DEFAULT NULL` },
   { table: 'course_lesson', column: 'require_section_completion',  addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`require_section_completion\` TINYINT(1) DEFAULT 0` },
   { table: 'course_lesson', column: 'assessment_start_date',       addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`assessment_start_date\` DATE NULL DEFAULT NULL` },
-  { table: 'course_lesson', column: 'assessment_end_date',         addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`assessment_end_date\` DATE NULL DEFAULT NULL` }
+  { table: 'course_lesson', column: 'assessment_end_date',         addSql: `ALTER TABLE \`course_lesson\` ADD COLUMN \`assessment_end_date\` DATE NULL DEFAULT NULL` },
+  // Optional per-enrolment due date, written by sp_bulk_enroll_users ("Assign
+  // Training" on My Team). NULL for enrolments created without a deadline.
+  { table: 'enrol',         column: 'deadline',                    addSql: `ALTER TABLE \`enrol\` ADD COLUMN \`deadline\` DATE NULL DEFAULT NULL` }
 ];
 
 async function tableExists(name) {

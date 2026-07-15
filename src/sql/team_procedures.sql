@@ -293,6 +293,13 @@ BEGIN
       ELSE '-'
     END as score,
     DATE_FORMAT(e.enrolled_date, '%Y-%m-%d') as enrolled,
+    COALESCE(DATE_FORMAT(e.deadline, '%Y-%m-%d'), 'None') as dueDate,
+    CASE
+      WHEN e.deadline IS NOT NULL
+       AND COALESCE(course_complete.is_complete, 0) = 0
+       AND e.deadline < CURDATE()
+      THEN 1 ELSE 0
+    END as overdue,
     CASE
       WHEN course_complete.is_complete = 1 THEN DATE_FORMAT(e.last_updated, '%Y-%m-%d')
       ELSE 'In progress'
@@ -396,11 +403,15 @@ BEGIN
 
       -- Check if enrollment already exists
       IF NOT EXISTS (SELECT 1 FROM enrol WHERE user_id = v_user_id AND course_id = v_course_id) THEN
-        -- Insert enrollment
-        INSERT INTO enrol (user_id, course_id)
-        VALUES (v_user_id, v_course_id);
+        -- Insert enrollment with the optional due date
+        INSERT INTO enrol (user_id, course_id, deadline)
+        VALUES (v_user_id, v_course_id, p_deadline);
 
         SET v_enrolled_count = v_enrolled_count + 1;
+      ELSEIF p_deadline IS NOT NULL THEN
+        -- Already enrolled: refresh the due date so re-assigning takes effect
+        UPDATE enrol SET deadline = p_deadline
+        WHERE user_id = v_user_id AND course_id = v_course_id;
       END IF;
 
       SET v_course_idx = v_course_idx + 1;

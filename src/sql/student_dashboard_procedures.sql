@@ -104,15 +104,17 @@ BEGIN
     WHERE check_date > DATE_SUB(CURDATE(), INTERVAL 30 DAY)
   ),
   daily_activity AS (
+    -- course_progress has no completed_at; last_access reflects when a lesson
+    -- row was last updated (i.e. completed), so it drives the streak by date.
     SELECT
-      DATE(cp.completed_at) as activity_date,
+      DATE(cp.last_access) as activity_date,
       COUNT(*) as lessons_completed
     FROM course_progress cp
     INNER JOIN enrol e ON cp.enroll_id = e.id
     WHERE e.user_id = p_user_id
       AND cp.lesson_completed = 1
-      AND cp.completed_at IS NOT NULL
-    GROUP BY DATE(cp.completed_at)
+      AND cp.last_access IS NOT NULL
+    GROUP BY DATE(cp.last_access)
   )
   SELECT
     COUNT(*)
