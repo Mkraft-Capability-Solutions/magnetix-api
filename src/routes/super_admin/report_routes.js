@@ -44,6 +44,18 @@ router.get('/skills-assessment', reportController.getSkillsAssessment);
  */
 router.get('/analytics', reportController.getAnalytics);
 
+// ---- Extended analytics (KPI band + new visualizations) -------------------
+router.get('/kpi-summary', reportController.getKpiSummary);
+router.get('/departments', reportController.getDepartments);
+router.get('/enrollment-funnel', reportController.getEnrollmentFunnel);
+router.get('/time-distribution', reportController.getTimeDistribution);
+router.get('/activity-heatmap', reportController.getActivityHeatmap);
+router.get('/level-distribution', reportController.getLevelDistribution);
+router.get('/certification-expiry', reportController.getCertificationExpiry);
+router.get('/assessment-scores', reportController.getAssessmentScores);
+router.get('/cohort-retention', reportController.getCohortRetention);
+router.get('/team-performance', reportController.getTeamPerformance);
+
 /**
  * GET /api/super-admin/reports/user-data
  * Get user report preview data

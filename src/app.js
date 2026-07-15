@@ -126,6 +126,12 @@ const superAdminUserOrganizationRoutes = require("./routes/super_admin/user_orga
 const superAdminRbacRoutes = require("./routes/super_admin/rbac_routes");
 const superAdminHierarchyRoutes = require("./routes/super_admin/hierarchy_routes");
 const superAdminContentGovRoutes = require("./routes/super_admin/content_governance_routes");
+const byteVideoRoutes = require("./routes/byte_video_routes");
+const superAdminOrgFeaturesRoutes = require("./routes/super_admin/org_features_routes");
+const orgFeaturesRoutes = require("./routes/org_features_routes");
+// Per-org functionality gate. featureGate(key) = [authenticate, requireOrgFeature(key)]
+// — blocks a route group when the caller's org has that functionality switched off.
+const { featureGate } = require("./middleware/org_feature_middleware");
 
 // Use routes with API prefixes
 app.use("/api/landing", landingRoutes);
@@ -133,6 +139,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/protected", protectedRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/content/uploads", uploadRoutes);
+app.use("/api/content/byte-videos", byteVideoRoutes);
 app.use("/api/student/courses", studentCourseRoutes);
 app.use("/api/student/mentorship", studentMentorshipRoutes);
 app.use("/api/student/events", studentEventRoutes);
@@ -144,26 +151,43 @@ app.use("/api/student/teams", studentTeamRoutes);
 app.use("/api/student/transcript", studentTranscriptRoutes);
 app.use("/api/student/instructor-availability", studentInstructorAvailabilityRoutes);
 app.use("/api/student/instructor-profile", studentInstructorProfileRoutes);
+// Org-feature gate for the certification family. These routers sit on broad
+// /api/admin & /api/student mounts, so we gate their specific sub-prefixes here
+// (registered first) and let requests fall through to the real routers below.
+// Gating the broad mounts directly would 403 unrelated endpoints when an org
+// disables certifications.
+app.use("/api/admin/certifications", featureGate("certifications"));
+app.use("/api/admin/user-certificates", featureGate("certifications"));
+app.use("/api/admin/external-certificates", featureGate("certifications"));
+app.use("/api/student/certifications", featureGate("certifications"));
+app.use("/api/student/certificates", featureGate("certifications"));
 app.use("/api/student/certificates", studentCertificatesRoutes);
 app.use("/api/student", studentCertificationRoutes);
 app.use("/api/student/achievements", studentAchievementsRoutes);
 app.use("/api/student/corporate-info", studentCorporateInfoRoutes);
-app.use("/api/student/ai-learning-path", studentAILearningPathRoutes);
+app.use("/api/student/ai-learning-path", featureGate("ai_learning_paths"), studentAILearningPathRoutes);
 app.use("/api/notification-permissions", notificationPermissionRoutes);
 app.use("/api/instructor/mentorship", instructorMentorshipRoutes);
 app.use("/api/instructor/events", instructorEventRoutes);
 app.use("/api/instructor/notifications", instructorNotificationRoutes);
+// NOTE: instructorProfileRoutes and instructorAvailabilityRoutes are mounted at
+// the broad "/api/instructor" path with a blanket `authorize(2)` (instructor
+// only). Course routes MUST be mounted before them, otherwise that instructor-
+// only guard runs first for every "/api/instructor/*" request and 403s Admins
+// (3) / Super Admins (4) on course section/lesson endpoints. Course routes have
+// no "/profile" or "/availability" paths, so those still fall through and stay
+// instructor-only.
+app.use("/api/instructor", instructorCourseRoutes);
 app.use("/api/instructor", instructorProfileRoutes);
 app.use("/api/instructor", instructorAvailabilityRoutes);
-app.use("/api/instructor", instructorCourseRoutes);
 app.use("/api/instructor/dashboard", instructorDashboardRoutes);
 app.use("/api/instructor/reports", instructorReportRoutes);
 app.use("/api/instructor/teams", instructorTeamRoutes);
 app.use("/api/instructor/users", instructorUserManagementRoutes);
-app.use("/api/instructor/marketing", instructorMarketingRoutes);
-app.use("/api/instructor/ilt", instructorILTRoutes);
+app.use("/api/instructor/marketing", featureGate("marketing"), instructorMarketingRoutes);
+app.use("/api/instructor/ilt", featureGate("ilt"), instructorILTRoutes);
 app.use("/api/instructor/batches", instructorBatchRoutes);
-app.use("/api/instructor/group-projects", require("./routes/trainer/group_project_routes"));
+app.use("/api/instructor/group-projects", featureGate("group_projects"), require("./routes/trainer/group_project_routes"));
 app.use("/api/admin/instructors", adminInstructorRoutes);
 app.use("/api/admin/students", adminStudentRoutes);
 app.use("/api/admin/events", adminEventRoutes);
@@ -171,24 +195,24 @@ app.use("/api/admin/reminders", adminReminderRoutes);
 app.use("/api/admin/batches", adminBatchRoutes);
 app.use("/api/admin/mentorship/sessions", adminSessionRoutes);
 app.use("/api/admin/profile", require("./routes/admin/profile_route"));
-app.use("/api/admin/courses", require("./routes/admin/course_route"));
-app.use("/api/admin/catalog", require("./routes/admin/catalog_routes"));
-app.use("/api/admin/group-projects", require("./routes/admin/group_project_routes"));
+app.use("/api/admin/courses", featureGate("courses"), require("./routes/admin/course_route"));
+app.use("/api/admin/catalog", featureGate("catalog"), require("./routes/admin/catalog_routes"));
+app.use("/api/admin/group-projects", featureGate("group_projects"), require("./routes/admin/group_project_routes"));
 app.use("/api/admin", require("./routes/admin/certification_routes"));
 app.use("/api/admin", require("./routes/admin/user_certificate_routes"));
 app.use("/api/admin", require("./routes/admin/external_certificates_routes"));
 app.use("/api/admin/dashboard", adminDashboardRoutes);
 app.use("/api/admin/settings", adminSettingsRoutes);
-app.use("/api/admin/users", adminUserManagementRoutes);
-app.use("/api/admin/reports/schedules", adminReportSchedulerRoutes);
-app.use("/api/admin/reports", adminReportRoutes);
-app.use("/api/admin/custom-reports", adminCustomReportRoutes);
-app.use("/api/admin/teams", adminTeamRoutes);
-app.use("/api/admin/ilt", adminILTRoutes);
-app.use("/api/admin/bulk-upload", adminBulkUploadRoutes);
-app.use("/api/admin/content", adminLessonRoutes);
-app.use("/api/admin/learning-items", adminLearningItemRoutes);
-app.use("/api/admin/assignments", adminAssignmentRoutes);
+app.use("/api/admin/users", featureGate("users"), adminUserManagementRoutes);
+app.use("/api/admin/reports/schedules", featureGate("reports"), adminReportSchedulerRoutes);
+app.use("/api/admin/reports", featureGate("reports"), adminReportRoutes);
+app.use("/api/admin/custom-reports", featureGate("reports"), adminCustomReportRoutes);
+app.use("/api/admin/teams", featureGate("teams"), adminTeamRoutes);
+app.use("/api/admin/ilt", featureGate("ilt"), adminILTRoutes);
+app.use("/api/admin/bulk-upload", featureGate("bulk_uploader"), adminBulkUploadRoutes);
+app.use("/api/admin/content", featureGate("content_management"), adminLessonRoutes);
+app.use("/api/admin/learning-items", featureGate("content_management"), adminLearningItemRoutes);
+app.use("/api/admin/assignments", featureGate("assignments"), adminAssignmentRoutes);
 app.use("/api/manager/assignments", managerAssignmentRoutes);
 app.use("/api/manager/teams", managerTeamRoutes);
 app.use("/api/manager/reportees", managerReporteesRoutes);
@@ -200,12 +224,12 @@ app.use("/api/google/meet", googleMeetRoutes);
 app.use("/api/google/oauth", googleOAuthRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/chatbot", require("./routes/chatbot_routes"));
-app.use("/api/admin/marketing", require("./routes/admin/marketing_routes"));
+app.use("/api/admin/marketing", featureGate("marketing"), require("./routes/admin/marketing_routes"));
 app.use("/api/notifications", require("./routes/notification_routes"));
-app.use("/api/admin/feedback", require("./routes/admin/feedback_routes"));
-app.use("/api/admin/question-bank", require("./routes/admin/question_bank_routes"));
+app.use("/api/admin/feedback", featureGate("assessments"), require("./routes/admin/feedback_routes"));
+app.use("/api/admin/question-bank", featureGate("assessments"), require("./routes/admin/question_bank_routes"));
 app.use("/api/admin/api-keys", require("./routes/admin/api_key_routes"));
-app.use("/api/admin/knowledge-base", require("./routes/admin/knowledge_base_routes"));
+app.use("/api/admin/knowledge-base", featureGate("knowledge_base"), require("./routes/admin/knowledge_base_routes"));
 app.use("/api/knowledge-base", require("./routes/knowledge_base_public_routes"));
 app.use("/api/public/feedback", require("./routes/public/feedback_routes"));
 app.use("/api/super-admin/dashboard", superAdminDashboardRoutes);
@@ -224,8 +248,10 @@ app.use("/api/super-admin/users", superAdminUserOrganizationRoutes);
 app.use("/api/super-admin/rbac", superAdminRbacRoutes);
 app.use("/api/super-admin/hierarchy", superAdminHierarchyRoutes);
 app.use("/api/super-admin/content-governance", superAdminContentGovRoutes);
+app.use("/api/super-admin/org-features", superAdminOrgFeaturesRoutes);
+app.use("/api/org-features", orgFeaturesRoutes);
 app.use("/api/super-admin/org-insights", require("./routes/super_admin/org_insights_routes"));
-app.use("/api/course-approvals", require("./routes/course_approval_routes"));
+app.use("/api/course-approvals", featureGate("approvals"), require("./routes/course_approval_routes"));
 app.use("/api/super-admin/transcripts", require("./routes/super_admin/transcript_routes"));
 
 // SCORM manifest API endpoint

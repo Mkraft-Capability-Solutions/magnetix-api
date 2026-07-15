@@ -45,6 +45,218 @@ const hexToRgb = (hex) => {
   ] : [0, 0, 0];
 };
 
+// Tone colors for KPI cards / accents.
+const TONES = {
+  blue: '#3b82f6', green: '#10b981', purple: '#a855f7',
+  orange: '#f97316', teal: '#14b8a6', red: '#ef4444',
+};
+
+const numify = (v) => { const n = Number(v); return isFinite(n) ? n : 0; };
+const sumBy = (arr, k) => arr.reduce((a, r) => a + numify(r[k]), 0);
+const avgBy = (arr, k) => (arr.length ? Math.round((sumBy(arr, k) / arr.length) * 10) / 10 : 0);
+
+/**
+ * Compute an executive summary (KPI cards + insights + a small bar chart +
+ * table totals) for a report type. Returns null when there's nothing to
+ * summarize (empty data or a generic/custom report).
+ */
+const computeReportSummary = (reportType, data, options = {}) => {
+  // learning-engagement arrives as [{ metric, value }] — surface as KPI cards.
+  if (reportType === 'learning-engagement' && Array.isArray(data) && data.length && data[0].metric !== undefined) {
+    const tones = [TONES.blue, TONES.green, TONES.purple, TONES.orange, TONES.teal, TONES.red];
+    // Shorter labels so they fit on one line inside a card.
+    const SHORT = {
+      'Total Active Users': 'Active Users',
+      'Users with Enrollments': 'Users Enrolled',
+      'Total Enrollments': 'Total Enrolments',
+      'Total Time Spent (minutes)': 'Total Time (min)',
+      'Average Time per User (minutes)': 'Avg Time / User (min)',
+      'Active Last Week': 'Active Last Week',
+    };
+    const byMetric = {};
+    data.forEach((d) => { byMetric[d.metric] = numify(d.value); });
+    const activeUsers = byMetric['Total Active Users'] || 0;
+    const usersEnrolled = byMetric['Users with Enrollments'] || 0;
+    const avgTime = byMetric['Average Time per User (minutes)'] || 0;
+    const activeLastWeek = byMetric['Active Last Week'] || 0;
+    const insights = [
+      activeUsers > 0 ? `${Math.round((usersEnrolled / activeUsers) * 100)}% of active users have at least one enrolment.` : null,
+      `${activeLastWeek} user${activeLastWeek === 1 ? '' : 's'} were active in the last week.`,
+      avgTime > 0 ? `Learners spend ${avgTime} minutes on average.` : 'No learning time has been recorded for this period yet.',
+    ].filter(Boolean);
+    return {
+      kpis: data.slice(0, 6).map((d, i) => ({ label: SHORT[d.metric] || d.metric, value: d.value, toneHex: tones[i % tones.length] })),
+      insights,
+      chart: null,
+      totals: null,
+    };
+  }
+
+  if (!Array.isArray(data) || data.length === 0) return null;
+
+  if (reportType === 'user') {
+    const total = data.length;
+    const withCert = data.filter((r) => numify(r.certificatesEarned) > 0).length;
+    const active = data.filter((r) => String(r.status || '').toLowerCase() === 'active').length;
+    // top department by headcount (ignoring unassigned/placeholder values)
+    const validDept = (d) => d && !['n/a', 'unassigned', '-', ''].includes(String(d).trim().toLowerCase());
+    const deptCounts = {};
+    data.forEach((r) => { if (validDept(r.department)) deptCounts[r.department] = (deptCounts[r.department] || 0) + 1; });
+    const topDept = Object.entries(deptCounts).sort((a, b) => b[1] - a[1])[0];
+    const topLearners = [...data].sort((a, b) => numify(b.totalPoints) - numify(a.totalPoints)).slice(0, 8);
+    return {
+      kpis: [
+        { label: 'Total Users', value: total, toneHex: TONES.blue },
+        { label: 'Active Users', value: active, toneHex: TONES.green },
+        { label: 'Certificates Earned', value: sumBy(data, 'certificatesEarned'), toneHex: TONES.orange },
+        { label: 'Avg Courses Completed', value: avgBy(data, 'coursesCompleted'), toneHex: TONES.purple },
+        { label: 'Avg Points', value: avgBy(data, 'totalPoints'), toneHex: TONES.teal },
+      ],
+      insights: [
+        `${withCert} of ${total} user${total === 1 ? '' : 's'} have earned at least one certificate.`,
+        topDept ? `Largest department: ${topDept[0]} (${topDept[1]} user${topDept[1] > 1 ? 's' : ''}).` : null,
+        `${Math.round((active / total) * 100)}% of users are currently active.`,
+      ].filter(Boolean),
+      chart: { title: 'Top Performers by Points', unit: ' pts', bars: topLearners.map((r) => ({ label: r.fullName || r.name || '-', value: numify(r.totalPoints) })) },
+      totals: { label: 'TOTAL', map: { coursesCompleted: sumBy(data, 'coursesCompleted'), totalPoints: sumBy(data, 'totalPoints'), certificatesEarned: sumBy(data, 'certificatesEarned') } },
+    };
+  }
+
+  if (reportType === 'course-completion') {
+    const best = [...data].sort((a, b) => numify(b.completionRate) - numify(a.completionRate))[0];
+    const below40 = data.filter((r) => numify(r.completionRate) < 40).length;
+    const top = [...data].sort((a, b) => numify(b.completionRate) - numify(a.completionRate)).slice(0, 8);
+    const totalCompletions = sumBy(data, 'completedCount');
+    const anyCompleted = totalCompletions > 0;
+    return {
+      kpis: [
+        { label: 'Total Courses', value: data.length, toneHex: TONES.blue },
+        { label: 'Total Enrollments', value: sumBy(data, 'totalEnrollments'), toneHex: TONES.green },
+        { label: 'Avg Completion Rate', value: `${avgBy(data, 'completionRate')}%`, toneHex: TONES.orange },
+        { label: 'Avg Time (min)', value: avgBy(data, 'avgTimeSpentMinutes'), toneHex: TONES.purple },
+      ],
+      insights: anyCompleted ? [
+        best ? `Highest completion: ${best.courseTitle} (${best.completionRate}%).` : null,
+        below40 > 0 ? `${below40} course${below40 > 1 ? 's' : ''} below 40% completion — may need attention.` : 'All courses are above 40% completion.',
+        `Total of ${totalCompletions} course completion${totalCompletions === 1 ? '' : 's'} recorded.`,
+      ].filter(Boolean) : [
+        'No course completions recorded in this period yet.',
+        `${sumBy(data, 'totalEnrollments')} enrolments across ${data.length} course${data.length === 1 ? '' : 's'}.`,
+      ],
+      chart: { title: 'Top Courses by Completion Rate', unit: '%', bars: top.map((r) => ({ label: r.courseTitle || '-', value: numify(r.completionRate) })) },
+      totals: { label: 'TOTAL / AVG', map: { totalEnrollments: sumBy(data, 'totalEnrollments'), completedCount: sumBy(data, 'completedCount'), completionRate: `${avgBy(data, 'completionRate')}%`, avgTimeSpentMinutes: avgBy(data, 'avgTimeSpentMinutes') } },
+    };
+  }
+
+  if (reportType === 'skills-assessment') {
+    const sorted = [...data].sort((a, b) => numify(b.score) - numify(a.score));
+    const strongest = sorted[0];
+    const weakest = sorted[sorted.length - 1];
+    return {
+      kpis: [
+        { label: 'Skills Assessed', value: data.length, toneHex: TONES.blue },
+        { label: 'Avg Score', value: `${avgBy(data, 'score')}%`, toneHex: TONES.orange },
+        { label: 'Users Assessed', value: sumBy(data, 'usersAssessed'), toneHex: TONES.green },
+        strongest ? { label: 'Strongest Skill', value: strongest.skill, toneHex: TONES.purple } : null,
+      ].filter(Boolean),
+      insights: [
+        strongest ? `Strongest area: ${strongest.skill} (${strongest.score}%).` : null,
+        weakest ? `Needs development: ${weakest.skill} (${weakest.score}%).` : null,
+      ].filter(Boolean),
+      chart: { title: 'Skill Scores', unit: '%', bars: sorted.map((r) => ({ label: r.skill || '-', value: numify(r.score) })) },
+      totals: { label: 'AVERAGE', map: { score: `${avgBy(data, 'score')}%`, usersAssessed: sumBy(data, 'usersAssessed') } },
+    };
+  }
+
+  return null;
+};
+
+// ---- PDF drawing primitives for the executive summary ----------------------
+const CONTENT_LEFT = 50;
+const CONTENT_RIGHT = 545;
+
+const pdfSectionTitle = (doc, text) => {
+  if (doc.y > doc.page.height - 120) doc.addPage();
+  doc.font('Helvetica-Bold').fontSize(13).fillColor(BRAND_COLORS.secondary)
+     .text(text, CONTENT_LEFT, doc.y);
+  const ly = doc.y + 2;
+  doc.strokeColor(BRAND_COLORS.primary).lineWidth(1).moveTo(CONTENT_LEFT, ly).lineTo(CONTENT_RIGHT, ly).stroke();
+  doc.font('Helvetica');
+  doc.y = ly + 8;
+};
+
+const pdfKpiCards = (doc, kpis) => {
+  const cards = kpis.slice(0, 6);
+  if (!cards.length) return;
+  // Balance into rows of at most 3 so cards stay wide enough for their labels.
+  const rowsCount = Math.ceil(cards.length / 3);
+  const perRow = Math.ceil(cards.length / rowsCount);
+  const gap = 12;
+  const totalW = CONTENT_RIGHT - CONTENT_LEFT;
+  const cardW = (totalW - gap * (perRow - 1)) / perRow;
+  const cardH = 64;
+
+  if (doc.y + rowsCount * (cardH + gap) > doc.page.height - 60) doc.addPage();
+  let y = doc.y;
+  for (let r = 0; r < rowsCount; r++) {
+    const rowItems = cards.slice(r * perRow, r * perRow + perRow);
+    rowItems.forEach((k, i) => {
+      const x = CONTENT_LEFT + i * (cardW + gap);
+      doc.roundedRect(x, y, cardW, cardH, 8).fillAndStroke(BRAND_COLORS.lightBg, '#e2e8f0');
+      doc.rect(x, y, 4, cardH).fill(k.toneHex || BRAND_COLORS.primary);
+      doc.font('Helvetica-Bold').fontSize(18).fillColor(BRAND_COLORS.secondary)
+         .text(String(k.value), x + 14, y + 13, { width: cardW - 22, height: 22, ellipsis: true, lineBreak: false });
+      doc.font('Helvetica').fontSize(8.5).fillColor('#64748b')
+         .text(String(k.label), x + 14, y + 39, { width: cardW - 22, height: 18, ellipsis: true, lineBreak: false });
+    });
+    y += cardH + gap;
+  }
+  doc.font('Helvetica');
+  doc.y = y + 2;
+};
+
+const pdfBarChart = (doc, chart) => {
+  if (!chart || !chart.bars || !chart.bars.length) return;
+  pdfSectionTitle(doc, chart.title);
+  const bars = chart.bars.slice(0, 8);
+  const maxVal = Math.max(...bars.map((b) => numify(b.value)), 1);
+  const labelW = 150;
+  const barMaxW = CONTENT_RIGHT - CONTENT_LEFT - labelW - 48;
+  const rowH = 20;
+  let y = doc.y;
+  bars.forEach((b) => {
+    if (y + rowH > doc.page.height - 60) { doc.addPage(); y = 50; }
+    doc.font('Helvetica').fontSize(8).fillColor(BRAND_COLORS.text)
+       .text(String(b.label).substring(0, 30), CONTENT_LEFT, y + 2, { width: labelW - 6, ellipsis: true });
+    const w = Math.max(2, (numify(b.value) / maxVal) * barMaxW);
+    doc.roundedRect(CONTENT_LEFT + labelW, y, w, 12, 2).fill(BRAND_COLORS.primary);
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(BRAND_COLORS.secondary)
+       .text(`${b.value}${chart.unit || ''}`, CONTENT_LEFT + labelW + w + 5, y + 2, { width: 60 });
+    y += rowH;
+  });
+  doc.font('Helvetica');
+  doc.y = y + 6;
+};
+
+const pdfInsights = (doc, insights) => {
+  if (!insights || !insights.length) return;
+  pdfSectionTitle(doc, 'Key Insights');
+  const pad = 10;
+  const textW = CONTENT_RIGHT - CONTENT_LEFT - pad * 2;
+  doc.font('Helvetica').fontSize(9);
+  const heights = insights.map((t) => doc.heightOfString(`•  ${t}`, { width: textW }));
+  const boxH = pad * 2 + heights.reduce((a, b) => a + b + 4, 0) - 4;
+  if (doc.y + boxH > doc.page.height - 60) doc.addPage();
+  const startY = doc.y;
+  doc.roundedRect(CONTENT_LEFT, startY, CONTENT_RIGHT - CONTENT_LEFT, boxH, 6).fill('#FFF7ED');
+  let yy = startY + pad;
+  insights.forEach((t, i) => {
+    doc.fillColor(BRAND_COLORS.text).fontSize(9).text(`•  ${t}`, CONTENT_LEFT + pad, yy, { width: textW });
+    yy += heights[i] + 4;
+  });
+  doc.y = startY + boxH + 10;
+};
+
 /**
  * Generate PDF Report with MultipliersKraft branding
  */
@@ -78,19 +290,34 @@ const generatePDF = async (reportType, title, data, options = {}) => {
       }
       doc.moveDown(1);
 
-      // Add content based on report type
+      // Executive summary (KPI cards + insights + a small bar chart).
+      const summary = computeReportSummary(reportType, data, options);
+      if (summary) {
+        if (summary.kpis && summary.kpis.length) {
+          pdfSectionTitle(doc, 'Executive Summary');
+          pdfKpiCards(doc, summary.kpis);
+        }
+        if (summary.insights && summary.insights.length) pdfInsights(doc, summary.insights);
+        if (summary.chart) pdfBarChart(doc, summary.chart);
+      }
+
+      // Detailed records table.
+      const totals = summary && summary.totals ? summary.totals : null;
+      if (reportType !== 'learning-engagement') pdfSectionTitle(doc, 'Detailed Records');
       switch (reportType) {
         case 'user':
-          addUserReportContent(doc, data);
+          addUserReportContent(doc, data, totals);
           break;
         case 'course-completion':
-          addCourseCompletionContent(doc, data);
+          addCourseCompletionContent(doc, data, totals);
           break;
         case 'learning-engagement':
-          addLearningEngagementContent(doc, data);
+          // KPI cards + insights already cover engagement; only fall back to the
+          // raw metric list when no summary was produced.
+          if (!(summary && summary.kpis && summary.kpis.length)) addLearningEngagementContent(doc, data);
           break;
         case 'skills-assessment':
-          addSkillsAssessmentContent(doc, data);
+          addSkillsAssessmentContent(doc, data, totals);
           break;
         case 'custom-report':
           addCustomReportContent(doc, data, options.customFields);
@@ -99,11 +326,19 @@ const generatePDF = async (reportType, title, data, options = {}) => {
           addGenericTableContent(doc, data);
       }
 
-      // Footer on each page
-      const pageCount = doc.bufferedPageRange().count;
-      for (let i = 0; i < pageCount; i++) {
-        doc.switchToPage(i);
-        addPDFFooter(doc, i + 1, pageCount);
+      // Footer on each page.
+      // IMPORTANT: the footer is drawn inside the bottom margin. Writing text
+      // below `page.height - margins.bottom` makes PDFKit think the page
+      // overflowed and append a blank page — which previously inflated a
+      // 17-page report to 51 pages and broke the "Page X of Y" totals. Zero the
+      // bottom margin while drawing each footer to prevent that.
+      const range = doc.bufferedPageRange(); // { start, count }
+      for (let i = 0; i < range.count; i++) {
+        doc.switchToPage(range.start + i);
+        const savedBottom = doc.page.margins.bottom;
+        doc.page.margins.bottom = 0;
+        addPDFFooter(doc, i + 1, range.count);
+        doc.page.margins.bottom = savedBottom;
       }
 
       doc.end();
@@ -195,7 +430,7 @@ const addPDFFooter = (doc, currentPage, totalPages) => {
 /**
  * Add User Report Content
  */
-const addUserReportContent = (doc, data) => {
+const addUserReportContent = (doc, data, totals = null) => {
   if (!data || !data.length) {
     doc.fontSize(12).fillColor(BRAND_COLORS.text).text('No data available');
     return;
@@ -204,6 +439,7 @@ const addUserReportContent = (doc, data) => {
   const headers = ['Name', 'Email', 'Department', 'Job Title', 'Status', 'Courses', 'Points'];
   const colWidths = [100, 120, 80, 80, 50, 50, 50];
 
+  const footer = totals ? ['TOTAL', '', '', '', '', String(totals.map.coursesCompleted ?? ''), String(totals.map.totalPoints ?? '')] : null;
   addPDFTable(doc, headers, data.map(row => [
     row.fullName || row.name || '-',
     row.email || '-',
@@ -212,13 +448,13 @@ const addUserReportContent = (doc, data) => {
     row.status || '-',
     String(row.coursesCompleted || 0),
     String(row.totalPoints || 0)
-  ]), colWidths);
+  ]), colWidths, footer);
 };
 
 /**
  * Add Course Completion Content
  */
-const addCourseCompletionContent = (doc, data) => {
+const addCourseCompletionContent = (doc, data, totals = null) => {
   if (!data || !data.length) {
     doc.fontSize(12).fillColor(BRAND_COLORS.text).text('No data available');
     return;
@@ -227,6 +463,7 @@ const addCourseCompletionContent = (doc, data) => {
   const headers = ['Course', 'Category', 'Enrollments', 'Completed', 'Rate %', 'Avg Time'];
   const colWidths = [140, 80, 70, 70, 50, 70];
 
+  const footer = totals ? ['TOTAL / AVG', '', String(totals.map.totalEnrollments ?? ''), String(totals.map.completedCount ?? ''), String(totals.map.completionRate ?? ''), `${totals.map.avgTimeSpentMinutes ?? 0} min`] : null;
   addPDFTable(doc, headers, data.map(row => [
     row.courseTitle || '-',
     row.category || '-',
@@ -234,7 +471,7 @@ const addCourseCompletionContent = (doc, data) => {
     String(row.completedCount || 0),
     `${row.completionRate || 0}%`,
     `${row.avgTimeSpentMinutes || 0} min`
-  ]), colWidths);
+  ]), colWidths, footer);
 };
 
 /**
@@ -283,7 +520,7 @@ const addLearningEngagementContent = (doc, data) => {
 /**
  * Add Skills Assessment Content
  */
-const addSkillsAssessmentContent = (doc, data) => {
+const addSkillsAssessmentContent = (doc, data, totals = null) => {
   if (!data || !data.length) {
     doc.fontSize(12).fillColor(BRAND_COLORS.text).text('No data available');
     return;
@@ -292,11 +529,12 @@ const addSkillsAssessmentContent = (doc, data) => {
   const headers = ['Skill', 'Average Score', 'Users Assessed'];
   const colWidths = [200, 150, 150];
 
+  const footer = totals ? ['AVERAGE', String(totals.map.score ?? ''), String(totals.map.usersAssessed ?? '')] : null;
   addPDFTable(doc, headers, data.map(row => [
     row.skill || '-',
     `${row.score || 0}%`,
     String(row.usersAssessed || 0)
-  ]), colWidths);
+  ]), colWidths, footer);
 };
 
 /**
@@ -343,13 +581,16 @@ const addGenericTableContent = (doc, data) => {
 };
 
 /**
- * Add table to PDF
+ * Add table to PDF. Optional `footer` renders a bold totals row.
  */
-const addPDFTable = (doc, headers, rows, colWidths) => {
+const addPDFTable = (doc, headers, rows, colWidths, footer = null) => {
   const startX = 50;
   let startY = doc.y;
   const rowHeight = 25;
   const pageHeight = doc.page.height - 60;
+  const tableWidth = colWidths.reduce((a, b) => a + b, 0);
+  // numeric columns get right-aligned cells for readability
+  const numericCol = headers.map((_, i) => rows.some((r) => /^[₹$]?[\d,]+(\.\d+)?%?( min| pts)?$/.test(String(r[i]).trim())));
 
   // Draw header
   doc.rect(startX, startY, colWidths.reduce((a, b) => a + b, 0), rowHeight)
@@ -395,15 +636,33 @@ const addPDFTable = (doc, headers, rows, colWidths) => {
     row.forEach((cell, i) => {
       doc.fontSize(8)
          .fillColor(BRAND_COLORS.text)
-         .text(String(cell).substring(0, 25), x + 5, startY + 8, {
+         .text(String(cell).substring(0, 28), x + 5, startY + 8, {
            width: colWidths[i] - 10,
-           align: 'left'
+           align: numericCol[i] ? 'right' : 'left'
          });
       x += colWidths[i];
     });
 
     startY += rowHeight;
   });
+
+  // Totals / footer row
+  if (footer && footer.length) {
+    if (startY + rowHeight > pageHeight) { doc.addPage(); startY = 50; }
+    doc.rect(startX, startY, tableWidth, rowHeight).fill(BRAND_COLORS.secondary);
+    x = startX;
+    footer.forEach((cell, i) => {
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(BRAND_COLORS.white)
+         .text(String(cell).substring(0, 28), x + 5, startY + 8, {
+           width: colWidths[i] - 10,
+           align: numericCol[i] ? 'right' : 'left'
+         });
+      x += colWidths[i];
+    });
+    doc.font('Helvetica');
+    startY += rowHeight;
+  }
+  doc.y = startY + 4;
 };
 
 /**
@@ -414,90 +673,120 @@ const generateExcel = async (reportType, title, data, options = {}) => {
   workbook.creator = 'MultipliersKraft LMS';
   workbook.created = new Date();
 
-  const worksheet = workbook.addWorksheet(title, {
-    headerFooter: {
-      firstHeader: '&C&B&16MultipliersKraft LMS',
-      firstFooter: '&CGenerated by MultipliersKraft LMS | &D'
-    }
+  const summary = computeReportSummary(reportType, data, options);
+
+  // -------- Summary sheet (first) --------
+  const isEngagement = reportType === 'learning-engagement';
+  if (summary && !isEngagement) {
+    buildExcelSummarySheet(workbook, title, options, summary);
+  }
+
+  // -------- Data sheet --------
+  const sheetName = (isEngagement ? 'Summary' : 'Detailed Data');
+  const worksheet = workbook.addWorksheet(sheetName, {
+    headerFooter: { firstFooter: '&CGenerated by MultipliersKraft LMS | &D' },
+    views: [{ showGridLines: false }],
   });
 
-  // Add title row with branding
+  // Branded title block
   worksheet.mergeCells('A1:H1');
-  const titleCell = worksheet.getCell('A1');
-  titleCell.value = 'MultipliersKraft LMS';
-  titleCell.font = { size: 20, bold: true, color: { argb: 'FFF97316' } };
-  titleCell.alignment = { horizontal: 'center' };
+  const brandCell = worksheet.getCell('A1');
+  brandCell.value = 'MultipliersKraft LMS';
+  brandCell.font = { size: 20, bold: true, color: { argb: 'FFF97316' } };
+  brandCell.alignment = { horizontal: 'center' };
 
-  // Add report title
   worksheet.mergeCells('A2:H2');
   const reportTitleCell = worksheet.getCell('A2');
   reportTitleCell.value = title;
   reportTitleCell.font = { size: 16, bold: true, color: { argb: 'FF1E293B' } };
   reportTitleCell.alignment = { horizontal: 'center' };
 
-  // Add metadata
   worksheet.mergeCells('A3:H3');
   const metaCell = worksheet.getCell('A3');
   let metaText = `Generated: ${new Date().toLocaleString()}`;
-  if (options.dateRange) {
-    metaText += ` | Date Range: ${options.dateRange.from} to ${options.dateRange.to}`;
-  }
-  if (options.department && options.department !== 'all') {
-    metaText += ` | Department: ${options.department}`;
-  }
+  if (options.dateRange) metaText += ` | Date Range: ${options.dateRange.from} to ${options.dateRange.to}`;
+  if (options.department && options.department !== 'all') metaText += ` | Department: ${options.department}`;
   metaCell.value = metaText;
   metaCell.font = { size: 10, italic: true, color: { argb: 'FF64748B' } };
   metaCell.alignment = { horizontal: 'center' };
 
-  // Empty row
   worksheet.addRow([]);
 
-  // Add data based on report type
   if (data && data.length > 0) {
     const headers = options.customFields
-      ? options.customFields.map(f => ({ key: f.key, label: f.label, width: 20 }))
+      ? options.customFields.map((f) => ({ key: f.key, label: f.label, width: 20, type: 'text' }))
       : getHeadersForReportType(reportType, data);
 
-    // Add header row
-    const headerRow = worksheet.addRow(headers.map(h => h.label));
+    const headerRowIdx = worksheet.rowCount + 1;
+    const headerRow = worksheet.addRow(headers.map((h) => h.label));
+    headerRow.height = 22;
     headerRow.eachCell((cell) => {
-      cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFF97316' }
-      };
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.alignment = { horizontal: 'center' };
-      cell.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF97316' } };
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
     });
 
-    // Set column widths
-    headers.forEach((header, index) => {
-      worksheet.getColumn(index + 1).width = header.width || 15;
-    });
+    headers.forEach((h, i) => { worksheet.getColumn(i + 1).width = h.width || 16; });
 
-    // Add data rows
+    const firstDataRow = headerRowIdx + 1;
     data.forEach((row, rowIndex) => {
-      const dataRow = worksheet.addRow(headers.map(h => row[h.key] || '-'));
-      dataRow.eachCell((cell) => {
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: rowIndex % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' }
-        };
+      const values = headers.map((h) => {
+        const raw = row[h.key];
+        if (h.type === 'number' || h.type === 'percent') return raw == null ? 0 : numify(raw);
+        return raw == null || raw === '' ? '-' : raw;
+      });
+      const dataRow = worksheet.addRow(values);
+      dataRow.eachCell((cell, col) => {
+        const h = headers[col - 1];
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowIndex % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } };
         cell.border = {
-          top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+          top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
         };
+        if (h && h.type === 'percent') { cell.numFmt = '0"%"'; cell.alignment = { horizontal: 'right' }; }
+        else if (h && h.type === 'number') { cell.numFmt = '#,##0'; cell.alignment = { horizontal: 'right' }; }
       });
     });
+    const lastDataRow = worksheet.rowCount;
+
+    // Totals row
+    if (data.length > 0 && headers.some((h) => h.total)) {
+      const totalsValues = headers.map((h, i) => {
+        if (i === 0) return 'TOTAL / AVG';
+        if (h.total === 'sum') return sumBy(data, h.key);
+        if (h.total === 'avg') return avgBy(data, h.key);
+        return '';
+      });
+      const totalsRow = worksheet.addRow(totalsValues);
+      totalsRow.eachCell((cell, col) => {
+        const h = headers[col - 1];
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+        if (h && h.type === 'percent') { cell.numFmt = '0"%"'; cell.alignment = { horizontal: 'right' }; }
+        else if (h && h.type === 'number') { cell.numFmt = '#,##0'; cell.alignment = { horizontal: 'right' }; }
+      });
+    }
+
+    // Freeze header + auto filter
+    worksheet.views = [{ state: 'frozen', ySplit: headerRowIdx, showGridLines: false }];
+    worksheet.autoFilter = { from: { row: headerRowIdx, column: 1 }, to: { row: headerRowIdx, column: headers.length } };
+
+    // Conditional formatting (data bars / color scales) on flagged columns
+    try {
+      headers.forEach((h, i) => {
+        if (!h.cf || lastDataRow < firstDataRow) return;
+        const colLetter = worksheet.getColumn(i + 1).letter;
+        const ref = `${colLetter}${firstDataRow}:${colLetter}${lastDataRow}`;
+        if (h.cf === 'dataBar') {
+          worksheet.addConditionalFormatting({ ref, rules: [{ type: 'dataBar', cfvo: [{ type: 'min' }, { type: 'max' }], color: { argb: 'FFF97316' } }] });
+        } else if (h.cf === 'colorScale') {
+          worksheet.addConditionalFormatting({ ref, rules: [{ type: 'colorScale', cfvo: [{ type: 'min' }, { type: 'percentile', value: 50 }, { type: 'max' }], color: [{ argb: 'FFF87171' }, { argb: 'FFFBBF24' }, { argb: 'FF34D399' }] }] });
+        }
+      });
+    } catch (cfErr) {
+      console.warn('Excel conditional formatting skipped:', cfErr.message);
+    }
   }
 
   // Save file
@@ -505,12 +794,94 @@ const generateExcel = async (reportType, title, data, options = {}) => {
   const filePath = path.join(REPORTS_DIR, fileName);
   await workbook.xlsx.writeFile(filePath);
 
-  return {
-    fileName,
-    filePath,
-    format: 'xlsx',
-    size: fs.statSync(filePath).size
-  };
+  return { fileName, filePath, format: 'xlsx', size: fs.statSync(filePath).size };
+};
+
+/**
+ * Build the "Summary" worksheet: KPI cards, insights, and a data-bar
+ * mini-chart of the top highlights.
+ */
+const buildExcelSummarySheet = (workbook, title, options, summary) => {
+  const ws = workbook.addWorksheet('Summary', { views: [{ showGridLines: false }] });
+  ws.getColumn(1).width = 4;
+  [2, 3, 4].forEach((c) => (ws.getColumn(c).width = 20));
+  ws.getColumn(5).width = 4;
+
+  ws.mergeCells('B2:E2');
+  ws.getCell('B2').value = 'MultipliersKraft LMS';
+  ws.getCell('B2').font = { size: 20, bold: true, color: { argb: 'FFF97316' } };
+
+  ws.mergeCells('B3:E3');
+  ws.getCell('B3').value = `${title} — Executive Summary`;
+  ws.getCell('B3').font = { size: 14, bold: true, color: { argb: 'FF1E293B' } };
+
+  ws.mergeCells('B4:E4');
+  let metaText = `Generated: ${new Date().toLocaleString()}`;
+  if (options.dateRange) metaText += ` | ${options.dateRange.from} → ${options.dateRange.to}`;
+  ws.getCell('B4').value = metaText;
+  ws.getCell('B4').font = { size: 9, italic: true, color: { argb: 'FF64748B' } };
+
+  let r = 6;
+  // KPI cards (value big on top, label below) laid 3 per row
+  const cardTones = { toneArgb: (hex) => 'FF' + hex.replace('#', '').toUpperCase() };
+  ws.getCell(`B${r}`).value = 'KEY METRICS';
+  ws.getCell(`B${r}`).font = { bold: true, size: 12, color: { argb: 'FF1E293B' } };
+  r += 1;
+  summary.kpis.forEach((k, i) => {
+    const col = 2 + (i % 3);
+    const rowValue = r + Math.floor(i / 3) * 3;
+    const valCell = ws.getCell(rowValue, col);
+    valCell.value = k.value;
+    valCell.font = { size: 16, bold: true, color: { argb: cardTones.toneArgb(k.toneHex || '#f97316') } };
+    valCell.alignment = { horizontal: 'left' };
+    const labCell = ws.getCell(rowValue + 1, col);
+    labCell.value = k.label;
+    labCell.font = { size: 9, color: { argb: 'FF64748B' } };
+    labCell.alignment = { horizontal: 'left' };
+    valCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+    labCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+  });
+  r += Math.ceil(summary.kpis.length / 3) * 3 + 1;
+
+  // Insights
+  if (summary.insights && summary.insights.length) {
+    ws.getCell(`B${r}`).value = 'KEY INSIGHTS';
+    ws.getCell(`B${r}`).font = { bold: true, size: 12, color: { argb: 'FF1E293B' } };
+    r += 1;
+    summary.insights.forEach((t) => {
+      ws.mergeCells(`B${r}:E${r}`);
+      const c = ws.getCell(`B${r}`);
+      c.value = `•  ${t}`;
+      c.font = { size: 10, color: { argb: 'FF334155' } };
+      c.alignment = { wrapText: true };
+      r += 1;
+    });
+    r += 1;
+  }
+
+  // Top highlights mini-chart (data bars)
+  if (summary.chart && summary.chart.bars && summary.chart.bars.length) {
+    ws.getCell(`B${r}`).value = summary.chart.title.toUpperCase();
+    ws.getCell(`B${r}`).font = { bold: true, size: 12, color: { argb: 'FF1E293B' } };
+    r += 1;
+    const firstBarRow = r;
+    summary.chart.bars.slice(0, 10).forEach((b) => {
+      ws.mergeCells(`B${r}:C${r}`);
+      ws.getCell(`B${r}`).value = String(b.label);
+      ws.getCell(`B${r}`).font = { size: 10, color: { argb: 'FF334155' } };
+      const vc = ws.getCell(`D${r}`);
+      vc.value = numify(b.value);
+      vc.numFmt = summary.chart.unit === '%' ? '0"%"' : '#,##0';
+      vc.alignment = { horizontal: 'right' };
+      r += 1;
+    });
+    try {
+      ws.addConditionalFormatting({
+        ref: `D${firstBarRow}:D${r - 1}`,
+        rules: [{ type: 'dataBar', cfvo: [{ type: 'min' }, { type: 'max' }], color: { argb: 'FFF97316' } }],
+      });
+    } catch (e) { /* non-fatal */ }
+  }
 };
 
 /**
@@ -520,28 +891,35 @@ const getHeadersForReportType = (reportType, data) => {
   switch (reportType) {
     case 'user':
       return [
-        { key: 'fullName', label: 'Full Name', width: 25 },
-        { key: 'email', label: 'Email', width: 30 },
-        { key: 'department', label: 'Department', width: 15 },
-        { key: 'jobTitle', label: 'Job Title', width: 20 },
-        { key: 'status', label: 'Status', width: 12 },
-        { key: 'joinDate', label: 'Join Date', width: 15 },
-        { key: 'coursesCompleted', label: 'Courses Completed', width: 18 },
-        { key: 'totalPoints', label: 'Total Points', width: 15 }
+        { key: 'fullName', label: 'Full Name', width: 25, type: 'text' },
+        { key: 'email', label: 'Email', width: 30, type: 'text' },
+        { key: 'department', label: 'Department', width: 16, type: 'text' },
+        { key: 'jobTitle', label: 'Job Title', width: 20, type: 'text' },
+        { key: 'status', label: 'Status', width: 12, type: 'text' },
+        { key: 'joinDate', label: 'Join Date', width: 15, type: 'text' },
+        { key: 'coursesCompleted', label: 'Courses Completed', width: 18, type: 'number', total: 'sum', cf: 'dataBar' },
+        { key: 'certificatesEarned', label: 'Certificates', width: 14, type: 'number', total: 'sum' },
+        { key: 'totalPoints', label: 'Total Points', width: 15, type: 'number', total: 'sum', cf: 'dataBar' }
       ];
     case 'course-completion':
       return [
-        { key: 'courseTitle', label: 'Course Title', width: 35 },
-        { key: 'category', label: 'Category', width: 20 },
-        { key: 'totalEnrollments', label: 'Total Enrollments', width: 18 },
-        { key: 'completedCount', label: 'Completed', width: 15 },
-        { key: 'completionRate', label: 'Completion Rate %', width: 18 },
-        { key: 'avgTimeSpentMinutes', label: 'Avg Time (min)', width: 15 }
+        { key: 'courseTitle', label: 'Course Title', width: 35, type: 'text' },
+        { key: 'category', label: 'Category', width: 20, type: 'text' },
+        { key: 'totalEnrollments', label: 'Total Enrollments', width: 18, type: 'number', total: 'sum', cf: 'dataBar' },
+        { key: 'completedCount', label: 'Completed', width: 15, type: 'number', total: 'sum' },
+        { key: 'completionRate', label: 'Completion Rate', width: 18, type: 'percent', total: 'avg', cf: 'colorScale' },
+        { key: 'avgTimeSpentMinutes', label: 'Avg Time (min)', width: 15, type: 'number', total: 'avg' }
       ];
     case 'learning-engagement':
       return [
-        { key: 'metric', label: 'Metric', width: 30 },
-        { key: 'value', label: 'Value', width: 20 }
+        { key: 'metric', label: 'Metric', width: 34, type: 'text' },
+        { key: 'value', label: 'Value', width: 22, type: 'text' }
+      ];
+    case 'skills-assessment':
+      return [
+        { key: 'skill', label: 'Skill', width: 30, type: 'text' },
+        { key: 'score', label: 'Average Score', width: 18, type: 'percent', total: 'avg', cf: 'colorScale' },
+        { key: 'usersAssessed', label: 'Users Assessed', width: 16, type: 'number', total: 'sum', cf: 'dataBar' }
       ];
     default:
       // Auto-generate headers from data keys
@@ -549,7 +927,8 @@ const getHeadersForReportType = (reportType, data) => {
         return Object.keys(data[0]).map(key => ({
           key,
           label: key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1'),
-          width: 15
+          width: 16,
+          type: typeof data[0][key] === 'number' ? 'number' : 'text'
         }));
       }
       return [];
@@ -577,6 +956,17 @@ const generateCSV = async (reportType, title, data, options = {}) => {
   }
   if (options.department && options.department !== 'all') {
     csvContent += `# Department: ${options.department}\n`;
+  }
+
+  // Executive summary block (KPIs + insights) as comment lines.
+  const summary = computeReportSummary(reportType, data, options);
+  if (summary) {
+    csvContent += '#\n# ===== EXECUTIVE SUMMARY =====\n';
+    (summary.kpis || []).forEach((k) => { csvContent += `# ${k.label}: ${k.value}\n`; });
+    if (summary.insights && summary.insights.length) {
+      csvContent += '# --- Key Insights ---\n';
+      summary.insights.forEach((t) => { csvContent += `# - ${t}\n`; });
+    }
   }
   csvContent += '#\n';
 

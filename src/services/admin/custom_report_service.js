@@ -65,7 +65,9 @@ const DATA_SOURCES = {
       courseTitle: { label: "Course Title", select: "c.title", sortable: true },
       category: { label: "Category", select: "COALESCE(cat.name, 'Uncategorized')", sortable: true, filterable: true, filterType: "text" },
       enrolledDate: { label: "Enrolled Date", select: "DATE_FORMAT(e.enrolled_date, '%Y-%m-%d')", sortable: true, filterable: true, filterType: "date" },
-      progress: { label: "Progress (%)", select: "COALESCE(e.progress, 0)", sortable: true },
+      // `enrol` has no progress column; derive it the same way the dashboard does —
+      // completed lessons / total course lessons. NULLIF guards courses with no lessons.
+      progress: { label: "Progress (%)", select: "COALESCE(ROUND(100.0 * (SELECT COUNT(*) FROM course_progress cp WHERE cp.enroll_id = e.id AND cp.lesson_completed = 1) / NULLIF((SELECT COUNT(*) FROM course_lesson cl WHERE cl.course_id = e.course_id), 0), 0), 0)", sortable: true },
       lastAccessed: { label: "Last Accessed", select: "DATE_FORMAT(e.last_updated, '%Y-%m-%d %H:%i')", sortable: true },
     },
   },

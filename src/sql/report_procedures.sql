@@ -207,6 +207,13 @@ END //
 
 -- =============================================
 -- Get Course Completion Report Data
+-- !!! DEPRECATED / BUGGY — DO NOT APPLY THIS DEFINITION !!!
+-- The completedCount below uses `e.last_updated IS NOT NULL`, which counts
+-- EVERY enrolment as completed (~100% for every course). The authoritative,
+-- correct definition (real lesson-completion) now lives in
+-- src/config/procedures_catalog.js and is applied by migration
+-- 20260710120000-fix-course-completion-report-sp.js AND self-healed on every
+-- boot by ensureProcedures(). This block is kept only for historical reference.
 -- =============================================
 CREATE PROCEDURE sp_get_course_completion_report(
   IN p_from_date DATE,
