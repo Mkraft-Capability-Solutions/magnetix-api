@@ -136,7 +136,7 @@ class TranscriptService {
         FROM enrol e
         INNER JOIN course c ON e.course_id = c.id
         LEFT JOIN category cat ON c.category_id = cat.id
-        WHERE e.user_id = ? AND c.is_deleted = 0 AND c.status = 'active'
+        WHERE e.user_id = ? AND c.is_deleted = 0 AND c.status IN ('active', 'published')
         ORDER BY e.enrolled_date DESC
       `;
 

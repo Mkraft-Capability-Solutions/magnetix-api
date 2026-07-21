@@ -12,7 +12,7 @@ class DashboardService {
         `SELECT COUNT(*) as total_courses
          FROM enrol e
          INNER JOIN course c ON e.course_id = c.id
-         WHERE e.user_id = ? AND c.is_deleted = 0 AND c.status = 'active'`,
+         WHERE e.user_id = ? AND c.is_deleted = 0 AND c.status IN ('active', 'published')`,
         [studentId]
       );
       const totalCourses = totalCoursesResult[0].total_courses;
@@ -24,7 +24,7 @@ class DashboardService {
          INNER JOIN course c ON e.course_id = c.id
          WHERE e.user_id = ?
            AND c.is_deleted = 0
-           AND c.status = 'active'
+           AND c.status IN ('active', 'published')
            AND (
              SELECT COUNT(*)
              FROM course_progress cp

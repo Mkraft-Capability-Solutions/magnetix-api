@@ -38,7 +38,7 @@ class CourseService {
         FROM enrol e
         INNER JOIN course c ON e.course_id = c.id
         LEFT JOIN category cat ON c.category_id = cat.id
-        WHERE e.user_id = ? AND c.is_deleted = 0 AND c.status = 'active'
+        WHERE e.user_id = ? AND c.is_deleted = 0 AND c.status IN ('active', 'published')
         ORDER BY e.enrolled_date DESC
       `;
 
@@ -127,7 +127,7 @@ class CourseService {
           EXISTS(SELECT 1 FROM saved_courses sc WHERE sc.user_id = ? AND sc.course_id = c.id) as isSaved
         FROM course c
         LEFT JOIN category cat ON c.category_id = cat.id
-        WHERE c.status = 'active'
+        WHERE c.status IN ('active', 'published')
           AND c.is_deleted = 0
           AND NOT EXISTS (SELECT 1 FROM enrol e WHERE e.user_id = ? AND e.course_id = c.id)
         ORDER BY c.created_at DESC
@@ -466,7 +466,7 @@ class CourseService {
         FROM saved_courses sc
         INNER JOIN course c ON sc.course_id = c.id
         LEFT JOIN category cat ON c.category_id = cat.id
-        WHERE sc.user_id = ? AND sc.course_saved = 1 AND c.is_deleted = 0 AND c.status = 'active'
+        WHERE sc.user_id = ? AND sc.course_saved = 1 AND c.is_deleted = 0 AND c.status IN ('active', 'published')
         ORDER BY sc.saved_date DESC
       `;
 
