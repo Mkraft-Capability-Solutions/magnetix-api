@@ -248,6 +248,7 @@ app.use("/api/super-admin/users", superAdminUserOrganizationRoutes);
 app.use("/api/super-admin/rbac", superAdminRbacRoutes);
 app.use("/api/super-admin/hierarchy", superAdminHierarchyRoutes);
 app.use("/api/super-admin/content-governance", superAdminContentGovRoutes);
+app.use("/api/super-admin/learning-assignments", require("./routes/super_admin/learning_assignment_routes"));
 app.use("/api/super-admin/org-features", superAdminOrgFeaturesRoutes);
 app.use("/api/org-features", orgFeaturesRoutes);
 app.use("/api/super-admin/org-insights", require("./routes/super_admin/org_insights_routes"));
