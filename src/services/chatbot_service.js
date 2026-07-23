@@ -71,7 +71,7 @@ exports.getConversationMessages = async (conversationUuid, userId) => {
 /**
  * Send a message and get AI response
  */
-exports.sendMessage = async (conversationUuid, userId, userMessage) => {
+exports.sendMessage = async (conversationUuid, userId, userMessage, userRoleId = null) => {
   // Verify ownership and status
   const [convRows] = await promisePool.query(
     'SELECT id, uuid, title, status FROM chatbot_conversations WHERE uuid = ? AND user_id = ?',
@@ -90,8 +90,8 @@ exports.sendMessage = async (conversationUuid, userId, userMessage) => {
     [conversationUuid, 'user', userMessage]
   );
 
-  // Build knowledge context
-  const knowledgeContext = await _buildKnowledgeContext(userMessage);
+  // Build knowledge context (scoped to what this user's role is allowed to see)
+  const knowledgeContext = await _buildKnowledgeContext(userMessage, userRoleId);
 
   // Build system prompt
   const systemPrompt = _buildSystemPrompt(knowledgeContext);
@@ -235,9 +235,13 @@ exports.closeConversation = async (conversationUuid, userId) => {
 /**
  * Build knowledge context from KB articles, FAQs, courses, and more
  */
-async function _buildKnowledgeContext(userMessage) {
+async function _buildKnowledgeContext(userMessage, userRoleId = null) {
   const keywords = _extractKeywords(userMessage);
   const sections = [];
+  // Enforce Knowledge Base audience targeting: only surface KB rows that are
+  // Public or that include this user's role. Reuses the KB service's clause.
+  const { buildAudienceClause } = require('./admin/knowledge_base_service');
+  const audClause = buildAudienceClause({ roleId: userRoleId ?? null });
 
   // Always include dynamic data if keywords match
   if (keywords.length > 0) {
@@ -245,8 +249,8 @@ async function _buildKnowledgeContext(userMessage) {
       const articleConditions = keywords.map(() => '(title LIKE ? OR content LIKE ? OR tags LIKE ?)').join(' OR ');
       const articleParams = keywords.flatMap(kw => [`%${kw}%`, `%${kw}%`, `%${kw}%`]);
       const [articles] = await promisePool.query(
-        `SELECT title, excerpt, content FROM kb_articles WHERE is_deleted = 0 AND status = 'published' AND (${articleConditions}) LIMIT 3`,
-        articleParams
+        `SELECT title, excerpt, content FROM kb_articles WHERE is_deleted = 0 AND status = 'published'${audClause.sql} AND (${articleConditions}) LIMIT 3`,
+        [...audClause.params, ...articleParams]
       );
       if (articles.length > 0) {
         sections.push('KNOWLEDGE BASE ARTICLES:');
@@ -261,8 +265,8 @@ async function _buildKnowledgeContext(userMessage) {
       const faqConditions = keywords.map(() => '(question LIKE ? OR answer LIKE ?)').join(' OR ');
       const faqParams = keywords.flatMap(kw => [`%${kw}%`, `%${kw}%`]);
       const [faqs] = await promisePool.query(
-        `SELECT question, answer FROM kb_faqs WHERE is_deleted = 0 AND is_active = 1 AND (${faqConditions}) LIMIT 5`,
-        faqParams
+        `SELECT question, answer FROM kb_faqs WHERE is_deleted = 0 AND is_active = 1${audClause.sql} AND (${faqConditions}) LIMIT 5`,
+        [...audClause.params, ...faqParams]
       );
       if (faqs.length > 0) {
         sections.push('\nKNOWLEDGE BASE FAQS:');

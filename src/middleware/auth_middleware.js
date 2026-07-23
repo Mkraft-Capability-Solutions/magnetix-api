@@ -44,6 +44,30 @@ exports.authenticate = async (req, res, next) => {
   }
 };
 
+// Like `authenticate`, but NEVER rejects. Used on public surfaces (e.g. the
+// Knowledge Base viewer) that must stay open to logged-out visitors while still
+// identifying a logged-in user's role when a valid token is present. On any
+// missing/invalid/expired token it simply proceeds with `req.user` unset.
+exports.optionalAuthenticate = async (req, res, next) => {
+  try {
+    const token = req.header("Authorization")?.replace("Bearer ", "");
+    if (!token) return next();
+
+    const decoded = jwt.verify(token, jwtConfig.accessSecret);
+    const [rows] = await promisePool.query(
+      "SELECT uuid, email, role_id, status, session_id FROM users WHERE uuid = ? AND is_deleted = 0",
+      [decoded.uuid]
+    );
+
+    if (rows.length > 0 && rows[0].session_id === decoded.session_id) {
+      req.user = rows[0];
+    }
+  } catch (error) {
+    // Invalid/expired token on a public route — treat as anonymous, don't block.
+  }
+  next();
+};
+
 exports.authorize = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role_id)) {

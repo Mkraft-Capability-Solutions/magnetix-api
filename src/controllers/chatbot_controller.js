@@ -55,7 +55,7 @@ exports.sendMessage = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Message is required' });
     }
 
-    const result = await chatbotService.sendMessage(uuid, req.user.uuid, message.trim());
+    const result = await chatbotService.sendMessage(uuid, req.user.uuid, message.trim(), req.user.role_id);
     res.json({ success: true, data: result });
   } catch (error) {
     if (error.message === 'Conversation not found') {
