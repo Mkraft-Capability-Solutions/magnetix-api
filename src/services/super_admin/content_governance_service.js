@@ -139,13 +139,18 @@ const getCourseHistory = async (courseId) => {
 
 // ---------------------------------------------------- Lifecycle machine
 
-// action -> { from: <required current status>, to: <next status> }
+// action -> { from: <required current status(es)>, to: <next status> }
+// `from` may be a single status or an array of accepted statuses.
+// Note: `approve` transitions to 'active' (not 'published') so that approved
+// courses are immediately visible to learners — the student catalog gates on
+// status = 'active'. Legacy courses may still be in 'published'; the learner
+// queries accept both, and `archive` accepts both as its "live" starting state.
 const TRANSITIONS = {
-  submit:  { from: 'draft',     to: 'pending' },
-  approve: { from: 'pending',   to: 'published' },
-  reject:  { from: 'pending',   to: 'draft' },
-  archive: { from: 'published', to: 'archived' },
-  restore: { from: 'archived',  to: 'draft' }
+  submit:  { from: 'draft',                  to: 'pending' },
+  approve: { from: 'pending',                to: 'active' },
+  reject:  { from: 'pending',                to: 'draft' },
+  archive: { from: ['active', 'published'],  to: 'archived' },
+  restore: { from: 'archived',               to: 'draft' }
 };
 
 /**
@@ -166,11 +171,12 @@ const transitionLifecycle = async (courseId, action, note, actorUuid) => {
   }
 
   const current = rows[0].status;
-  if (current !== rule.from) {
+  const allowedFrom = Array.isArray(rule.from) ? rule.from : [rule.from];
+  if (!allowedFrom.includes(current)) {
     return {
       success: false,
       status: 409,
-      message: `Cannot ${action} a course in '${current}' state (requires '${rule.from}')`
+      message: `Cannot ${action} a course in '${current}' state (requires '${allowedFrom.join("' or '")}')`
     };
   }
 

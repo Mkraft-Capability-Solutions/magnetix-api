@@ -1,5 +1,22 @@
 const kbService = require("../../services/admin/knowledge_base_service");
 
+// Resolve the audience "viewer" for a public request from the (optional) logged-in
+// user and, for Admins/Super Admins only, an optional `?audience=public|all` override.
+// - anonymous            -> Public content only
+// - Learner/Trainer      -> Public + their-role content (override ignored)
+// - Admin/Super Admin     -> defaults to Public + their-role; may switch view via
+//                            `?audience=public` (Public only) or `?audience=all` (Everything)
+const resolveViewer = (req) => {
+  const roleId = req.user?.role_id ?? null;
+  const isAdmin = roleId === 3 || roleId === 4;
+  if (isAdmin) {
+    const view = req.query?.audience;
+    if (view === "public") return { mode: "public" };
+    if (view === "all") return { mode: "all" };
+  }
+  return { roleId };
+};
+
 // ========== CHANGELOG ==========
 
 exports.getAllChangelog = async (req, res) => {
@@ -173,7 +190,7 @@ exports.deleteArticle = async (req, res) => {
 
 exports.getPublishedChangelog = async (req, res) => {
   try {
-    const result = await kbService.getAllChangelog("", "published", 1, 50);
+    const result = await kbService.getAllChangelog("", "published", 1, 50, resolveViewer(req));
     const entries = [];
     for (const entry of result.data) {
       const full = await kbService.getChangelogEntryByUuid(entry.uuid);
@@ -187,7 +204,7 @@ exports.getPublishedChangelog = async (req, res) => {
 
 exports.getActiveFaqs = async (req, res) => {
   try {
-    const faqs = await kbService.getAllFaqs("", "");
+    const faqs = await kbService.getAllFaqs("", "", resolveViewer(req));
     const active = faqs.filter((f) => f.is_active);
     res.json({ success: true, data: active });
   } catch (error) {
@@ -197,7 +214,7 @@ exports.getActiveFaqs = async (req, res) => {
 
 exports.getPublishedArticles = async (req, res) => {
   try {
-    const result = await kbService.getAllArticles("", "", "published", 1, 100);
+    const result = await kbService.getAllArticles("", "", "published", 1, 100, resolveViewer(req));
     res.json({ success: true, data: result.data });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to fetch articles" });
@@ -206,7 +223,7 @@ exports.getPublishedArticles = async (req, res) => {
 
 exports.getArticleBySlug = async (req, res) => {
   try {
-    const article = await kbService.getArticleBySlug(req.params.slug);
+    const article = await kbService.getArticleBySlug(req.params.slug, resolveViewer(req));
     if (!article) return res.status(404).json({ success: false, message: "Article not found" });
     res.json({ success: true, data: article });
   } catch (error) {

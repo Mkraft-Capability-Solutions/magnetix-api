@@ -1183,11 +1183,13 @@ class InstructorCourseService {
     }
   }
 
-  // Get active courses directly from table
+  // Get active courses directly from table. Includes legacy 'published' courses:
+  // the governance approve step now sets 'active', but older approved courses may
+  // still be 'published' — both are "live" and should appear in the active list.
   async getInstructorActiveCourses(userId) {
     const [rows] = await promisePool.query(
       `SELECT * FROM course
-            WHERE creator_id = ? AND status = 'active' AND is_deleted = 0`,
+            WHERE creator_id = ? AND status IN ('active', 'published') AND is_deleted = 0`,
       [userId]
     );
     return rows.map(CourseDTO.courseToDTO);
