@@ -166,6 +166,7 @@ app.use("/api/student", studentCertificationRoutes);
 app.use("/api/student/achievements", studentAchievementsRoutes);
 app.use("/api/student/corporate-info", studentCorporateInfoRoutes);
 app.use("/api/student/ai-learning-path", featureGate("ai_learning_paths"), studentAILearningPathRoutes);
+app.use("/api/student/lingo-lab", featureGate("lingo_lab"), require("./routes/student/lingo_lab_routes"));
 app.use("/api/notification-permissions", notificationPermissionRoutes);
 app.use("/api/instructor/mentorship", instructorMentorshipRoutes);
 app.use("/api/instructor/events", instructorEventRoutes);
