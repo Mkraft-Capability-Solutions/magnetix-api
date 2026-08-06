@@ -455,6 +455,7 @@ const getDashboard = async (userId) => {
   const level = levelFromXp(stats.xp);
   const xpIntoLevel = stats.xp % LEVEL_XP;
   const unlock = await computeAccess(userId, lang, stats);
+  const roadmap = applyUnlockToRoadmap(profile ? profile.roadmap : null, unlock);
 
   return {
     success: true,
@@ -463,7 +464,7 @@ const getDashboard = async (userId) => {
       targetLanguage: lang,
       unlock,
       dailyGoalMinutes: profile ? profile.daily_minutes : 10,
-      roadmap: profile ? profile.roadmap : null,
+      roadmap,
       stats: {
         xp: stats.xp,
         coins: stats.coins,
@@ -486,9 +487,49 @@ const getDashboard = async (userId) => {
   };
 };
 
+// ---------------------------------------------------------------- content source
+// The Vocabulary / Pronunciation / Listening labs read from lingo_vocabulary.
+// Policy: use AI to CREATE content when it's available, else fall back to seeded
+// data. So when a language is sparse and AI is reachable, we generate the default
+// categories once and PERSIST them (stable vocab_ids for spaced repetition); if
+// AI is unavailable we simply serve whatever has been seeded.
+const DEFAULT_CATEGORIES = ['greetings', 'numbers', 'colors', 'food', 'family'];
+const _ensuredLangs = new Set();
+
+async function ensureLanguageContent(lang) {
+  if (!lang || _ensuredLangs.has(lang)) return;
+
+  const [cntRows] = await pool.query(
+    'SELECT COUNT(*) AS c, COUNT(DISTINCT category) AS cats FROM lingo_vocabulary WHERE target_language = ?',
+    [lang]
+  );
+  const total = Number(cntRows[0].c) || 0;
+  const cats = Number(cntRows[0].cats) || 0;
+
+  // Already has enough content → serve from the table (seed or prior AI fill).
+  if (total >= 15 || cats >= 3) { _ensuredLangs.add(lang); return; }
+
+  // Sparse. Only attempt AI generation if a key is configured; otherwise leave it
+  // to whatever seed exists (do NOT mark ensured, so it retries once AI returns).
+  if (!process.env.GEMINI_API_KEY) return;
+
+  try {
+    const seed = require('./lingo_seed_service'); // lazy require avoids a load cycle
+    const results = await Promise.all(
+      DEFAULT_CATEGORIES.map((c) => seed.generate({ language: lang, category: c, count: 8 }).catch(() => null))
+    );
+    const anyGenerated = results.some((r) => r && r.success && r.data && !r.data.aiUnavailable);
+    if (anyGenerated) _ensuredLangs.add(lang); // AI worked — don't regenerate again
+    // If AI was unavailable, stay un-ensured so we retry later; seed is used meanwhile.
+  } catch {
+    /* generation failed — seed content is still served */
+  }
+}
+
 // ---------------------------------------------------------------- vocabulary
 const getCategories = async (userId, lang) => {
   await ensureSchema();
+  await ensureLanguageContent(lang);
   const [rows] = await pool.query(
     `SELECT v.category,
             COUNT(*) AS total,
@@ -513,6 +554,7 @@ const getCategories = async (userId, lang) => {
 
 const getVocabulary = async (userId, lang, category) => {
   await ensureSchema();
+  await ensureLanguageContent(lang);
   const params = [userId, lang];
   let where = 'v.target_language = ?';
   if (category) { where += ' AND v.category = ?'; params.push(category); }
@@ -751,12 +793,19 @@ const awardXp = async (userId, lang, xp, opts = {}) => {
     [newXp, coinsEarned, newLevel, currentStreak, longestStreak, today, userId, lang]
   );
 
-  if (typeof opts.conversationScore === 'number') {
-    const sc = Math.max(0, Math.min(100, Math.round(opts.conversationScore)));
-    const oldScore = Number(stats.conversation_score) || 0;
+  // Optional skill-score update (rolling average). Accepts the legacy
+  // `conversationScore` shorthand or a generic { scoreField, score }.
+  const SCORE_FIELDS = new Set(['pronunciation_score', 'listening_score', 'reading_score', 'conversation_score']);
+  let scoreField = null;
+  let scoreVal = null;
+  if (typeof opts.conversationScore === 'number') { scoreField = 'conversation_score'; scoreVal = opts.conversationScore; }
+  else if (opts.scoreField && typeof opts.score === 'number') { scoreField = opts.scoreField; scoreVal = opts.score; }
+  if (scoreField && SCORE_FIELDS.has(scoreField)) {
+    const sc = Math.max(0, Math.min(100, Math.round(scoreVal)));
+    const oldScore = Number(stats[scoreField]) || 0;
     const newScore = oldScore === 0 ? sc : Math.round(oldScore * 0.6 + sc * 0.4);
     await pool.query(
-      'UPDATE lingo_progress_stats SET conversation_score = ? WHERE user_id = ? AND target_language = ?',
+      `UPDATE lingo_progress_stats SET ${scoreField} = ? WHERE user_id = ? AND target_language = ?`,
       [newScore, userId, lang]
     );
   }
@@ -765,7 +814,7 @@ const awardXp = async (userId, lang, xp, opts = {}) => {
 };
 
 // ---------------------------------------------------------------- settings / access
-const LAB_TABS = ['vocabulary', 'pronunciation', 'listening', 'conversation', 'voice', 'roleplay', 'fluency'];
+const LAB_TABS = ['vocabulary', 'pronunciation', 'listening', 'sentence', 'reading', 'conversation', 'voice', 'roleplay', 'fluency'];
 
 const getSettings = async () => {
   await ensureSchema();
@@ -784,6 +833,34 @@ const setSettings = async (unlockMode, actorUuid) => {
   );
   return { success: true, data: { unlockMode: mode } };
 };
+
+// Map each roadmap stage to the lab tab that gates it (sentence/reading labs are
+// not built yet, so they follow the last implemented lab, 'listening').
+const STAGE_TAB = {
+  vocabulary: 'vocabulary', pronunciation: 'pronunciation', listening: 'listening',
+  sentence: 'sentence', reading: 'reading', text_chat: 'conversation',
+  voice_chat: 'voice', roleplay: 'roleplay', fluency: 'fluency',
+};
+
+// Recompute the roadmap stage statuses from the live unlock state so the
+// dashboard roadmap matches the admin policy + the learner's progress.
+function applyUnlockToRoadmap(roadmap, unlock) {
+  let rm = roadmap;
+  if (typeof rm === 'string') { try { rm = JSON.parse(rm); } catch { return roadmap; } }
+  if (!rm || !Array.isArray(rm.stages)) return rm;
+  const unlockedSet = new Set(unlock.unlockedTabs || []);
+  const all = unlock.mode === 'all';
+  let currentAssigned = false;
+  const stages = rm.stages.map((s) => {
+    if (s.key === 'onboarding') return { ...s, status: 'done' };
+    const tab = STAGE_TAB[s.key];
+    const unlocked = all || (tab && unlockedSet.has(tab));
+    if (!unlocked) return { ...s, status: 'locked' };
+    if (!currentAssigned) { currentAssigned = true; return { ...s, status: 'current' }; }
+    return { ...s, status: 'unlocked' };
+  });
+  return { ...rm, stages };
+}
 
 // Which lab tabs are unlocked for this learner, given the admin policy + progress.
 async function computeAccess(userId, lang, stats) {
@@ -804,6 +881,17 @@ async function computeAccess(userId, lang, stats) {
   const hasPron = (Number(stats.pronunciation_score) || 0) > 0;
   const hasListen = (Number(stats.listening_score) || 0) > 0;
 
+  let hasSentence = false;
+  let hasReading = (Number(stats.reading_score) || 0) > 0;
+  try {
+    const [sr] = await pool.query(
+      "SELECT DISTINCT activity_type FROM lingo_activity WHERE user_id = ? AND target_language = ? AND activity_type IN ('sentence','reading')",
+      [userId, lang]
+    );
+    hasSentence = sr.some((r) => r.activity_type === 'sentence');
+    hasReading = hasReading || sr.some((r) => r.activity_type === 'reading');
+  } catch { /* table may be empty */ }
+
   let hasConversation = false;
   let hasRoleplay = false;
   try {
@@ -815,7 +903,9 @@ async function computeAccess(userId, lang, stats) {
   const unlocked = ['vocabulary'];
   if (hasVocab) unlocked.push('pronunciation');
   if (hasPron) unlocked.push('listening');
-  if (hasListen) unlocked.push('conversation');
+  if (hasListen) unlocked.push('sentence');
+  if (hasSentence) unlocked.push('reading');
+  if (hasReading) unlocked.push('conversation');
   if (hasConversation) unlocked.push('voice', 'roleplay');
   if (hasRoleplay) unlocked.push('fluency');
   return { mode, unlockedTabs: unlocked };
@@ -823,6 +913,7 @@ async function computeAccess(userId, lang, stats) {
 
 module.exports = {
   LINGO_SCHEMA_SQL,
+  ensureSchema,
   getSettings,
   setSettings,
   getProfile,

@@ -30,6 +30,14 @@ router.post('/activity', controller.submitActivity);
 // Text-to-speech (ElevenLabs) for word/phrase playback
 router.post('/tts', controller.tts);
 
+// Level 4 — Sentence Builder
+router.get('/sentences', controller.getSentences);
+router.post('/sentences/complete', controller.completeSentences);
+
+// Level 5 — Reading Lab
+router.get('/reading', controller.getReading);
+router.post('/reading/complete', controller.completeReading);
+
 // Level 6 — Text Conversation Lab
 router.get('/conversation/scenarios', controller.getScenarios);
 router.get('/conversations', controller.listConversations);

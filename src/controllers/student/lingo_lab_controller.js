@@ -1,5 +1,6 @@
 const service = require('../../services/student/lingo_lab_service');
 const conversationService = require('../../services/student/lingo_conversation_service');
+const practiceService = require('../../services/student/lingo_practice_service');
 const ttsService = require('../../services/student/lingo_tts_service');
 const fluencyService = require('../../services/student/lingo_fluency_service');
 
@@ -119,6 +120,44 @@ exports.tts = async (req, res, next) => {
     console.error('LingoLab tts:', error);
     return res.json({ success: true, data: null });
   }
+};
+
+// ---- Sentence Builder (Level 4) ----
+exports.getSentences = async (req, res, next) => {
+  try {
+    const result = await practiceService.getSentences(req.user.uuid, req.query.lang, req.query.count);
+    if (!req.query.lang) return res.status(400).json({ success: false, message: 'lang is required' });
+    return res.json({ success: true, data: result.data });
+  } catch (error) { console.error('LingoLab getSentences:', error); next(error); }
+};
+
+exports.completeSentences = async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    if (!b.lang) return res.status(400).json({ success: false, message: 'lang is required' });
+    const result = await practiceService.completeSentences(req.user.uuid, b.lang, b);
+    if (!result.success) return res.status(result.status || 400).json({ success: false, message: result.message });
+    return res.json({ success: true, data: result.data });
+  } catch (error) { console.error('LingoLab completeSentences:', error); next(error); }
+};
+
+// ---- Reading Lab (Level 5) ----
+exports.getReading = async (req, res, next) => {
+  try {
+    if (!req.query.lang) return res.status(400).json({ success: false, message: 'lang is required' });
+    const result = await practiceService.getReading(req.user.uuid, req.query.lang);
+    return res.json({ success: true, data: result.data });
+  } catch (error) { console.error('LingoLab getReading:', error); next(error); }
+};
+
+exports.completeReading = async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    if (!b.lang) return res.status(400).json({ success: false, message: 'lang is required' });
+    const result = await practiceService.completeReading(req.user.uuid, b.lang, b);
+    if (!result.success) return res.status(result.status || 400).json({ success: false, message: result.message });
+    return res.json({ success: true, data: result.data });
+  } catch (error) { console.error('LingoLab completeReading:', error); next(error); }
 };
 
 // ---- Text Conversation Lab (Level 6) ----
