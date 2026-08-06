@@ -30,6 +30,42 @@ const SCENARIOS = {
   interview: { title: 'Job Interview', context: 'a friendly job interview, answering common questions' },
 };
 
+// Roleplay scenarios add explicit objectives + the role the tutor should play.
+const ROLEPLAY_SCENARIOS = {
+  rp_restaurant: {
+    title: 'Order a Meal', role: 'a waiter at a restaurant',
+    context: 'a restaurant where the learner is a customer ordering a full meal',
+    objectives: ['Greet the waiter', 'Order a main dish and a drink', 'Ask for the bill'],
+  },
+  rp_hotel: {
+    title: 'Hotel Check-in', role: 'a hotel receptionist',
+    context: 'a hotel reception where the learner is checking in',
+    objectives: ['Give your name and reservation', 'Ask about breakfast time', 'Ask for the Wi-Fi password'],
+  },
+  rp_airport: {
+    title: 'Airport Check-in', role: 'an airline check-in agent',
+    context: 'an airport check-in desk',
+    objectives: ['Check in for your flight', 'Ask about your baggage allowance', 'Ask where the gate is'],
+  },
+  rp_interview: {
+    title: 'Job Interview', role: 'a friendly hiring manager',
+    context: 'a job interview',
+    objectives: ['Introduce yourself', 'Describe your experience', 'Ask one question about the role'],
+  },
+  rp_doctor: {
+    title: "At the Doctor's", role: 'a doctor',
+    context: "a doctor's appointment",
+    objectives: ['Describe how you feel', 'Answer the doctor’s questions', 'Ask about the treatment'],
+  },
+  rp_shopping: {
+    title: 'Buy Clothes', role: 'a shop assistant',
+    context: 'a clothing store',
+    objectives: ['Ask for a specific item', 'Ask about size and price', 'Decide whether to buy it'],
+  },
+};
+
+const getScenario = (key) => SCENARIOS[key] || ROLEPLAY_SCENARIOS[key] || null;
+
 const LINGO_CONV_SQL = [
   `CREATE TABLE IF NOT EXISTS lingo_conversations (
      id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -92,7 +128,8 @@ function buildSystemPrompt(profile, scenario, isOpener) {
     `The learner's native language is ${native}; their level is ${level}.`,
     `RULES:`,
     `- Reply in ${target}, using vocabulary/grammar suitable for a ${level} learner. Keep replies to 1-2 short sentences and keep the conversation going with a simple question.`,
-    `- Stay in character for the scenario.`,
+    scenario.role ? `- Play the role of ${scenario.role}. Stay fully in character.` : `- Stay in character for the scenario.`,
+    scenario.objectives ? `- Gently guide the learner to accomplish these tasks: ${scenario.objectives.join('; ')}.` : '',
     isOpener
       ? `- This is the first message: greet the learner and open the scenario. There is nothing to correct yet.`
       : `- Gently correct the learner's most recent message ONLY if it has a real mistake. Be encouraging, never harsh.`,
@@ -188,7 +225,7 @@ const getConversation = async (userId, conversationId) => {
 
 const startConversation = async (userId, scenarioKey) => {
   await ensureConvSchema();
-  const scenario = SCENARIOS[scenarioKey];
+  const scenario = getScenario(scenarioKey);
   if (!scenario) return { success: false, status: 400, message: 'Unknown scenario' };
   const profile = await getActiveProfile(userId);
   if (!profile) return { success: false, status: 400, message: 'Set up a language first' };
@@ -228,7 +265,7 @@ const sendMessage = async (userId, conversationId, text) => {
     [conversationId, userId]
   );
   if (conv.length === 0) return { success: false, status: 404, message: 'Conversation not found' };
-  const scenario = SCENARIOS[conv[0].scenario] || SCENARIOS.smalltalk;
+  const scenario = getScenario(conv[0].scenario) || SCENARIOS.smalltalk;
   const profile = await getActiveProfile(userId);
   if (!profile) return { success: false, status: 400, message: 'Set up a language first' };
 
@@ -280,10 +317,78 @@ const sendMessage = async (userId, conversationId, text) => {
   };
 };
 
+const listRoleplays = () =>
+  Object.entries(ROLEPLAY_SCENARIOS).map(([key, v]) => ({ key, title: v.title, context: v.context, objectives: v.objectives || [] }));
+
+// Score a (roleplay) conversation against its objectives. Returns a structured
+// report, or aiUnavailable when the AI service is down.
+const evaluateConversation = async (userId, conversationId) => {
+  await ensureConvSchema();
+  const [conv] = await pool.query(
+    'SELECT id, scenario, target_language FROM lingo_conversations WHERE id = ? AND user_id = ?',
+    [conversationId, userId]
+  );
+  if (conv.length === 0) return { success: false, status: 404, message: 'Conversation not found' };
+  const scenario = getScenario(conv[0].scenario) || SCENARIOS.smalltalk;
+  const profile = await getActiveProfile(userId);
+  if (!profile) return { success: false, status: 400, message: 'Set up a language first' };
+
+  const [msgs] = await pool.query(
+    'SELECT role, content FROM lingo_conversation_messages WHERE conversation_id = ? ORDER BY id ASC',
+    [conversationId]
+  );
+  if (msgs.length < 2) return { success: false, status: 400, message: 'Have a short conversation first' };
+
+  const transcript = msgs.map((m) => `${m.role === 'user' ? 'Learner' : 'Tutor'}: ${m.content}`).join('\n');
+  const native = langName(profile.native_language || 'en');
+  const objectives = scenario.objectives || [];
+
+  const system = [
+    `You are an examiner assessing a language-learning roleplay in ${langName(profile.target_language)}.`,
+    `Scenario: ${scenario.context}.`,
+    objectives.length ? `Objectives the learner had to accomplish: ${objectives.map((o, i) => `${i + 1}) ${o}`).join(' ')}.` : '',
+    `Assess ONLY the "Learner" turns. Be fair and encouraging.`,
+    `Respond with STRICT JSON ONLY in this shape:`,
+    `{"objectivesMet":[${objectives.map(() => 'true|false').join(',')}],"scores":{"taskCompletion":0-100,"grammar":0-100,"vocabulary":0-100,"fluency":0-100},"overall":0-100,"feedback":"<2-3 sentence summary in ${native}>","highlights":["<thing done well>"],"improvements":["<thing to improve>"]}`,
+  ].filter(Boolean).join('\n');
+
+  let parsed;
+  try {
+    const raw = await geminiAIService.generateChatResponse(system, [{ role: 'user', content: transcript }]);
+    parsed = extractJson(raw);
+  } catch (e) {
+    console.error('LingoLab roleplay eval error:', e.message);
+    return { success: true, data: { aiUnavailable: true } };
+  }
+  if (!parsed || !parsed.scores) return { success: true, data: { aiUnavailable: true } };
+
+  const overall = typeof parsed.overall === 'number' ? Math.max(0, Math.min(100, Math.round(parsed.overall))) : 70;
+  let award = null;
+  try {
+    award = await lingo.awardXp(userId, conv[0].target_language, 20, { conversationScore: overall });
+  } catch (e) { /* non-fatal */ }
+
+  return {
+    success: true,
+    data: {
+      objectives,
+      objectivesMet: Array.isArray(parsed.objectivesMet) ? parsed.objectivesMet : [],
+      scores: parsed.scores,
+      overall,
+      feedback: parsed.feedback || '',
+      highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],
+      improvements: Array.isArray(parsed.improvements) ? parsed.improvements : [],
+      award,
+    },
+  };
+};
+
 module.exports = {
   listScenarios,
+  listRoleplays,
   listConversations,
   getConversation,
   startConversation,
   sendMessage,
+  evaluateConversation,
 };

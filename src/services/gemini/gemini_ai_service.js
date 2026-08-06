@@ -1,8 +1,9 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const geminiConfig = require('../../config/gemini');
 
-// Models to try in order of preference
+// Models to try in order of preference (after any GEMINI_MODEL from env).
 const MODEL_FALLBACKS = [
+  'gemini-2.5-flash',
   'gemini-2.0-flash',
   'gemini-1.5-flash-latest',
   'gemini-1.5-pro-latest',

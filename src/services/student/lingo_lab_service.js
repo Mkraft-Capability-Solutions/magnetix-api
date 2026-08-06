@@ -120,6 +120,16 @@ const LINGO_SCHEMA_SQL = [
      conversation_score INT NOT NULL DEFAULT 0,
      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`,
+
+  // Admin-controlled settings (single global row, id=1). unlock_mode:
+  //   'progressive' — levels unlock as the learner completes prior ones (default)
+  //   'all'         — every level is open from the start.
+  `CREATE TABLE IF NOT EXISTS lingo_settings (
+     id INT NOT NULL PRIMARY KEY,
+     unlock_mode VARCHAR(20) NOT NULL DEFAULT 'progressive',
+     updated_by VARCHAR(36) NULL,
+     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`,
 ];
 
 // Small language-agnostic starter set (Spanish) so the engine works with zero AI.
@@ -444,12 +454,14 @@ const getDashboard = async (userId) => {
 
   const level = levelFromXp(stats.xp);
   const xpIntoLevel = stats.xp % LEVEL_XP;
+  const unlock = await computeAccess(userId, lang, stats);
 
   return {
     success: true,
     data: {
       hasProfile: !!profile,
       targetLanguage: lang,
+      unlock,
       dailyGoalMinutes: profile ? profile.daily_minutes : 10,
       roadmap: profile ? profile.roadmap : null,
       stats: {
@@ -752,8 +764,67 @@ const awardXp = async (userId, lang, xp, opts = {}) => {
   return { xp: newXp, level: newLevel, leveledUp, currentStreak };
 };
 
+// ---------------------------------------------------------------- settings / access
+const LAB_TABS = ['vocabulary', 'pronunciation', 'listening', 'conversation', 'voice', 'roleplay', 'fluency'];
+
+const getSettings = async () => {
+  await ensureSchema();
+  const [rows] = await pool.query('SELECT unlock_mode FROM lingo_settings WHERE id = 1');
+  const unlockMode = rows[0] && rows[0].unlock_mode === 'all' ? 'all' : 'progressive';
+  return { success: true, data: { unlockMode } };
+};
+
+const setSettings = async (unlockMode, actorUuid) => {
+  await ensureSchema();
+  const mode = unlockMode === 'all' ? 'all' : 'progressive';
+  await pool.query(
+    `INSERT INTO lingo_settings (id, unlock_mode, updated_by) VALUES (1, ?, ?)
+       ON DUPLICATE KEY UPDATE unlock_mode = VALUES(unlock_mode), updated_by = VALUES(updated_by)`,
+    [mode, actorUuid || null]
+  );
+  return { success: true, data: { unlockMode: mode } };
+};
+
+// Which lab tabs are unlocked for this learner, given the admin policy + progress.
+async function computeAccess(userId, lang, stats) {
+  const settings = await getSettings();
+  const mode = settings.data.unlockMode;
+  if (mode === 'all' || !lang) return { mode, unlockedTabs: LAB_TABS.slice() };
+
+  let hasVocab = (Number(stats.vocab_learned) || 0) > 0;
+  if (!hasVocab) {
+    try {
+      const [a] = await pool.query(
+        "SELECT 1 FROM lingo_activity WHERE user_id = ? AND target_language = ? AND activity_type IN ('vocabulary','flashcards') LIMIT 1",
+        [userId, lang]
+      );
+      hasVocab = a.length > 0;
+    } catch { /* table may be empty */ }
+  }
+  const hasPron = (Number(stats.pronunciation_score) || 0) > 0;
+  const hasListen = (Number(stats.listening_score) || 0) > 0;
+
+  let hasConversation = false;
+  let hasRoleplay = false;
+  try {
+    const [c] = await pool.query('SELECT scenario FROM lingo_conversations WHERE user_id = ? AND target_language = ?', [userId, lang]);
+    hasConversation = c.length > 0;
+    hasRoleplay = c.some((r) => String(r.scenario || '').startsWith('rp_'));
+  } catch { /* conversation tables may not exist yet */ }
+
+  const unlocked = ['vocabulary'];
+  if (hasVocab) unlocked.push('pronunciation');
+  if (hasPron) unlocked.push('listening');
+  if (hasListen) unlocked.push('conversation');
+  if (hasConversation) unlocked.push('voice', 'roleplay');
+  if (hasRoleplay) unlocked.push('fluency');
+  return { mode, unlockedTabs: unlocked };
+}
+
 module.exports = {
   LINGO_SCHEMA_SQL,
+  getSettings,
+  setSettings,
   getProfile,
   upsertProfile,
   getLanguages,

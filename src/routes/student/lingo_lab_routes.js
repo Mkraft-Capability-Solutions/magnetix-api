@@ -27,11 +27,22 @@ router.get('/review', controller.getReview);
 // Activity results (updates progress, spaced repetition, XP/streak)
 router.post('/activity', controller.submitActivity);
 
+// Text-to-speech (ElevenLabs) for word/phrase playback
+router.post('/tts', controller.tts);
+
 // Level 6 — Text Conversation Lab
 router.get('/conversation/scenarios', controller.getScenarios);
 router.get('/conversations', controller.listConversations);
 router.get('/conversations/:id', controller.getConversation);
 router.post('/conversations', controller.startConversation);
 router.post('/conversations/:id/message', controller.sendConversationMessage);
+
+// Level 8 — Roleplay
+router.get('/roleplays', controller.getRoleplays);
+router.post('/conversations/:id/evaluate', controller.evaluateConversation);
+
+// Level 9 — Fluency
+router.get('/fluency/prompts', controller.getFluencyPrompts);
+router.post('/fluency/evaluate', controller.evaluateFluency);
 
 module.exports = router;

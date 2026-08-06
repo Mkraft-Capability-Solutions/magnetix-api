@@ -1,5 +1,7 @@
 const service = require('../../services/student/lingo_lab_service');
 const conversationService = require('../../services/student/lingo_conversation_service');
+const ttsService = require('../../services/student/lingo_tts_service');
+const fluencyService = require('../../services/student/lingo_fluency_service');
 
 /**
  * Lingo Lab AI controller (learner). Thin HTTP layer over lingo_lab_service.
@@ -105,6 +107,20 @@ exports.submitActivity = async (req, res, next) => {
   }
 };
 
+// ---- Text-to-speech (ElevenLabs, with browser fallback on the client) ----
+exports.tts = async (req, res, next) => {
+  try {
+    const text = (req.body && req.body.text) || req.query.text;
+    if (!text) return res.status(400).json({ success: false, message: 'text is required' });
+    const result = await ttsService.synthesizeForUser(req.user.uuid, text);
+    // On failure return data:null (not an error) so the client falls back cleanly.
+    return res.json({ success: true, data: result.ok ? { audio: result.audio, mime: result.mime } : null });
+  } catch (error) {
+    console.error('LingoLab tts:', error);
+    return res.json({ success: true, data: null });
+  }
+};
+
 // ---- Text Conversation Lab (Level 6) ----
 exports.getScenarios = async (req, res, next) => {
   try {
@@ -156,4 +172,34 @@ exports.sendConversationMessage = async (req, res, next) => {
     console.error('LingoLab sendConversationMessage:', error);
     next(error);
   }
+};
+
+// ---- Roleplay (Level 8) ----
+exports.getRoleplays = async (req, res, next) => {
+  try {
+    return res.json({ success: true, data: conversationService.listRoleplays() });
+  } catch (error) { console.error('LingoLab getRoleplays:', error); next(error); }
+};
+
+exports.evaluateConversation = async (req, res, next) => {
+  try {
+    const result = await conversationService.evaluateConversation(req.user.uuid, req.params.id);
+    if (!result.success) return res.status(result.status || 400).json({ success: false, message: result.message });
+    return res.json({ success: true, data: result.data });
+  } catch (error) { console.error('LingoLab evaluateConversation:', error); next(error); }
+};
+
+// ---- Fluency (Level 9) ----
+exports.getFluencyPrompts = async (req, res, next) => {
+  try {
+    return res.json({ success: true, data: fluencyService.listPrompts() });
+  } catch (error) { console.error('LingoLab getFluencyPrompts:', error); next(error); }
+};
+
+exports.evaluateFluency = async (req, res, next) => {
+  try {
+    const result = await fluencyService.evaluate(req.user.uuid, req.body || {});
+    if (!result.success) return res.status(result.status || 400).json({ success: false, message: result.message });
+    return res.json({ success: true, data: result.data });
+  } catch (error) { console.error('LingoLab evaluateFluency:', error); next(error); }
 };
