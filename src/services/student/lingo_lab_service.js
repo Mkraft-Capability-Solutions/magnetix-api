@@ -132,35 +132,9 @@ const LINGO_SCHEMA_SQL = [
    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`,
 ];
 
-// Small language-agnostic starter set (Spanish) so the engine works with zero AI.
-// category | word | translation | ipa | example | example_translation | difficulty
-const SEED_VOCAB = [
-  ['es', 'greetings', 'Hola', 'Hello', 'ˈola', '¡Hola! ¿Cómo estás?', 'Hello! How are you?', 1],
-  ['es', 'greetings', 'Buenos días', 'Good morning', 'ˈbwenos ˈdi.as', 'Buenos días, señora.', 'Good morning, madam.', 1],
-  ['es', 'greetings', 'Gracias', 'Thank you', 'ˈɡɾa.sjas', 'Muchas gracias por tu ayuda.', 'Thank you very much for your help.', 1],
-  ['es', 'greetings', 'Adiós', 'Goodbye', 'aˈðjos', 'Adiós, hasta mañana.', 'Goodbye, see you tomorrow.', 1],
-  ['es', 'greetings', 'Por favor', 'Please', 'poɾ faˈβoɾ', 'Un café, por favor.', 'A coffee, please.', 1],
-  ['es', 'numbers', 'Uno', 'One', 'ˈuno', 'Tengo uno.', 'I have one.', 1],
-  ['es', 'numbers', 'Dos', 'Two', 'dos', 'Quiero dos, por favor.', 'I want two, please.', 1],
-  ['es', 'numbers', 'Tres', 'Three', 'tɾes', 'Son las tres.', "It's three o'clock.", 1],
-  ['es', 'numbers', 'Cuatro', 'Four', 'ˈkwatɾo', 'Hay cuatro sillas.', 'There are four chairs.', 1],
-  ['es', 'numbers', 'Cinco', 'Five', 'ˈsiŋko', 'Cinco minutos más.', 'Five more minutes.', 1],
-  ['es', 'colors', 'Rojo', 'Red', 'ˈroxo', 'El coche es rojo.', 'The car is red.', 1],
-  ['es', 'colors', 'Azul', 'Blue', 'aˈsul', 'El cielo es azul.', 'The sky is blue.', 1],
-  ['es', 'colors', 'Verde', 'Green', 'ˈbeɾðe', 'La hierba es verde.', 'The grass is green.', 1],
-  ['es', 'colors', 'Amarillo', 'Yellow', 'amaˈɾiʎo', 'El sol es amarillo.', 'The sun is yellow.', 2],
-  ['es', 'colors', 'Negro', 'Black', 'ˈneɣɾo', 'El gato es negro.', 'The cat is black.', 1],
-  ['es', 'food', 'Agua', 'Water', 'ˈaɣwa', 'Quiero un vaso de agua.', 'I want a glass of water.', 1],
-  ['es', 'food', 'Pan', 'Bread', 'pan', 'El pan está fresco.', 'The bread is fresh.', 1],
-  ['es', 'food', 'Manzana', 'Apple', 'manˈsana', 'Como una manzana.', 'I eat an apple.', 1],
-  ['es', 'food', 'Café', 'Coffee', 'kaˈfe', 'Me gusta el café.', 'I like coffee.', 1],
-  ['es', 'food', 'Leche', 'Milk', 'ˈletʃe', 'La leche está fría.', 'The milk is cold.', 1],
-  ['es', 'family', 'Madre', 'Mother', 'ˈmaðɾe', 'Mi madre es doctora.', 'My mother is a doctor.', 1],
-  ['es', 'family', 'Padre', 'Father', 'ˈpaðɾe', 'Mi padre trabaja aquí.', 'My father works here.', 1],
-  ['es', 'family', 'Hermano', 'Brother', 'eɾˈmano', 'Tengo un hermano.', 'I have a brother.', 1],
-  ['es', 'family', 'Hija', 'Daughter', 'ˈixa', 'Su hija tiene cinco años.', 'His daughter is five years old.', 2],
-  ['es', 'family', 'Amigo', 'Friend', 'aˈmiɣo', 'Él es mi amigo.', 'He is my friend.', 1],
-];
+// Default vocabulary seed for all supported languages (see src/config/lingo_seed_data.js).
+// Used by ensureSchema() at runtime AND the migration, so prod always has content.
+const SEED_VOCAB = require('../../config/lingo_seed_data');
 
 // Guarded, idempotent upgrades for DBs created before multi-language support.
 async function ensureMigrations() {

@@ -384,6 +384,7 @@ const evaluateConversation = async (userId, conversationId) => {
 };
 
 module.exports = {
+  LINGO_CONV_SQL,
   listScenarios,
   listRoleplays,
   listConversations,

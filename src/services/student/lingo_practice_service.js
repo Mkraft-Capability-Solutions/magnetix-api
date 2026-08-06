@@ -96,21 +96,21 @@ const completeSentences = async (userId, lang, body) => {
 };
 
 // ---------------------------------------------------------------- Reading Lab
+const LINGO_READING_SQL = `CREATE TABLE IF NOT EXISTS lingo_reading (
+   id BIGINT AUTO_INCREMENT PRIMARY KEY,
+   target_language VARCHAR(50) NOT NULL,
+   level VARCHAR(30) NULL,
+   title VARCHAR(200) NULL,
+   body TEXT NOT NULL,
+   questions JSON NULL,
+   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   KEY idx_lingo_reading_lang (target_language)
+ ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`;
+
 let readingSchemaReady = false;
 async function ensureReadingSchema() {
   if (readingSchemaReady) return;
-  await pool.query(
-    `CREATE TABLE IF NOT EXISTS lingo_reading (
-       id BIGINT AUTO_INCREMENT PRIMARY KEY,
-       target_language VARCHAR(50) NOT NULL,
-       level VARCHAR(30) NULL,
-       title VARCHAR(200) NULL,
-       body TEXT NOT NULL,
-       questions JSON NULL,
-       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-       KEY idx_lingo_reading_lang (target_language)
-     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`
-  );
+  await pool.query(LINGO_READING_SQL);
   readingSchemaReady = true;
 }
 
@@ -178,4 +178,4 @@ const completeReading = async (userId, lang, body) => {
   return { success: true, data: { total, correct, accuracy, xpEarned, ...(award || {}) } };
 };
 
-module.exports = { getSentences, completeSentences, getReading, completeReading };
+module.exports = { LINGO_READING_SQL, getSentences, completeSentences, getReading, completeReading };
